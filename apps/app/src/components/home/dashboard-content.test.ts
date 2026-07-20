@@ -25,7 +25,7 @@ describe('selectDashboardContent', () => {
       selectDashboardContent({
         initialized: true,
         loading: false,
-        error: 'Could not load today’s data. Pull to retry.',
+        error: 'Could not load today’s data.',
         energy: null,
         energyDate: null,
         latestCheckIn: null,

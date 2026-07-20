@@ -74,18 +74,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const refreshToday = useCallback(async () => {
     const generation = ++refreshGeneration.current
-    setState((prev) => ({
-      ...prev,
-      energy: null,
-      energyDate: null,
-      latestCheckIn: null,
-      plan: null,
-      tasks: [],
-      nutrition: null,
-      coach: null,
-      loading: true,
-      error: null,
-    }))
+    // Keep current data on screen while refreshing; stale-day display is
+    // prevented by date gating in selectDashboardContent, not by clearing.
+    setState((prev) => ({ ...prev, loading: true, error: null }))
     try {
       const date = todayISO()
       const [energy, tasks, plan, nutrition, coach, latestCheckIn] = await Promise.all([
@@ -116,15 +107,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         ...prev,
         initialized: true,
         loading: false,
-        error: 'Could not load today’s data. Pull to retry.',
+        error: 'Could not load today’s data.',
       }))
     }
   }, [service])
 
   const loadLatestCheckIn = useCallback(
     async (date: string) => {
+      const generation = refreshGeneration.current
       const latestCheckIn = await service.getLatestCheckIn(date)
-      setState((prev) => ({ ...prev, latestCheckIn }))
+      if (generation === refreshGeneration.current) {
+        setState((prev) => ({ ...prev, latestCheckIn }))
+      }
       return latestCheckIn
     },
     [service]

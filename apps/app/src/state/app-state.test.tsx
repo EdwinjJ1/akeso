@@ -281,4 +281,102 @@ describe('AppStateProvider refresh races', () => {
     expect(appState.nutrition).toEqual(secondNutrition)
     expect(appState.coach).toEqual(secondCoach)
   })
+
+  test('keeps loaded same-day data visible during a refresh and after a failed refresh', async () => {
+    const date = todayISO()
+    const todayEnergy = energy(date, 68)
+    const todayPlan = plan(date, 'today-plan')
+    const secondEnergyLoad = deferred<EnergyResult | null>()
+    const service = createService({
+      getTodayEnergy: jest
+        .fn()
+        .mockResolvedValueOnce(todayEnergy)
+        .mockReturnValueOnce(secondEnergyLoad.promise),
+      getTodayPlan: jest.fn().mockResolvedValue(todayPlan),
+    })
+    mockedGetService.mockReturnValue(service)
+
+    let appState!: ReturnType<typeof useAppState>
+    function Probe() {
+      appState = useAppState()
+      return null
+    }
+
+    await render(
+      <AppStateProvider>
+        <Probe />
+      </AppStateProvider>
+    )
+
+    await act(async () => {
+      await appState.refreshToday()
+    })
+    expect(appState.energy).toEqual(todayEnergy)
+
+    let secondRefresh!: Promise<void>
+    await act(async () => {
+      secondRefresh = appState.refreshToday()
+      await Promise.resolve()
+    })
+
+    expect(appState.loading).toBe(true)
+    expect(appState.energy).toEqual(todayEnergy)
+    expect(appState.energyDate).toBe(date)
+    expect(appState.plan).toEqual(todayPlan)
+
+    await act(async () => {
+      secondEnergyLoad.reject(new Error('offline'))
+      await secondRefresh
+    })
+
+    expect(appState.energy).toEqual(todayEnergy)
+    expect(appState.energyDate).toBe(date)
+    expect(appState.plan).toEqual(todayPlan)
+    expect(appState.loading).toBe(false)
+    expect(appState.error).toBe('Could not load today’s data.')
+  })
+
+  test('does not let a stale latest check-in response overwrite a newer refresh', async () => {
+    const date = todayISO()
+    const staleInput = { ...checkIn(date), stress: 1 as const, notes: 'stale' }
+    const freshInput = { ...checkIn(date), stress: 4 as const, notes: 'fresh' }
+    const staleLoad = deferred<CheckInInput | null>()
+    const service = createService({
+      getLatestCheckIn: jest
+        .fn()
+        .mockReturnValueOnce(staleLoad.promise)
+        .mockResolvedValueOnce(freshInput),
+    })
+    mockedGetService.mockReturnValue(service)
+
+    let appState!: ReturnType<typeof useAppState>
+    function Probe() {
+      appState = useAppState()
+      return null
+    }
+
+    await render(
+      <AppStateProvider>
+        <Probe />
+      </AppStateProvider>
+    )
+
+    let staleRequest!: Promise<CheckInInput | null>
+    await act(async () => {
+      staleRequest = appState.loadLatestCheckIn(date)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      await appState.refreshToday()
+    })
+    expect(appState.latestCheckIn).toEqual(freshInput)
+
+    await act(async () => {
+      staleLoad.resolve(staleInput)
+      await expect(staleRequest).resolves.toEqual(staleInput)
+    })
+
+    expect(appState.latestCheckIn).toEqual(freshInput)
+  })
 })

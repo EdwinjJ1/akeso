@@ -6,10 +6,10 @@ describe('DashboardLoadError', () => {
   test('offers an explicit retry for a failed dashboard load', async () => {
     const onRetry = jest.fn()
     const screen = await render(
-      <DashboardLoadError message="Could not load today’s data. Pull to retry." onRetry={onRetry} />
+      <DashboardLoadError message="Could not load today’s data." onRetry={onRetry} />
     )
 
-    screen.getByText('Could not load today’s data. Pull to retry.')
+    screen.getByText('Could not load today’s data.')
     fireEvent.press(screen.getByRole('button', { name: 'Retry' }))
 
     expect(onRetry).toHaveBeenCalledTimes(1)
