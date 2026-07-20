@@ -15,13 +15,20 @@ import {
   type Task,
   type UserProfile,
 } from '@akeso/domain'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const LATENCY_MS = 450
+const CHECK_INS_KEY = 'akeso:check-ins'
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
+
+const loadCheckIns = async () => {
+  const stored = await AsyncStorage.getItem(CHECK_INS_KEY)
+  return stored ? (JSON.parse(stored) as Record<string, CheckInInput>) : {}
+}
 
 /**
  * FIXTURE ONLY — throwaway scoring so the demo reacts to what you enter.
@@ -133,7 +140,6 @@ function scoreCheckIn(input: CheckInInput): EnergyResult {
 export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
   private energy: EnergyResult | null = null
-  private checkIns = new Map<string, CheckInInput>()
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(LATENCY_MS / 3)
@@ -148,17 +154,20 @@ export class FixtureService implements AkesoService {
 
   async submitCheckIn(input: CheckInInput): Promise<EnergyResult> {
     await wait(LATENCY_MS * 2)
-    this.checkIns.set(input.date, { ...input })
+    const checkIns = await loadCheckIns()
+    checkIns[input.date] = { ...input }
+    await AsyncStorage.setItem(CHECK_INS_KEY, JSON.stringify(checkIns))
     this.energy = scoreCheckIn(input)
     return this.energy
   }
 
   async getLatestCheckIn(date: string): Promise<CheckInInput | null> {
     await wait(LATENCY_MS / 3)
-    const latestDate = [...this.checkIns.keys()]
+    const checkIns = await loadCheckIns()
+    const latestDate = Object.keys(checkIns)
       .filter((checkInDate) => checkInDate <= date)
       .sort((left, right) => right.localeCompare(left))[0]
-    const latest = latestDate ? this.checkIns.get(latestDate) : undefined
+    const latest = latestDate ? checkIns[latestDate] : undefined
     return latest ? { ...latest } : null
   }
 

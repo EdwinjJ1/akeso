@@ -31,6 +31,16 @@ const CAFFEINE_OPTIONS: ChipOption<CaffeineIntake>[] = [
   { value: 'evening', label: 'Evening' },
 ]
 
+// The modal can be the first screen in the stack (web refresh, deep link),
+// so there may be nothing to go back to.
+const closeCheckIn = () => {
+  if (router.canGoBack()) {
+    router.back()
+  } else {
+    router.replace('/(tabs)')
+  }
+}
+
 export default function CheckIn() {
   const { loadLatestCheckIn, submitCheckIn } = useAppState()
   const [initializing, setInitializing] = useState(true)
@@ -102,7 +112,7 @@ export default function CheckIn() {
         caffeine,
         notes: notes.trim() || undefined,
       })
-      router.back()
+      closeCheckIn()
     } catch (submitError) {
       console.error('Check-in failed:', submitError)
       setError('Something went wrong — please try again.')
@@ -144,7 +154,7 @@ export default function CheckIn() {
           </View>
         </View>
         <Pressable
-          onPress={() => router.back()}
+          onPress={closeCheckIn}
           style={styles.closeButton}
           accessibilityRole="button"
           accessibilityLabel="Close check-in"

@@ -26,7 +26,13 @@ const previous: CheckInInput = {
   notes: 'deadline tomorrow',
 }
 
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  const { router } = jest.requireMock('expo-router') as {
+    router: { canGoBack: jest.Mock }
+  }
+  router.canGoBack.mockReturnValue(true)
+})
 beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => undefined))
 afterEach(() => jest.restoreAllMocks())
 
@@ -83,6 +89,22 @@ test('submits changed answers for today and recalculates', async () => {
     router: { back: jest.Mock }
   }
   expect(router.back).toHaveBeenCalled()
+})
+
+test('returns to the dashboard after a direct-route submission', async () => {
+  mockLoadLatestCheckIn.mockResolvedValue(previous)
+  mockSubmitCheckIn.mockResolvedValue({ score: 60 })
+  const { router } = jest.requireMock('expo-router') as {
+    router: { back: jest.Mock; canGoBack: jest.Mock; replace: jest.Mock }
+  }
+  router.canGoBack.mockReturnValue(false)
+  const screen = await renderCheckIn()
+
+  await waitFor(() => screen.getByText('Update my energy score'))
+  await fireEvent.press(screen.getByText('Update my energy score'))
+
+  await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/(tabs)'))
+  expect(router.back).not.toHaveBeenCalled()
 })
 
 test('confirms unchanged inherited answers for today', async () => {
