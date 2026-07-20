@@ -24,6 +24,8 @@ export interface AkesoService {
 
   /** POST /v1/checkins → EnergyEngine runs server-side, returns the result */
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  /** Latest submitted answers at or before date; null before first check-in. */
+  getLatestCheckIn(date: string): Promise<CheckInInput | null>
   /** GET /v1/energy/:date — null when the user has not checked in yet */
   getTodayEnergy(date: string): Promise<EnergyResult | null>
 

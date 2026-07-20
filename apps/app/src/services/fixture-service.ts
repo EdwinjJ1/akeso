@@ -133,6 +133,7 @@ function scoreCheckIn(input: CheckInInput): EnergyResult {
 export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
   private energy: EnergyResult | null = null
+  private checkIns = new Map<string, CheckInInput>()
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(LATENCY_MS / 3)
@@ -147,8 +148,18 @@ export class FixtureService implements AkesoService {
 
   async submitCheckIn(input: CheckInInput): Promise<EnergyResult> {
     await wait(LATENCY_MS * 2)
+    this.checkIns.set(input.date, { ...input })
     this.energy = scoreCheckIn(input)
     return this.energy
+  }
+
+  async getLatestCheckIn(date: string): Promise<CheckInInput | null> {
+    await wait(LATENCY_MS / 3)
+    const latestDate = [...this.checkIns.keys()]
+      .filter((checkInDate) => checkInDate <= date)
+      .sort((left, right) => right.localeCompare(left))[0]
+    const latest = latestDate ? this.checkIns.get(latestDate) : undefined
+    return latest ? { ...latest } : null
   }
 
   async getTodayEnergy(date: string): Promise<EnergyResult | null> {
