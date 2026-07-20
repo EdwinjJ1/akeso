@@ -33,6 +33,7 @@ export function ChipRow<T extends string | number>({
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
+            accessibilityLabel={option.label}
             accessibilityState={{ selected }}
           >
             <Text style={[styles.label, selected && styles.labelSelected]}>

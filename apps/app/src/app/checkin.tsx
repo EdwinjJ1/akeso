@@ -1,7 +1,7 @@
 import type { CaffeineIntake, Scale1to5 } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { Button } from '@/components/ui/buttons'
@@ -32,7 +32,10 @@ const CAFFEINE_OPTIONS: ChipOption<CaffeineIntake>[] = [
 ]
 
 export default function CheckIn() {
-  const { submitCheckIn } = useAppState()
+  const { loadLatestCheckIn, submitCheckIn } = useAppState()
+  const [initializing, setInitializing] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isUpdate, setIsUpdate] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -43,6 +46,35 @@ export default function CheckIn() {
   const [energyNow, setEnergyNow] = useState<Scale1to5 | null>(null)
   const [caffeine, setCaffeine] = useState<CaffeineIntake | null>(null)
   const [notes, setNotes] = useState('')
+
+  const initialize = useCallback(async () => {
+    setInitializing(true)
+    setLoadError(null)
+    try {
+      const latest = await loadLatestCheckIn(todayISO())
+      if (latest) {
+        setSleepHours(latest.sleepHours)
+        setSleepQuality(latest.sleepQuality)
+        setMood(latest.mood)
+        setStress(latest.stress)
+        setEnergyNow(latest.energyNow)
+        setCaffeine(latest.caffeine)
+        setNotes(latest.notes ?? '')
+        setIsUpdate(true)
+      } else {
+        setIsUpdate(false)
+      }
+    } catch (loadFailure) {
+      console.error('Check-in load failed:', loadFailure)
+      setLoadError('Could not load your latest status.')
+    } finally {
+      setInitializing(false)
+    }
+  }, [loadLatestCheckIn])
+
+  useEffect(() => {
+    void initialize()
+  }, [initialize])
 
   const complete =
     sleepHours !== null &&
@@ -78,12 +110,35 @@ export default function CheckIn() {
     }
   }
 
+  if (initializing) {
+    return (
+      <Screen>
+        <View style={styles.statusState}>
+          <Mascot state="steady" size={112} />
+          <Text style={type.h3}>Loading your latest status…</Text>
+        </View>
+      </Screen>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Screen>
+        <View style={styles.statusState}>
+          <Mascot state="steady" size={112} />
+          <Text style={type.h3}>{loadError}</Text>
+          <Button label="Try again" onPress={() => void initialize()} variant="cta" />
+        </View>
+      </Screen>
+    )
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.eyebrow}>A SMALL PAUSE FOR YOURSELF</Text>
-          <Text style={type.h1}>Daily check-in</Text>
+          <Text style={type.h1}>{isUpdate ? 'Update today’s status' : 'Daily check-in'}</Text>
           <View style={styles.timeHint}>
             <Tag label="~20 seconds" color={colors.primaryDark} background={colors.primarySoft} />
           </View>
@@ -153,7 +208,13 @@ export default function CheckIn() {
 
       <View style={styles.footer}>
         <Button
-          label={complete ? 'Get my energy plan' : 'Answer all questions to continue'}
+          label={
+            complete
+              ? isUpdate
+                ? 'Update my energy score'
+                : 'Get my energy plan'
+              : 'Answer all questions to continue'
+          }
           onPress={submit}
           disabled={!complete}
           loading={submitting}
@@ -165,6 +226,13 @@ export default function CheckIn() {
 }
 
 const styles = StyleSheet.create({
+  statusState: {
+    flex: 1,
+    minHeight: 420,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sp(4),
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
