@@ -9,6 +9,12 @@
   "scripts": {
     "app": "npm run start --workspace=apps/app",
     "app:web": "npm run web --workspace=apps/app",
-    "typecheck": "tsc --noEmit -p apps/app && tsc --noEmit -p packages/domain"
+    "api": "npm run dev --workspace=apps/api",
+    "typecheck": "tsc --noEmit -p apps/app && tsc --noEmit -p packages/domain && tsc --noEmit -p apps/api",
+    "lint": "npm run typecheck",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }
