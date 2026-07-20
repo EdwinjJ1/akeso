@@ -11,6 +11,7 @@ Akeso helps people understand their daily energy and plan important work for the
 ```
 apps/
   app/          # Expo Router app (iOS / Android / Web)
+  api/          # Express API skeleton (health check only for now — Issue #3 adds endpoints)
 packages/
   domain/       # Shared contract: types, AkesoService interface, demo fixtures
 docs/
@@ -24,7 +25,17 @@ docs/
 npm install          # from repo root (npm workspaces)
 npm run app:web      # Expo dev server in the browser
 npm run app          # Expo dev server (scan QR with Expo Go for mobile)
-npm run typecheck    # typecheck app + domain
+npm run api          # Express API dev server on http://localhost:3001
+npm run typecheck    # typecheck app + domain + api
+npm run test         # API health, error-envelope, and environment tests
+```
+
+Copy `apps/api/.env.example` to `apps/api/.env` before running `npm run api`
+(defaults are fine for local dev — no secrets required yet).
+
+```bash
+curl http://localhost:3001/health
+# {"success":true,"data":{"status":"ok","version":"0.1.0","uptimeSeconds":3}}
 ```
 
 The app currently runs entirely on `FixtureService` (no backend needed). The
