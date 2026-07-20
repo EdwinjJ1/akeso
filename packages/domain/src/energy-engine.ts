@@ -9,11 +9,13 @@ import type {
 
 /**
  * The score-only portion of an EnergyResult.  Keeping this as a derived type
- * means the engine cannot drift from the shared API contract.
+ * means the engine cannot drift from the shared API contract.  The headline
+ * is excluded on purpose: it quotes the peak/dip windows, which only exist
+ * once the curve has been computed, so evaluate() is its single home.
  */
 export type EnergyScore = Pick<
   EnergyResult,
-  'date' | 'score' | 'band' | 'headline' | 'factors'
+  'date' | 'score' | 'band' | 'factors'
 >
 
 type ScaleImpactMap = Readonly<Record<1 | 2 | 3 | 4 | 5, number>>
@@ -33,12 +35,29 @@ export interface EnergyEngineConfig {
     readonly hour: number
     readonly offset: number
   }[]
+  /**
+   * Hour boundaries shared by the curve modifiers and the dip window, so
+   * "afternoon" is defined in exactly one place.
+   */
+  readonly dayParts: {
+    /** Last hour (inclusive) still dragged down by short sleep. */
+    readonly morningEndHour: number
+    readonly afternoonStartHour: number
+    readonly afternoonEndHour: number
+    /** First hour (inclusive) lifted by late caffeine. */
+    readonly eveningStartHour: number
+  }
 }
 
 /**
  * The sole home for the deterministic scoring rules.  Values are deliberately
  * small and expressed as whole points so a factor's impact always reconciles
  * with the resulting score.
+ *
+ * Calibration constraint: baseScore plus the most extreme factor totals must
+ * stay within 0–100 (currently exactly 0 and 99).  If new weights break
+ * that, the clamp in score() fires and the factor impacts stop summing to
+ * the score — the reconciliation tests guard this.
  */
 export const ENERGY_ENGINE_CONFIG: EnergyEngineConfig = {
   baseScore: 50,
@@ -68,11 +87,24 @@ export const ENERGY_ENGINE_CONFIG: EnergyEngineConfig = {
     { hour: 19, offset: -10 },
     { hour: 21, offset: -25 },
   ],
+  dayParts: {
+    morningEndHour: 11,
+    afternoonStartHour: 13,
+    afternoonEndHour: 17,
+    eveningStartHour: 17,
+  },
 }
 
 const SCORE_MIN = 0
 const SCORE_MAX = 100
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const FALLBACK_DATE = '1970-01-01'
+const CAFFEINE_INTAKES: readonly CheckInInput['caffeine'][] = [
+  'none',
+  'morning',
+  'afternoon',
+  'evening',
+]
 
 interface NormalizedCheckIn {
   date: string
@@ -93,14 +125,20 @@ const normalizedNumber = (value: number, minimum: number, maximum: number) =>
 const normalizedScale = (value: number): 1 | 2 | 3 | 4 | 5 =>
   Math.round(normalizedNumber(value, 1, 5)) as 1 | 2 | 3 | 4 | 5
 
+/**
+ * Every field is sanitized here and nowhere else, so e.g. `date` and
+ * `computedAt` can never disagree about what day was scored.
+ */
 const normalizeCheckIn = (input: CheckInInput): NormalizedCheckIn => ({
-  date: input.date,
+  date: DATE_PATTERN.test(input.date) ? input.date : FALLBACK_DATE,
   sleepHours: normalizedNumber(input.sleepHours, 0, 14),
   sleepQuality: normalizedScale(input.sleepQuality),
   mood: normalizedScale(input.mood),
   stress: normalizedScale(input.stress),
   energyNow: normalizedScale(input.energyNow),
-  caffeine: input.caffeine,
+  caffeine: CAFFEINE_INTAKES.includes(input.caffeine)
+    ? input.caffeine
+    : 'none',
 })
 
 const formatHours = (hours: number) =>
@@ -118,15 +156,19 @@ const energyBandFor = (score: number): EnergyBand => {
   return 'low'
 }
 
-const sleepDurationImpact = (
-  hours: number,
-  config: EnergyEngineConfig
-): number =>
-  config.sleepDuration.find((rule) => hours >= rule.minimumHours)?.impact ??
-  config.sleepDuration[config.sleepDuration.length - 1].impact
-
-const deterministicComputedAt = (date: string) =>
-  `${DATE_PATTERN.test(date) ? date : '1970-01-01'}T00:00:00.000Z`
+const headlineFor = (
+  band: EnergyBand,
+  peakWindow: HourWindow,
+  dipWindow: HourWindow
+): string => {
+  if (band === 'high') {
+    return `Strong day ahead — protect ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for demanding work.`
+  }
+  if (band === 'moderate') {
+    return `Steady day ahead — use ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for your most important task.`
+  }
+  return `Lower-energy day — keep ${dipWindow.startHour}:00–${dipWindow.endHour}:00 light and make room for recovery.`
+}
 
 const windowAround = (hour: number): HourWindow => ({
   startHour: Math.max(0, hour - 1),
@@ -139,13 +181,67 @@ const windowAround = (hour: number): HourWindow => ({
  * same result.
  */
 export class EnergyEngine {
+  /** Tiers sorted by minimumHours descending, whatever order the config used. */
+  private readonly sleepDurationTiers: EnergyEngineConfig['sleepDuration']
+
   constructor(
     private readonly config: EnergyEngineConfig = ENERGY_ENGINE_CONFIG
-  ) {}
+  ) {
+    if (config.sleepDuration.length === 0) {
+      throw new Error('EnergyEngineConfig.sleepDuration needs at least one tier')
+    }
+    if (config.curveOffsets.length === 0) {
+      throw new Error('EnergyEngineConfig.curveOffsets needs at least one point')
+    }
+    this.sleepDurationTiers = [...config.sleepDuration].sort(
+      (a, b) => b.minimumHours - a.minimumHours
+    )
+  }
 
   score(input: CheckInInput): EnergyScore {
+    return this.scoreFor(normalizeCheckIn(input))
+  }
+
+  curve(score: EnergyScore, input: CheckInInput): EnergyCurvePoint[] {
+    return this.curveFor(score.score, normalizeCheckIn(input))
+  }
+
+  evaluate(input: CheckInInput): EnergyResult {
     const checkIn = normalizeCheckIn(input)
-    const durationImpact = sleepDurationImpact(checkIn.sleepHours, this.config)
+    const score = this.scoreFor(checkIn)
+    const curve = this.curveFor(score.score, checkIn)
+
+    const peak = curve.reduce((best, point) =>
+      point.level > best.level ? point : best
+    )
+    const { afternoonStartHour, afternoonEndHour } = this.config.dayParts
+    const afternoonCurve = curve.filter(
+      (point) =>
+        point.hour >= afternoonStartHour && point.hour <= afternoonEndHour
+    )
+    // A custom config may plot no afternoon points; the dip then falls back
+    // to the lowest point of the whole day instead of crashing.
+    const dipCandidates = afternoonCurve.length > 0 ? afternoonCurve : curve
+    const dip = dipCandidates.reduce((lowest, point) =>
+      point.level < lowest.level ? point : lowest
+    )
+    const peakWindow = windowAround(peak.hour)
+    const dipWindow = windowAround(dip.hour)
+
+    return {
+      ...score,
+      headline: headlineFor(score.band, peakWindow, dipWindow),
+      curve,
+      peakWindow,
+      dipWindow,
+      // Deterministic by design: derived from the check-in date, never from
+      // the wall clock, so identical input yields an identical result.
+      computedAt: `${checkIn.date}T00:00:00.000Z`,
+    }
+  }
+
+  private scoreFor(checkIn: NormalizedCheckIn): EnergyScore {
+    const durationImpact = this.sleepDurationImpact(checkIn.sleepHours)
     const qualityImpact = this.config.sleepQuality[checkIn.sleepQuality]
     const stressImpact = this.config.stress[checkIn.stress]
     const moodImpact = this.config.mood[checkIn.mood]
@@ -230,37 +326,40 @@ export class EnergyEngine {
       SCORE_MIN,
       SCORE_MAX
     )
-    const band = energyBandFor(score)
 
     return {
       date: checkIn.date,
       score,
-      band,
-      headline:
-        band === 'high'
-          ? 'Strong energy expected today — reserve your best window for demanding work.'
-          : band === 'moderate'
-            ? 'Steady energy expected today — give one important task your best window.'
-            : 'Lower energy expected today — keep the plan light and leave room for recovery.',
+      band: energyBandFor(score),
       factors,
     }
   }
 
-  curve(score: EnergyScore, input: CheckInInput): EnergyCurvePoint[] {
-    const checkIn = normalizeCheckIn(input)
+  private curveFor(
+    scoreValue: number,
+    checkIn: NormalizedCheckIn
+  ): EnergyCurvePoint[] {
+    const { morningEndHour, afternoonStartHour, afternoonEndHour, eveningStartHour } =
+      this.config.dayParts
     const sleepDebt = Math.max(0, 7.5 - checkIn.sleepHours)
     const stressAboveBaseline = Math.max(0, checkIn.stress - 3)
-    const lateCaffeine = checkIn.caffeine === 'evening' ? 3 : checkIn.caffeine === 'afternoon' ? 1 : 0
+    const lateCaffeine =
+      checkIn.caffeine === 'evening' ? 3 : checkIn.caffeine === 'afternoon' ? 1 : 0
 
     return this.config.curveOffsets.map(({ hour, offset }) => {
-      const morningSleepAdjustment = hour <= 11 ? -Math.round(sleepDebt * 2) : 0
-      const afternoonStressAdjustment = hour >= 13 && hour <= 17 ? -stressAboveBaseline * 3 : 0
-      const eveningCaffeineAdjustment = hour >= 17 ? lateCaffeine : 0
+      const morningSleepAdjustment =
+        hour <= morningEndHour ? -Math.round(sleepDebt * 2) : 0
+      const afternoonStressAdjustment =
+        hour >= afternoonStartHour && hour <= afternoonEndHour
+          ? -stressAboveBaseline * 3
+          : 0
+      const eveningCaffeineAdjustment =
+        hour >= eveningStartHour ? lateCaffeine : 0
 
       return {
         hour,
         level: clamp(
-          score.score +
+          scoreValue +
             offset +
             morningSleepAdjustment +
             afternoonStressAdjustment +
@@ -272,33 +371,14 @@ export class EnergyEngine {
     })
   }
 
-  evaluate(input: CheckInInput): EnergyResult {
-    const score = this.score(input)
-    const curve = this.curve(score, input)
-    const peak = curve.reduce((best, point) =>
-      point.level > best.level ? point : best
+  private sleepDurationImpact(hours: number): number {
+    const tier = this.sleepDurationTiers.find(
+      (rule) => hours >= rule.minimumHours
     )
-    const afternoonCurve = curve.filter(
-      (point) => point.hour >= 13 && point.hour <= 17
-    )
-    const dip = afternoonCurve.reduce((lowest, point) =>
-      point.level < lowest.level ? point : lowest
-    )
-    const peakWindow = windowAround(peak.hour)
-    const dipWindow = windowAround(dip.hour)
-
-    return {
-      ...score,
-      headline:
-        score.band === 'high'
-          ? `Strong day ahead — protect ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for demanding work.`
-          : score.band === 'moderate'
-            ? `Steady day ahead — use ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for your most important task.`
-            : `Lower-energy day — keep ${dipWindow.startHour}:00–${dipWindow.endHour}:00 light and make room for recovery.`,
-      curve,
-      peakWindow,
-      dipWindow,
-      computedAt: deterministicComputedAt(score.date),
-    }
+    // Only reachable with a custom config whose lowest tier starts above 0h;
+    // treat anything below it as that lowest tier.
+    return (
+      tier ?? this.sleepDurationTiers[this.sleepDurationTiers.length - 1]
+    ).impact
   }
 }
