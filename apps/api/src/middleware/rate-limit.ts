@@ -5,10 +5,13 @@ import { env } from '../env'
 import { fail } from '../http'
 
 /**
- * Prefer the authenticated user id (set by requireAuth, mounted first); an
- * unauthenticated fallback still needs the IPv6-normalizing helper, or
- * distinct textual representations of the same address would each get
- * their own quota.
+ * The global /v1 limiter runs BEFORE requireAuth (so unauthenticated floods
+ * are still throttled), which means req.userId is unset there and it keys
+ * by IP; the per-route write limiter runs after auth and keys by user. The
+ * IP fallback needs the IPv6-normalizing helper, or distinct textual
+ * representations of the same address would each get their own quota.
+ * NOTE: behind a reverse proxy, set Express's `trust proxy` appropriately
+ * or every client shares the proxy's IP bucket.
  */
 const keyGenerator = (req: Request) =>
   req.userId ?? (req.ip ? ipKeyGenerator(req.ip) : 'unknown')

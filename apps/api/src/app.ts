@@ -25,8 +25,11 @@ export function createApp(repos: Repos = createRepos()) {
 
   app.use(healthRouter)
 
-  app.use('/v1', requireAuth)
+  // Rate limiting must run BEFORE auth: requireAuth's non-demo branch makes
+  // a network call to Supabase Auth per request, so an invalid-token flood
+  // that skipped the limiter would hammer that upstream unthrottled.
   app.use('/v1', apiRateLimiter)
+  app.use('/v1', requireAuth)
   app.use('/v1', createCheckinsRouter(repos, writeRateLimiter))
   app.use('/v1', createEnergyRouter(repos))
   app.use('/v1', createTasksRouter(repos))
