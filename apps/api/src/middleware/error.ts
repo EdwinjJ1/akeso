@@ -10,7 +10,7 @@ export function notFoundHandler(req: Request, res: Response): void {
 /** Mounted last. Never forwards stack traces or error internals to the client. */
 export function errorHandler(
   err: unknown,
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): void {
