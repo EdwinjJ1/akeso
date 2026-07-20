@@ -12,10 +12,13 @@ export function errorHandler(
   err: unknown,
   req: Request,
   res: Response,
-  // Express only treats a 4-arg function as an error handler — `next` must
-  // stay in the signature even though this handler always terminates.
   next: NextFunction
 ): void {
+  if (res.headersSent) {
+    next(err)
+    return
+  }
+
   if (err instanceof SyntaxError && 'body' in err) {
     fail(res, 400, 'VALIDATION_ERROR', 'Malformed request body')
     return

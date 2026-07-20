@@ -1,11 +1,15 @@
+import { createRequire } from 'node:module'
+
 import { Router } from 'express'
 
 import { ok } from '../http'
 
+const require = createRequire(import.meta.url)
+const { version: API_VERSION } = require('../../package.json') as { version: string }
+
 export const healthRouter = Router()
 
 const startedAt = Date.now()
-const API_VERSION = '0.1.0'
 
 healthRouter.get('/health', (_req, res) => {
   ok(res, {
