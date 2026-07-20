@@ -12,6 +12,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -57,6 +58,7 @@ const AppStateContext = createContext<(AppState & AppActions) | null>(null)
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState)
+  const refreshGeneration = useRef(0)
   const service = getService()
 
   const completeOnboarding = useCallback(
@@ -68,6 +70,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshToday = useCallback(async () => {
+    const generation = ++refreshGeneration.current
     setState((prev) => ({
       ...prev,
       energy: null,
@@ -86,6 +89,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         service.getCoachReply(date),
         service.getLatestCheckIn(date),
       ])
+      if (generation !== refreshGeneration.current) return
       setState((prev) => ({
         ...prev,
         energy,
@@ -98,6 +102,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         loading: false,
       }))
     } catch (error) {
+      if (generation !== refreshGeneration.current) return
       console.error('refreshToday failed:', error)
       setState((prev) => ({
         ...prev,
@@ -119,7 +124,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const submitCheckIn = useCallback(
     async (input: CheckInInput) => {
       const energy = await service.submitCheckIn(input)
-      setState((prev) => ({ ...prev, energy, energyDate: input.date }))
+      refreshGeneration.current += 1
+      setState((prev) => ({
+        ...prev,
+        energy,
+        energyDate: input.date,
+        loading: false,
+        error: null,
+      }))
       const [plan, nutrition, coach] = await Promise.all([
         service.getTodayPlan(input.date),
         service.getNutritionPlan(input.date),
