@@ -4,13 +4,16 @@ import {
   planDay,
   regeneratePlanBodySchema,
 } from '@akeso/domain'
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 
 import { notFound } from '../http-error'
 import { ok } from '../http'
 import type { Repos } from '../repos'
 
-export function createPlanRouter(repos: Repos): Router {
+export function createPlanRouter(
+  repos: Repos,
+  writeRateLimiter: RequestHandler
+): Router {
   const router = Router()
 
   router.get('/plan/:date', async (req, res) => {
@@ -33,7 +36,7 @@ export function createPlanRouter(repos: Repos): Router {
     ok(res, plan)
   })
 
-  router.post('/plan/:date/regenerate', async (req, res) => {
+  router.post('/plan/:date/regenerate', writeRateLimiter, async (req, res) => {
     const date = localDateSchema.parse(req.params.date)
     const { instruction } = regeneratePlanBodySchema.parse(req.body ?? {})
 

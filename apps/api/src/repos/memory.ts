@@ -7,9 +7,32 @@ import type {
   UserProfile,
 } from '@akeso/domain'
 
+import { env } from '../env'
 import type { Repos } from './types'
 
 const dateKey = (userId: string, date: string) => `${userId}::${date}`
+
+/**
+ * A Map capped at `limit` entries, evicting the oldest (insertion-order)
+ * entry once exceeded. Without this, an unbounded number of distinct
+ * user/date keys — whether from real usage or someone hammering the API —
+ * would grow this process's memory forever, since nothing here ever expires
+ * on its own.
+ */
+function createBoundedMap<K, V>(limit: number) {
+  const map = new Map<K, V>()
+  return {
+    get: (key: K) => map.get(key),
+    set: (key: K, value: V) => {
+      map.delete(key)
+      map.set(key, value)
+      if (map.size > limit) {
+        const oldestKey = map.keys().next().value
+        if (oldestKey !== undefined) map.delete(oldestKey)
+      }
+    },
+  }
+}
 
 /**
  * In-memory backing store used whenever Supabase env vars are absent
@@ -17,10 +40,11 @@ const dateKey = (userId: string, date: string) => `${userId}::${date}`
  * gets its own isolated state — nothing here is a module-level singleton.
  */
 export function createMemoryRepos(): Repos {
-  const profiles = new Map<string, UserProfile>()
-  const checkins = new Map<string, CheckInInput>()
-  const energyResults = new Map<string, EnergyResult>()
-  const plans = new Map<string, DayPlan>()
+  const limit = env.memoryRepoLimit
+  const profiles = createBoundedMap<string, UserProfile>(limit)
+  const checkins = createBoundedMap<string, CheckInInput>(limit)
+  const energyResults = createBoundedMap<string, EnergyResult>(limit)
+  const plans = createBoundedMap<string, DayPlan>(limit)
 
   return {
     profile: {

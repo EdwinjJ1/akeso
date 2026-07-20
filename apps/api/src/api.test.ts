@@ -4,6 +4,7 @@ import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
 
 import { createApp } from './app'
+import { env } from './env'
 import { createMemoryRepos } from './repos/memory'
 
 const validCheckIn: CheckInInput = {
@@ -173,5 +174,48 @@ describe('nutrition and coach passthrough', () => {
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
     const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
     expect(response.body.data.disclaimer).toBeTruthy()
+  })
+})
+
+describe('hardening', () => {
+  test('does not advertise the framework via X-Powered-By', async () => {
+    const response = await request(app).get('/health')
+    expect(response.headers['x-powered-by']).toBeUndefined()
+  })
+
+  test('CORS: allows a configured origin', async () => {
+    const origin = env.corsOrigins[0]
+    const response = await request(app)
+      .options('/v1/checkins')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'POST')
+    expect(response.headers['access-control-allow-origin']).toBe(origin)
+  })
+
+  test('CORS: does not echo an unconfigured origin', async () => {
+    const response = await request(app)
+      .options('/v1/checkins')
+      .set('Origin', 'http://evil.example.com')
+      .set('Access-Control-Request-Method', 'POST')
+    expect(response.headers['access-control-allow-origin']).toBeUndefined()
+  })
+
+  test('rejects an oversized body with 413 (not a raw 500)', async () => {
+    const response = await request(app)
+      .post('/v1/checkins')
+      .send({ ...validCheckIn, notes: 'x'.repeat(200_000) })
+      .expect(413)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  test('rate-limits repeated writes to /v1/checkins', async () => {
+    for (let i = 0; i < env.rateLimit.writeMax; i++) {
+      await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    }
+    const response = await request(app)
+      .post('/v1/checkins')
+      .send(validCheckIn)
+      .expect(429)
+    expect(response.body.error.code).toBe('RATE_LIMITED')
   })
 })

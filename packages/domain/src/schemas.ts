@@ -16,9 +16,25 @@ export { ZodError } from 'zod'
  * "App and API share one contract" guarantee.
  */
 
+/**
+ * The regex alone accepts calendar nonsense like "2026-13-45" — this
+ * round-trips the parsed components through Date.UTC and rejects anything
+ * that doesn't come back out unchanged (e.g. day 30 rolling Feb into Mar).
+ */
+function isRealCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
 export const localDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a local date as YYYY-MM-DD')
+  .refine(isRealCalendarDate, { message: 'Not a real calendar date' })
 
 const hhmmSchema = z
   .string()

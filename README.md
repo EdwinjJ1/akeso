@@ -31,12 +31,14 @@ npm run test         # domain (schemas, EnergyEngine, PlannerService) + API rout
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env` before running `npm run api`.
-By default (no Supabase env vars set) the API runs in **demo mode**: every
+The API refuses to start unless you explicitly pick a mode — there's no
+silent default. With `DEMO_MODE=true` (already set in `.env.example`) every
 request is attributed to one fixed demo user, backed by in-memory repos —
-nothing to configure, nothing persists across restarts. Set `SUPABASE_URL`
-and `SUPABASE_SERVICE_ROLE_KEY` in `.env` to persist for real; see
-[apps/api/supabase/migrations](apps/api/supabase/migrations) for the schema
-and [apps/api/supabase/seed.sql](apps/api/supabase/seed.sql) for demo data
+nothing to configure, nothing persists across restarts, and `DEMO_MODE=true`
+is itself refused when `NODE_ENV=production`. Set `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` instead (and leave `DEMO_MODE` unset) to persist
+for real; see [apps/api/supabase/migrations](apps/api/supabase/migrations)
+for the schema and [apps/api/supabase/seed.sql](apps/api/supabase/seed.sql) for demo data
 matching the shared fixtures.
 
 ```bash

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { fixtureProfile } from './fixtures'
 import {
   checkInInputSchema,
+  localDateSchema,
   regeneratePlanBodySchema,
   userProfileSchema,
 } from './schemas'
@@ -71,6 +72,32 @@ describe('userProfileSchema', () => {
       typicalWake: '7:30am',
     })
     expect(result.success).toBe(false)
+  })
+})
+
+describe('localDateSchema', () => {
+  test('accepts a real date', () => {
+    expect(localDateSchema.safeParse('2026-07-21').success).toBe(true)
+  })
+
+  test('accepts a real leap day', () => {
+    expect(localDateSchema.safeParse('2024-02-29').success).toBe(true)
+  })
+
+  test('rejects a non-leap-year Feb 29', () => {
+    expect(localDateSchema.safeParse('2026-02-29').success).toBe(false)
+  })
+
+  test('rejects an out-of-range month', () => {
+    expect(localDateSchema.safeParse('2026-13-01').success).toBe(false)
+  })
+
+  test('rejects an out-of-range day', () => {
+    expect(localDateSchema.safeParse('2026-02-30').success).toBe(false)
+  })
+
+  test('rejects the regex-matching but calendar-invalid "2026-13-45"', () => {
+    expect(localDateSchema.safeParse('2026-13-45').success).toBe(false)
   })
 })
 

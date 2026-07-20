@@ -41,6 +41,13 @@ export function errorHandler(
     return
   }
 
+  // body-parser/raw-body tag this error with `type` rather than a class we
+  // can import — see https://github.com/expressjs/body-parser#errors.
+  if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.too.large') {
+    fail(res, 413, 'VALIDATION_ERROR', 'Request body too large')
+    return
+  }
+
   console.error(err)
   fail(res, 500, 'INTERNAL', 'Internal error')
 }
