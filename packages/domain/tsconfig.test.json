@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/types.ts", "src/energy-engine.ts", "src/energy-engine.test.ts"]
+}
