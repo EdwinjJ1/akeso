@@ -2,7 +2,7 @@ import type { CheckInInput } from '@akeso/domain'
 import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
-import CheckIn from './checkin'
+import CheckIn from '../app/checkin'
 
 const mockLoadLatestCheckIn = jest.fn<Promise<CheckInInput | null>, [string]>()
 const mockSubmitCheckIn = jest.fn()
