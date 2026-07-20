@@ -22,6 +22,7 @@ import { todayISO } from '@/utils/dates'
 interface AppState {
   profile: UserProfile | null
   energy: EnergyResult | null
+  energyDate: string | null
   latestCheckIn: CheckInInput | null
   plan: DayPlan | null
   tasks: Task[]
@@ -42,6 +43,7 @@ interface AppActions {
 const initialState: AppState = {
   profile: null,
   energy: null,
+  energyDate: null,
   latestCheckIn: null,
   plan: null,
   tasks: [],
@@ -66,7 +68,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshToday = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }))
+    setState((prev) => ({
+      ...prev,
+      energy: null,
+      energyDate: null,
+      latestCheckIn: null,
+      loading: true,
+      error: null,
+    }))
     try {
       const date = todayISO()
       const [energy, tasks, plan, nutrition, coach, latestCheckIn] = await Promise.all([
@@ -80,6 +89,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         ...prev,
         energy,
+        energyDate: date,
         latestCheckIn,
         tasks,
         plan,
@@ -109,7 +119,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const submitCheckIn = useCallback(
     async (input: CheckInInput) => {
       const energy = await service.submitCheckIn(input)
-      setState((prev) => ({ ...prev, energy }))
+      setState((prev) => ({ ...prev, energy, energyDate: input.date }))
       const [plan, nutrition, coach] = await Promise.all([
         service.getTodayPlan(input.date),
         service.getNutritionPlan(input.date),
