@@ -1,7 +1,11 @@
+import { createRequire } from 'node:module'
+
 import { Router } from 'express'
 
-import apiPackage from '../../package.json' with { type: 'json' }
 import { ok } from '../http'
+
+const require = createRequire(import.meta.url)
+const { version: API_VERSION } = require('../../package.json') as { version: string }
 
 export const healthRouter = Router()
 
@@ -14,7 +18,7 @@ export function elapsedSeconds(startedAtMs: number, nowMs = Date.now()): number 
 healthRouter.get('/health', (_req, res) => {
   ok(res, {
     status: 'ok' as const,
-    version: apiPackage.version,
+    version: API_VERSION,
     uptimeSeconds: elapsedSeconds(startedAt),
   })
 })
