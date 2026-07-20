@@ -1,0 +1,14 @@
+{
+  "name": "akeso",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "app": "npm run start --workspace=apps/app",
+    "app:web": "npm run web --workspace=apps/app",
+    "typecheck": "tsc --noEmit -p apps/app && tsc --noEmit -p packages/domain"
+  }
+}
