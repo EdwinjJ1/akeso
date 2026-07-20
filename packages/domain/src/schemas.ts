@@ -1,6 +1,15 @@
 import { z } from 'zod'
 
 /**
+ * Re-exported so every consumer checks `instanceof ZodError` against the
+ * same class reference. A workspace-wide npm hoisting conflict (Expo's CLI
+ * pins zod v3, so this v4 install gets its own nested copy per workspace
+ * package) means importing `zod` directly from another package would
+ * resolve to a different physical copy and break `instanceof` checks.
+ */
+export { ZodError } from 'zod'
+
+/**
  * Runtime validators for every shape that crosses a process boundary
  * (HTTP body, query string). Kept in lockstep with types.ts by hand —
  * this is the one file where a mismatch would silently break the

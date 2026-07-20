@@ -5,7 +5,7 @@ import type {
   EnergyFactor,
   EnergyResult,
   HourWindow,
-} from './types'
+} from './types.js'
 
 /**
  * The score-only portion of an EnergyResult.  Keeping this as a derived type

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@akeso/domain": "*",
+    "@supabase/supabase-js": "^2.110.7",
     "express": "^5.2.1"
   },
   "devDependencies": {

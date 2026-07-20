@@ -1,5 +1,5 @@
-import { EnergyEngine } from './energy-engine'
-import type { CheckInInput } from './types'
+import { EnergyEngine } from './energy-engine.js'
+import type { CheckInInput } from './types.js'
 
 const engine = new EnergyEngine()
 
