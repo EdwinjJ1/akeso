@@ -27,8 +27,7 @@ npm run app:web      # Expo dev server in the browser
 npm run app          # Expo dev server (scan QR with Expo Go for mobile)
 npm run api          # Express API dev server on http://localhost:3001
 npm run typecheck    # typecheck app + domain + api
-npm run lint         # currently aliased to typecheck — a real linter lands with Issue #3
-npm run test         # vitest (no suites yet — EnergyEngine tests land with Issue #4)
+npm run test         # API health, error-envelope, and environment tests
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env` before running `npm run api`

@@ -10,11 +10,11 @@ export function notFoundHandler(req: Request, res: Response): void {
 /** Mounted last. Never forwards stack traces or error internals to the client. */
 export function errorHandler(
   err: unknown,
-  req: Request,
+  _req: Request,
   res: Response,
   // Express only treats a 4-arg function as an error handler — `next` must
   // stay in the signature even though this handler always terminates.
-  next: NextFunction
+  _next: NextFunction
 ): void {
   if (err instanceof SyntaxError && 'body' in err) {
     fail(res, 400, 'VALIDATION_ERROR', 'Malformed request body')
