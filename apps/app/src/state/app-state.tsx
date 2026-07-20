@@ -22,6 +22,7 @@ import { todayISO } from '@/utils/dates'
 interface AppState {
   profile: UserProfile | null
   energy: EnergyResult | null
+  latestCheckIn: CheckInInput | null
   plan: DayPlan | null
   tasks: Task[]
   nutrition: NutritionPlan | null
@@ -33,6 +34,7 @@ interface AppState {
 interface AppActions {
   completeOnboarding(profile: UserProfile): Promise<void>
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  loadLatestCheckIn(date: string): Promise<CheckInInput | null>
   refreshToday(): Promise<void>
   regeneratePlan(instruction?: string): Promise<void>
 }
@@ -40,6 +42,7 @@ interface AppActions {
 const initialState: AppState = {
   profile: null,
   energy: null,
+  latestCheckIn: null,
   plan: null,
   tasks: [],
   nutrition: null,
@@ -66,16 +69,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, loading: true, error: null }))
     try {
       const date = todayISO()
-      const [energy, tasks, plan, nutrition, coach] = await Promise.all([
+      const [energy, tasks, plan, nutrition, coach, latestCheckIn] = await Promise.all([
         service.getTodayEnergy(date),
         service.getTasks(date),
         service.getTodayPlan(date),
         service.getNutritionPlan(date),
         service.getCoachReply(date),
+        service.getLatestCheckIn(date),
       ])
       setState((prev) => ({
         ...prev,
         energy,
+        latestCheckIn,
         tasks,
         plan,
         nutrition,
@@ -91,6 +96,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }))
     }
   }, [service])
+
+  const loadLatestCheckIn = useCallback(
+    async (date: string) => {
+      const latestCheckIn = await service.getLatestCheckIn(date)
+      setState((prev) => ({ ...prev, latestCheckIn }))
+      return latestCheckIn
+    },
+    [service]
+  )
 
   const submitCheckIn = useCallback(
     async (input: CheckInInput) => {
@@ -120,10 +134,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       ...state,
       completeOnboarding,
       submitCheckIn,
+      loadLatestCheckIn,
       refreshToday,
       regeneratePlan,
     }),
-    [state, completeOnboarding, submitCheckIn, refreshToday, regeneratePlan]
+    [state, completeOnboarding, submitCheckIn, loadLatestCheckIn, refreshToday, regeneratePlan]
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

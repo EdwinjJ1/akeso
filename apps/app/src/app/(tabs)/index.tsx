@@ -18,7 +18,7 @@ import { colors, sp, type } from '@/theme/tokens'
 import { formatHour, greetingForNow, todayLabel } from '@/utils/dates'
 
 export default function Dashboard() {
-  const { profile, energy, nutrition, coach, loading, error, refreshToday } = useAppState()
+  const { profile, energy, latestCheckIn, nutrition, coach, loading, error, refreshToday } = useAppState()
 
   useEffect(() => {
     refreshToday()
@@ -57,7 +57,7 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      {!loading && !energy ? <CheckInPrompt /> : null}
+      {!loading && !energy ? <CheckInPrompt mode={latestCheckIn ? 'daily' : 'first'} /> : null}
 
       {energy ? (
         <>

@@ -7,21 +7,30 @@ import { Card } from '@/components/ui/card'
 import { Mascot } from '@/components/mascot'
 import { colors, sp } from '@/theme/tokens'
 
+interface CheckInPromptProps {
+  mode: 'first' | 'daily'
+}
+
 /** Hero card shown on the dashboard before today's check-in */
-export function CheckInPrompt() {
+export function CheckInPrompt({ mode }: CheckInPromptProps) {
+  const returning = mode === 'daily'
+  const kicker = returning ? 'A QUICK DAILY REFRESH' : '20 SECONDS, THAT’S IT'
+  const title = returning ? 'Update today’s status' : 'How’s your energy, really?'
+  const subtitle = returning
+    ? 'Your last answers are ready — only change what feels different today.'
+    : 'A 20-second check-in unlocks your energy score, today’s plan, and meals matched to what your body needs.'
+  const buttonLabel = returning ? 'Update today’s status' : 'Start check-in'
+
   return (
     <Card tone="green" style={styles.card}>
       <View style={styles.mascot}><Mascot state="steady" size={120} /></View>
       <View style={styles.iconCircle}>
         <Ionicons name="sunny" size={20} color={colors.text} />
       </View>
-      <Text style={styles.kicker}>20 SECONDS, THAT’S IT</Text>
-      <Text style={styles.title}>How’s your energy, really?</Text>
-      <Text style={styles.subtitle}>
-        A 20-second check-in unlocks your energy score, today’s plan, and meals
-        matched to what your body needs.
-      </Text>
-      <Button label="Start check-in" onPress={() => router.push('/checkin')} variant="cta" />
+      <Text style={styles.kicker}>{kicker}</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.subtitle}>{subtitle}</Text>
+      <Button label={buttonLabel} onPress={() => router.push('/checkin')} variant="cta" />
     </Card>
   )
 }
