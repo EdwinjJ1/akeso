@@ -29,6 +29,7 @@ interface AppState {
   tasks: Task[]
   nutrition: NutritionPlan | null
   coach: CoachReply | null
+  initialized: boolean
   loading: boolean
   error: string | null
 }
@@ -50,6 +51,7 @@ const initialState: AppState = {
   tasks: [],
   nutrition: null,
   coach: null,
+  initialized: false,
   loading: false,
   error: null,
 }
@@ -59,6 +61,7 @@ const AppStateContext = createContext<(AppState & AppActions) | null>(null)
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState)
   const refreshGeneration = useRef(0)
+  const submissionGeneration = useRef(0)
   const service = getService()
 
   const completeOnboarding = useCallback(
@@ -76,6 +79,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       energy: null,
       energyDate: null,
       latestCheckIn: null,
+      plan: null,
+      tasks: [],
+      nutrition: null,
+      coach: null,
       loading: true,
       error: null,
     }))
@@ -99,6 +106,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         plan,
         nutrition,
         coach,
+        initialized: true,
         loading: false,
       }))
     } catch (error) {
@@ -106,6 +114,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       console.error('refreshToday failed:', error)
       setState((prev) => ({
         ...prev,
+        initialized: true,
         loading: false,
         error: 'Could not load today’s data. Pull to retry.',
       }))
@@ -123,21 +132,51 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const submitCheckIn = useCallback(
     async (input: CheckInInput) => {
-      const energy = await service.submitCheckIn(input)
-      refreshGeneration.current += 1
+      const generation = ++submissionGeneration.current
+      const submittedInput = { ...input }
+      const energy = await service.submitCheckIn({ ...submittedInput })
+      if (generation !== submissionGeneration.current) return energy
+
+      const dashboardGeneration = ++refreshGeneration.current
       setState((prev) => ({
         ...prev,
         energy,
-        energyDate: input.date,
+        energyDate: submittedInput.date,
+        latestCheckIn: { ...submittedInput },
+        plan: null,
+        nutrition: null,
+        coach: null,
+        initialized: true,
         loading: false,
         error: null,
       }))
-      const [plan, nutrition, coach] = await Promise.all([
-        service.getTodayPlan(input.date),
-        service.getNutritionPlan(input.date),
-        service.getCoachReply(input.date),
-      ])
-      setState((prev) => ({ ...prev, plan, nutrition, coach }))
+
+      try {
+        const [plan, nutrition, coach] = await Promise.all([
+          service.getTodayPlan(submittedInput.date),
+          service.getNutritionPlan(submittedInput.date),
+          service.getCoachReply(submittedInput.date),
+        ])
+        if (
+          generation === submissionGeneration.current &&
+          dashboardGeneration === refreshGeneration.current
+        ) {
+          setState((prev) => ({ ...prev, plan, nutrition, coach }))
+        }
+      } catch (error) {
+        if (
+          generation === submissionGeneration.current &&
+          dashboardGeneration === refreshGeneration.current
+        ) {
+          console.error('Post-check-in refresh failed:', error)
+          setState((prev) => ({
+            ...prev,
+            error:
+              'Your check-in was saved, but today’s guidance could not load. Retry from the dashboard.',
+          }))
+        }
+      }
+
       return energy
     },
     [service]

@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useEffect } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { CoachCard } from '@/components/coach-card'
@@ -15,18 +14,29 @@ import { Card } from '@/components/ui/card'
 import { Tag } from '@/components/ui/chips'
 import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
+import { useDashboardRefresh } from '@/hooks/use-dashboard-refresh'
 import { useAppState } from '@/state/app-state'
 import { colors, sp, type } from '@/theme/tokens'
 import { formatHour, greetingForNow, todayISO, todayLabel } from '@/utils/dates'
 
 export default function Dashboard() {
-  const { profile, energy, energyDate, latestCheckIn, nutrition, coach, loading, error, refreshToday } = useAppState()
+  const {
+    profile,
+    energy,
+    energyDate,
+    latestCheckIn,
+    nutrition,
+    coach,
+    initialized,
+    loading,
+    error,
+    refreshToday,
+  } = useAppState()
 
-  useEffect(() => {
-    refreshToday()
-  }, [refreshToday])
+  useDashboardRefresh(refreshToday)
 
   const dashboardContent = selectDashboardContent({
+    initialized,
     loading,
     error,
     energy,
@@ -58,7 +68,7 @@ export default function Dashboard() {
         </View>
       </Reveal>
 
-      {loading && !dashboardContent.energy ? (
+      {(!initialized || loading) && !dashboardContent.energy ? (
         <View style={styles.loading}>
           <Mascot state="steady" size={128} />
           <ActivityIndicator color={colors.text} />

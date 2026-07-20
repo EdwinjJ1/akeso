@@ -65,13 +65,13 @@ test('submits changed answers for today and recalculates', async () => {
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Update my energy score'))
-  fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
+  await fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
       selected: true,
     })
   )
-  fireEvent.press(screen.getByText('Update my energy score'))
+  await fireEvent.press(screen.getByText('Update my energy score'))
   await waitFor(() =>
     expect(mockSubmitCheckIn).toHaveBeenCalledWith({
       ...previous,
@@ -85,19 +85,53 @@ test('submits changed answers for today and recalculates', async () => {
   expect(router.back).toHaveBeenCalled()
 })
 
+test('confirms unchanged inherited answers for today', async () => {
+  mockLoadLatestCheckIn.mockResolvedValue(previous)
+  mockSubmitCheckIn.mockResolvedValue({ score: 60 })
+  const screen = await renderCheckIn()
+
+  await waitFor(() => screen.getByText('Update my energy score'))
+  await fireEvent.press(screen.getByText('Update my energy score'))
+
+  await waitFor(() =>
+    expect(mockSubmitCheckIn).toHaveBeenCalledWith({
+      ...previous,
+      date: '2026-07-21',
+    })
+  )
+})
+
+test('clears inherited notes when the user removes them', async () => {
+  mockLoadLatestCheckIn.mockResolvedValue(previous)
+  mockSubmitCheckIn.mockResolvedValue({ score: 60 })
+  const screen = await renderCheckIn()
+
+  await waitFor(() => screen.getByText('Update my energy score'))
+  await fireEvent.changeText(screen.getByDisplayValue('deadline tomorrow'), '')
+  await fireEvent.press(screen.getByText('Update my energy score'))
+
+  await waitFor(() =>
+    expect(mockSubmitCheckIn).toHaveBeenCalledWith({
+      ...previous,
+      date: '2026-07-21',
+      notes: undefined,
+    })
+  )
+})
+
 test('keeps edited answers when saving fails', async () => {
   mockLoadLatestCheckIn.mockResolvedValue(previous)
   mockSubmitCheckIn.mockRejectedValue(new Error('offline'))
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Update my energy score'))
-  fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
+  await fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
       selected: true,
     })
   )
-  fireEvent.press(screen.getByText('Update my energy score'))
+  await fireEvent.press(screen.getByText('Update my energy score'))
   await waitFor(() => screen.getByText('Something went wrong — please try again.'))
   expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
     selected: true,
@@ -109,7 +143,7 @@ test('shows a retry action when latest answers cannot load', async () => {
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Could not load your latest status.'))
-  fireEvent.press(screen.getByText('Try again'))
+  await fireEvent.press(screen.getByText('Try again'))
   await waitFor(() => screen.getByText('Update my energy score'))
   expect(mockLoadLatestCheckIn).toHaveBeenCalledTimes(2)
 })

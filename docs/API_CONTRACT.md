@@ -25,6 +25,7 @@
 | `getProfile()` | `GET /v1/profile` | — | `UserProfile \| null` | 全部 |
 | `saveProfile(p)` | `PUT /v1/profile` | `UserProfile` | `UserProfile` | Onboarding |
 | `submitCheckIn(input)` | `POST /v1/checkins` | `CheckInInput` | `EnergyResult` | Check-in |
+| `getLatestCheckIn(date)` | `GET /v1/checkins/latest?date=` | — | `CheckInInput \| null` | Check-in / Dashboard |
 | `getTodayEnergy(date)` | `GET /v1/energy/:date` | — | `EnergyResult \| null` | Dashboard |
 | `getTasks(date)` | `GET /v1/tasks?date=` | — | `Task[]` | Plan |
 | `getTodayPlan(date)` | `GET /v1/plan/:date` | — | `DayPlan \| null` | Plan / Dashboard |
@@ -37,6 +38,7 @@
 ## 语义约定
 
 - `GET /v1/energy/:date` 在**未签到**时返回 `data: null`(HTTP 200),App 以此判断是否显示 Check-in 引导;`getTodayPlan` 同理;
+- `GET /v1/checkins/latest?date=` 返回请求本地日期当天或之前最近一次提交的答案;首次签到前返回 `data: null`(HTTP 200),且不得返回未来日期的记录;
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
 - `EnergyResult.factors[].impact` 为带符号整数,UI 直接渲染 `+/-`;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);

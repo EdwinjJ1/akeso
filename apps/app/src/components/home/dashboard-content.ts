@@ -1,6 +1,7 @@
 import type { CheckInInput, EnergyResult } from '@akeso/domain'
 
 export interface DashboardContentInput {
+  initialized: boolean
   loading: boolean
   error: string | null
   energy: EnergyResult | null
@@ -15,6 +16,7 @@ export interface DashboardContent {
 }
 
 export function selectDashboardContent({
+  initialized,
   loading,
   error,
   energy,
@@ -23,7 +25,8 @@ export function selectDashboardContent({
   today,
 }: DashboardContentInput): DashboardContent {
   const todayEnergy = energyDate === today ? energy : null
-  const promptMode = !loading && !error && !todayEnergy ? (latestCheckIn ? 'daily' : 'first') : null
+  const promptMode =
+    initialized && !loading && !error && !todayEnergy ? (latestCheckIn ? 'daily' : 'first') : null
 
   return { energy: todayEnergy, promptMode }
 }
