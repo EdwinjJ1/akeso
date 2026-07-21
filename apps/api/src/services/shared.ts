@@ -60,7 +60,7 @@ export const ingredientRecognitionJsonSchema = {
       additionalProperties: false,
       required: ['status', 'ingredients'],
       properties: {
-        status: { const: 'ok' },
+        status: { type: 'string', enum: ['ok'] },
         ingredients: {
           type: 'array',
           minItems: 1,
@@ -69,7 +69,7 @@ export const ingredientRecognitionJsonSchema = {
             additionalProperties: false,
             required: ['name', 'category', 'confidence', 'uncertaintyReason'],
             properties: {
-              name: { type: 'string', minLength: 1, maxLength: 100 },
+              name: { type: 'string' },
               category: {
                 type: 'string',
                 enum: [
@@ -84,7 +84,7 @@ export const ingredientRecognitionJsonSchema = {
               confidence: { type: 'number', minimum: 0, maximum: 1 },
               uncertaintyReason: {
                 anyOf: [
-                  { type: 'string', minLength: 1, maxLength: 280 },
+                  { type: 'string' },
                   { type: 'null' },
                 ],
               },
@@ -98,7 +98,7 @@ export const ingredientRecognitionJsonSchema = {
       additionalProperties: false,
       required: ['status', 'ingredients', 'reason'],
       properties: {
-        status: { const: 'empty' },
+        status: { type: 'string', enum: ['empty'] },
         ingredients: { type: 'array', maxItems: 0 },
         reason: {
           type: 'string',
@@ -111,9 +111,9 @@ export const ingredientRecognitionJsonSchema = {
       additionalProperties: false,
       required: ['status', 'ingredients', 'reason'],
       properties: {
-        status: { const: 'refused' },
+        status: { type: 'string', enum: ['refused'] },
         ingredients: { type: 'array', maxItems: 0 },
-        reason: { type: 'string', minLength: 1, maxLength: 280 },
+        reason: { type: 'string' },
       },
     },
   ],

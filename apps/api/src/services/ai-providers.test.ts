@@ -48,6 +48,15 @@ const mimoResponse = (text: string) =>
     { status: 200, headers: { 'content-type': 'application/json' } }
   )
 
+const collectObjectKeys = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(collectObjectKeys)
+  if (typeof value !== 'object' || value === null) return []
+  return Object.entries(value).flatMap(([key, child]) => [
+    key,
+    ...collectObjectKeys(child),
+  ])
+}
+
 const createServices = (
   config: TestVisionConfig,
   fetchImpl: typeof fetch
@@ -169,14 +178,14 @@ describe('Gemini production provider', () => {
             additionalProperties: false,
             required: ['status', 'ingredients'],
             properties: expect.objectContaining({
-              status: { const: 'ok' },
+              status: { type: 'string', enum: ['ok'] },
             }),
           }),
           expect.objectContaining({
             additionalProperties: false,
             required: ['status', 'ingredients', 'reason'],
             properties: expect.objectContaining({
-              status: { const: 'empty' },
+              status: { type: 'string', enum: ['empty'] },
               reason: {
                 type: 'string',
                 enum: ['no_food_detected', 'unrecognizable_image'],
@@ -187,11 +196,14 @@ describe('Gemini production provider', () => {
             additionalProperties: false,
             required: ['status', 'ingredients', 'reason'],
             properties: expect.objectContaining({
-              status: { const: 'refused' },
+              status: { type: 'string', enum: ['refused'] },
             }),
           }),
         ],
       })
+      expect(
+        collectObjectKeys(body.generationConfig.responseJsonSchema)
+      ).not.toEqual(expect.arrayContaining(['const', 'minLength', 'maxLength']))
       expect(
         body.generationConfig.responseJsonSchema.oneOf[0].properties
       ).not.toHaveProperty('reason')
@@ -312,6 +324,29 @@ describe('Gemini production provider', () => {
       code: 'MALFORMED_AI_OUTPUT',
       message: 'AI output failed validation.',
     })
+  })
+
+  test.each([
+    {
+      status: 'ok',
+      ingredients: [
+        {
+          name: '',
+          category: 'vegetable',
+          confidence: 0.8,
+          uncertaintyReason: null,
+        },
+      ],
+    },
+    { status: 'refused', ingredients: [], reason: '' },
+  ])('keeps strict final Zod validation after Gemini schema relaxation', async (output) => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(output))
+    )
+
+    await expect(
+      createServices(config(), fetchMock).recognizeIngredients(image)
+    ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
   })
 
   test('returns unavailable when Gemini configuration is missing', async () => {
