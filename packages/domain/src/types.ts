@@ -34,6 +34,7 @@ export type {
   NutritionPlan,
   PlanBlock,
   PlanBlockType,
+  ReminderPreference,
   Scale1to5,
   SleepDuration,
   Task,

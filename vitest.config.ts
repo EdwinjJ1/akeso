@@ -1,10 +1,11 @@
 import { defineConfig } from 'vitest/config'
 
 /**
- * packages/domain/src/energy-engine.test.ts runs through its own
- * `node --test` pipeline (see that package's package.json) rather than
- * vitest, so it's deliberately left out of this include list — everything
- * else under packages/domain and apps/api uses vitest directly.
+ * Every test under packages/* and apps/api runs through vitest. The domain
+ * engine test used to run on its own `node --test` pipeline, but once it
+ * began exercising a shared validator re-exported from @akeso/contracts it
+ * needed the same TS/ESM resolution the rest of the suite already gets from
+ * vitest, so it lives here too now.
  */
 export default defineConfig({
   test: {
@@ -19,6 +20,7 @@ export default defineConfig({
       // testable here without a native renderer.
       'apps/app/src/app/checkin.logic.test.ts',
       'apps/app/src/state/checkin-flow.test.ts',
+      'packages/domain/src/energy-engine.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
     // real Supabase credentials — tests always run in demo mode.

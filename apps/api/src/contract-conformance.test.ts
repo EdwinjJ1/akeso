@@ -4,6 +4,9 @@ import {
   CoachReplySchema,
   DayPlanSchema,
   EnergyResultSchema,
+  GetFridgeResponseSchema,
+  GetReminderResponseSchema,
+  PutFridgeItemResponseSchema,
 } from '@akeso/contracts'
 import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -83,5 +86,35 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)
     expect(result.success).toBe(true)
     expect(result.success && result.data.success).toBe(false)
+  })
+
+  test('GET /v1/fridge → FridgeItem[] envelope', async () => {
+    const response = await request(app).get('/v1/fridge').expect(200)
+
+    const result = GetFridgeResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('PUT /v1/fridge/:id → FridgeItem envelope', async () => {
+    const response = await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+
+    const result = PutFridgeItemResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/reminders → ReminderPreference envelope', async () => {
+    const response = await request(app).get('/v1/reminders').expect(200)
+
+    const result = GetReminderResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
   })
 })
