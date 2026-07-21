@@ -133,6 +133,21 @@ describe('numeric ranges are enforced at runtime', () => {
     ).toBe(false)
   })
 
+  it('rejects notes longer than 280 chars (matches server enforcement)', () => {
+    expect(
+      CheckInInputSchema.safeParse({
+        ...fixtureCheckIn,
+        notes: 'x'.repeat(281),
+      }).success
+    ).toBe(false)
+    expect(
+      CheckInInputSchema.safeParse({
+        ...fixtureCheckIn,
+        notes: 'x'.repeat(280),
+      }).success
+    ).toBe(true)
+  })
+
   it('rejects sleepHours off the 0.5 grid or above 14', () => {
     expect(
       CheckInInputSchema.safeParse({ ...fixtureCheckIn, sleepHours: 7.25 })

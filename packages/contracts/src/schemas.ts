@@ -58,7 +58,8 @@ export const CheckInInputSchema = z.object({
   /** Self-reported energy right now. */
   energyNow: Scale1to5Schema,
   caffeine: CaffeineIntakeSchema,
-  notes: z.string().max(500).optional(),
+  /** Matches the 280-char cap the API actually enforces (see domain/schemas.ts). */
+  notes: z.string().max(280).optional(),
 })
 export type CheckInInput = z.infer<typeof CheckInInputSchema>
 
