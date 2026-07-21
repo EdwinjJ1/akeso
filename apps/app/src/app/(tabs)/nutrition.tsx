@@ -98,9 +98,18 @@ export default function Nutrition() {
       </Reveal>
 
       <Text style={styles.mealsTitle}>Recommended today</Text>
-      {nutrition.meals.map((meal) => (
-        <MealCard key={meal.id} meal={meal} fridge={nutrition.fridge} />
-      ))}
+      {nutrition.meals.length > 0 ? (
+        nutrition.meals.map((meal) => (
+          <MealCard key={meal.id} meal={meal} fridge={nutrition.fridge} />
+        ))
+      ) : (
+        <Card tone="muted" style={styles.emptyMealsCard}>
+          <Ionicons name="shield-checkmark" size={17} color={colors.primaryDark} />
+          <Text style={styles.emptyMealsText}>
+            No meal ideas match your reported restrictions yet.
+          </Text>
+        </Card>
+      )}
 
       <Card tone="muted" style={styles.rationaleCard}>
         <Ionicons name="information-circle" size={17} color={colors.primaryDark} />
@@ -182,6 +191,18 @@ const styles = StyleSheet.create({
     ...type.h2,
     marginTop: sp(2),
     marginBottom: sp(3),
+  },
+  emptyMealsCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: sp(2.5),
+    padding: sp(4),
+  },
+  emptyMealsText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    flex: 1,
   },
   rationaleCard: {
     flexDirection: 'row',

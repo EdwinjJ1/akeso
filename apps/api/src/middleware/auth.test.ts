@@ -42,6 +42,10 @@ const validProfile = {
   typicalWake: '07:00',
   typicalSleep: '23:00',
   dietaryPreference: 'none' as const,
+  dietarySafety: {
+    allergens: [],
+    avoidIngredients: [],
+  },
 }
 
 beforeEach(() => {
@@ -164,7 +168,7 @@ describe('cross-user isolation', () => {
       .set('Authorization', 'Bearer alice-token')
       .expect(200)
     expect(alicesFridge.body.data).toEqual([
-      { id: 'milk', name: 'Milk', category: 'dairy' },
+      { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
     ])
   })
 })

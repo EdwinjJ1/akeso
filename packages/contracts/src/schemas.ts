@@ -291,12 +291,41 @@ export const DietaryPreferenceSchema = z.enum([
 ])
 export type DietaryPreference = z.infer<typeof DietaryPreferenceSchema>
 
+export const FoodAllergenSchema = z.enum([
+  'peanuts',
+  'tree_nuts',
+  'milk',
+  'eggs',
+  'soy',
+  'wheat_gluten',
+  'fish',
+  'shellfish',
+  'sesame',
+])
+export type FoodAllergen = z.infer<typeof FoodAllergenSchema>
+
+export const DietarySafetyProfileSchema = z
+  .object({
+    /** User-reported allergies Akeso must avoid when suggesting meals. */
+    allergens: z.array(FoodAllergenSchema).max(12).default([]),
+    /** Free-text foods or ingredients the user wants Akeso to avoid. */
+    avoidIngredients: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+    /** Optional clarification, e.g. "cross-contamination is okay/not okay". */
+    notes: z.string().trim().max(280).optional(),
+  })
+  .strict()
+export type DietarySafetyProfile = z.infer<typeof DietarySafetyProfileSchema>
+
 export const UserProfileSchema = z.object({
   displayName: z.string().min(1).max(60),
   goal: UserGoalSchema,
   typicalWake: TimeStringSchema,
   typicalSleep: TimeStringSchema,
   dietaryPreference: DietaryPreferenceSchema,
+  dietarySafety: DietarySafetyProfileSchema.default({
+    allergens: [],
+    avoidIngredients: [],
+  }),
 })
 export type UserProfile = z.infer<typeof UserProfileSchema>
 
@@ -337,6 +366,7 @@ export const FridgeItemSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   category: FridgeCategorySchema,
+  allergenTags: z.array(FoodAllergenSchema).default([]),
 })
 export type FridgeItem = z.infer<typeof FridgeItemSchema>
 
@@ -350,6 +380,8 @@ export const MealRecommendationSchema = z.object({
   description: z.string().min(1),
   /** References NutritionPlan.fridge[].id within the same response. */
   usesFridgeItemIds: z.array(z.string().min(1)),
+  /** User-facing safety tags; meals matching the user's allergens are filtered out. */
+  allergenTags: z.array(FoodAllergenSchema).default([]),
   boosts: z.array(NutrientKeySchema),
   prepMinutes: z.number().int().positive(),
   tags: z.array(z.string().min(1)),

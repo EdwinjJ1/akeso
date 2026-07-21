@@ -141,6 +141,10 @@ describe('profile', () => {
       typicalWake: '07:30',
       typicalSleep: '23:30',
       dietaryPreference: 'none',
+      dietarySafety: {
+        allergens: [],
+        avoidIngredients: [],
+      },
     }
     await request(app).put('/v1/profile').send(profile).expect(200)
     const response = await request(app).get('/v1/profile').expect(200)
@@ -156,6 +160,10 @@ describe('profile', () => {
         typicalWake: '7:30am',
         typicalSleep: '23:30',
         dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: [],
+          avoidIngredients: [],
+        },
       })
       .expect(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
@@ -175,7 +183,9 @@ describe('fridge', () => {
       .expect(200)
 
     const response = await request(app).get('/v1/fridge').expect(200)
-    expect(response.body.data).toEqual([{ id: 'milk', name: 'Milk', category: 'dairy' }])
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
+    ])
   })
 
   test('PUT with the same id twice overwrites rather than duplicating', async () => {
@@ -189,7 +199,9 @@ describe('fridge', () => {
       .expect(200)
 
     const response = await request(app).get('/v1/fridge').expect(200)
-    expect(response.body.data).toEqual([{ id: 'milk', name: 'Oat milk', category: 'dairy' }])
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Oat milk', category: 'dairy', allergenTags: [] },
+    ])
   })
 
   test('PUT rejects an invalid category with 400 VALIDATION_ERROR', async () => {
@@ -244,6 +256,28 @@ describe('nutrition and coach passthrough', () => {
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
     expect(response.body.data.date).toBe('2026-08-01')
     expect(response.body.data.needs.length).toBeGreaterThan(0)
+  })
+
+  test('GET /v1/nutrition/:date filters meals matching the saved safety profile', async () => {
+    await request(app)
+      .put('/v1/profile')
+      .send({
+        displayName: 'Alex',
+        goal: 'academic',
+        typicalWake: '07:30',
+        typicalSleep: '23:30',
+        dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: ['milk'],
+          avoidIngredients: [],
+        },
+      })
+      .expect(200)
+
+    const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
+    expect(response.body.data.meals.map((meal: { id: string }) => meal.id)).not.toContain(
+      'meal-1'
+    )
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {

@@ -37,7 +37,7 @@ export function createApp(repos: Repos = createRepos()) {
   app.use('/v1', createTasksRouter(repos))
   app.use('/v1', createPlanRouter(repos, writeRateLimiter))
   app.use('/v1', createProfileRouter(repos))
-  app.use('/v1', createNutritionRouter())
+  app.use('/v1', createNutritionRouter(repos))
   app.use('/v1', createCoachRouter())
   app.use('/v1', createFridgeRouter(repos, writeRateLimiter))
   app.use('/v1', createRemindersRouter(repos, writeRateLimiter))

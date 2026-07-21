@@ -1,5 +1,16 @@
 # Akeso API Contract (v1)
 
+## Dietary Safety Semantics
+
+- `UserProfile.dietarySafety` stores user-reported food allergies and avoid-list items. It is collected during onboarding and returned by `GET /v1/profile`.
+- `dietarySafety.allergens` is a controlled enum: `peanuts`, `tree_nuts`, `milk`, `eggs`, `soy`, `wheat_gluten`, `fish`, `shellfish`, `sesame`.
+- `dietarySafety.avoidIngredients` is free text for foods the user wants Akeso to avoid. Each item is capped at 80 characters; the list is capped at 20 items.
+- `FridgeItem.allergenTags` and `MealRecommendation.allergenTags` use the same allergen enum. They are data tags, not medical certification.
+- `GET /v1/nutrition/:date` filters out meal recommendations whose `allergenTags` match the saved profile allergens, or whose title/description/tags contain a saved avoid-list item.
+- If no meal recommendation remains after filtering, App UI should show an empty safety state instead of silently hiding the section.
+- Dietary safety does not affect `EnergyResult.score`, `EnergyResult.factors`, or the Energy Engine. It only gates food suggestions.
+- Akeso must not claim that a meal is clinically safe. UI and coach copy should keep the safer position: suggestions are based on user-provided restrictions, and users should still check labels and professional advice for severe allergies.
+
 对应 Issue #6。**冻结规则**:本文件与 `packages/contracts`(`@akeso/contracts`,含 Zod 运行时校验)、`packages/domain/src/service.ts` 共同构成共享契约。修改任何字段都需要全部模块负责人同意(TEAM_CONTRACT §2)。
 
 ## 原则

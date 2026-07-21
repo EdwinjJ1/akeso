@@ -190,6 +190,10 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       typicalWake: '07:30',
       typicalSleep: '23:30',
       dietaryPreference: 'none',
+      dietarySafety: {
+        allergens: [],
+        avoidIngredients: [],
+      },
     }
     expect(PutProfileRequestSchema.parse(profile)).toEqual(profile)
     const envelope = { success: true, data: profile }
@@ -214,10 +218,11 @@ describe('API contract: route map matches the implemented /v1 API', () => {
 
   it('PUT /v1/fridge/:id: body omits id (it comes from the path) and round-trips', () => {
     const body = { name: 'Milk', category: 'dairy' }
-    expect(PutFridgeItemBodySchema.parse(body)).toEqual(body)
+    const parsedBody = { ...body, allergenTags: [] }
+    expect(PutFridgeItemBodySchema.parse(body)).toEqual(parsedBody)
     // A stray `id` in the body is stripped, not authoritative — the path wins.
-    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(body)
-    const envelope = { success: true, data: { id: 'milk', ...body } }
+    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(parsedBody)
+    const envelope = { success: true, data: { id: 'milk', ...parsedBody } }
     expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
   })
 

@@ -27,17 +27,21 @@ export const fixtureProfile: UserProfile = {
   typicalWake: '07:30',
   typicalSleep: '23:30',
   dietaryPreference: 'none',
+  dietarySafety: {
+    allergens: [],
+    avoidIngredients: [],
+  },
 }
 
 export const fixtureFridge: FridgeItem[] = [
-  { id: 'fridge-1', name: 'Eggs', category: 'protein' },
-  { id: 'fridge-2', name: 'Spinach', category: 'vegetable' },
-  { id: 'fridge-3', name: 'Salmon fillet', category: 'protein' },
-  { id: 'fridge-4', name: 'Greek yogurt', category: 'dairy' },
-  { id: 'fridge-5', name: 'Oats', category: 'grain' },
-  { id: 'fridge-6', name: 'Blueberries', category: 'fruit' },
-  { id: 'fridge-7', name: 'Brown rice', category: 'grain' },
-  { id: 'fridge-8', name: 'Capsicum', category: 'vegetable' },
+  { id: 'fridge-1', name: 'Eggs', category: 'protein', allergenTags: ['eggs'] },
+  { id: 'fridge-2', name: 'Spinach', category: 'vegetable', allergenTags: [] },
+  { id: 'fridge-3', name: 'Salmon fillet', category: 'protein', allergenTags: ['fish'] },
+  { id: 'fridge-4', name: 'Greek yogurt', category: 'dairy', allergenTags: ['milk'] },
+  { id: 'fridge-5', name: 'Oats', category: 'grain', allergenTags: [] },
+  { id: 'fridge-6', name: 'Blueberries', category: 'fruit', allergenTags: [] },
+  { id: 'fridge-7', name: 'Brown rice', category: 'grain', allergenTags: [] },
+  { id: 'fridge-8', name: 'Capsicum', category: 'vegetable', allergenTags: [] },
 ]
 
 export const fixtureNutritionPlan: NutritionPlan = {
@@ -85,6 +89,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       description:
         'Oats + Greek yogurt + blueberries. Slow carbs and protein to extend your morning peak.',
       usesFridgeItemIds: ['fridge-4', 'fridge-5', 'fridge-6'],
+      allergenTags: ['milk'],
       boosts: ['protein', 'complex_carbs'],
       prepMinutes: 5,
       tags: ['pre-focus', '5 min'],
@@ -96,6 +101,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       description:
         'Salmon + brown rice + spinach + capsicum. A balanced lunch option for steady afternoon fuel.',
       usesFridgeItemIds: ['fridge-3', 'fridge-7', 'fridge-2', 'fridge-8'],
+      allergenTags: ['fish'],
       boosts: ['iron', 'omega3', 'protein'],
       prepMinutes: 20,
       tags: ['balanced lunch', 'high-iron'],
@@ -107,6 +113,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       description:
         'A simple protein snack for the dip window if you want something more substantial than water.',
       usesFridgeItemIds: ['fridge-1', 'fridge-2'],
+      allergenTags: ['eggs'],
       boosts: ['protein', 'iron'],
       prepMinutes: 10,
       tags: ['easy snack', 'dip window'],

@@ -28,6 +28,7 @@ interface UserProfileRow {
   typical_wake: string
   typical_sleep: string
   dietary_preference: UserProfile['dietaryPreference']
+  dietary_safety: UserProfile['dietarySafety'] | null
 }
 
 interface EnergyResultRow {
@@ -71,6 +72,7 @@ interface FridgeItemRow {
   id: string
   name: string
   category: FridgeItem['category']
+  allergen_tags: FridgeItem['allergenTags'] | null
 }
 
 interface ReminderPreferenceRow {
@@ -92,7 +94,9 @@ export function createSupabaseRepos(): Repos {
         const row = unwrap<UserProfileRow>(
           await supabase
             .from('user_profile')
-            .select('display_name, goal, typical_wake, typical_sleep, dietary_preference')
+            .select(
+              'display_name, goal, typical_wake, typical_sleep, dietary_preference, dietary_safety'
+            )
             .eq('user_id', userId)
             .maybeSingle(),
           'user_profile.get'
@@ -104,6 +108,10 @@ export function createSupabaseRepos(): Repos {
           typicalWake: row.typical_wake,
           typicalSleep: row.typical_sleep,
           dietaryPreference: row.dietary_preference,
+          dietarySafety: row.dietary_safety ?? {
+            allergens: [],
+            avoidIngredients: [],
+          },
         }
       },
       async upsert(userId, profile) {
@@ -116,6 +124,7 @@ export function createSupabaseRepos(): Repos {
               typical_wake: profile.typicalWake,
               typical_sleep: profile.typicalSleep,
               dietary_preference: profile.dietaryPreference,
+              dietary_safety: profile.dietarySafety,
             },
             { onConflict: 'user_id' }
           ),
@@ -313,7 +322,7 @@ export function createSupabaseRepos(): Repos {
           unwrap<FridgeItemRow[]>(
             await supabase
               .from('fridge_item')
-              .select('id, name, category')
+              .select('id, name, category, allergen_tags')
               .eq('user_id', userId)
               .order('created_at', { ascending: true }),
             'fridge_item.list'
@@ -322,6 +331,7 @@ export function createSupabaseRepos(): Repos {
           id: row.id,
           name: row.name,
           category: row.category,
+          allergenTags: row.allergen_tags ?? [],
         }))
       },
       async upsert(userId, item: FridgeItem) {
@@ -332,6 +342,7 @@ export function createSupabaseRepos(): Repos {
               user_id: userId,
               name: item.name,
               category: item.category,
+              allergen_tags: item.allergenTags,
             },
             { onConflict: 'user_id,id' }
           ),

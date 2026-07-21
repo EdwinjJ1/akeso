@@ -3,6 +3,7 @@ import {
   fixtureDayPlan,
   fixtureNutritionPlan,
   fixtureTasks,
+  filterNutritionPlanForDietarySafety,
   EnergyEngine,
   type AkesoService,
   type CheckInInput,
@@ -84,7 +85,10 @@ export class FixtureService implements AkesoService {
 
   async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
     await wait(LATENCY_MS)
-    return { ...fixtureNutritionPlan, date }
+    return filterNutritionPlanForDietarySafety(
+      { ...fixtureNutritionPlan, date },
+      this.profile?.dietarySafety
+    )
   }
 
   async getCoachReply(_date: string): Promise<CoachReply> {
