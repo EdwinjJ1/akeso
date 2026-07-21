@@ -12,7 +12,7 @@ import {
   TaskSchema,
   UserProfileSchema,
   type ApiError,
-} from './schemas'
+} from './schemas.js'
 
 /**
  * HTTP contract between App and API (Issue #6 — FROZEN once agreed).

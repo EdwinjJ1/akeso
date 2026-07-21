@@ -371,6 +371,9 @@ export function createSupabaseRepos(): Repos {
               user_id: userId,
               enabled: pref.enabled,
               check_in_time: pref.checkInTime,
+              // The column's default now() only fires on insert — without this
+              // an updated row would keep its original timestamp forever.
+              updated_at: new Date().toISOString(),
             },
             { onConflict: 'user_id' }
           ),

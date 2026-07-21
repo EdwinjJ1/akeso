@@ -74,7 +74,12 @@ export class ApiService implements AkesoService {
     }
 
     if (!envelope.success) {
-      throw new ApiRequestError(envelope.error.code, envelope.error.message)
+      // A proxy/gateway can return JSON that isn't our envelope — don't let
+      // that surface as a TypeError on `envelope.error.code`.
+      throw new ApiRequestError(
+        envelope.error?.code ?? 'INTERNAL',
+        envelope.error?.message ?? `Unexpected response from ${method} ${path}`
+      )
     }
     return envelope.data
   }
