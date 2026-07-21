@@ -162,6 +162,83 @@ describe('profile', () => {
   })
 })
 
+describe('fridge', () => {
+  test('GET returns an empty list before anything is saved', async () => {
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body).toEqual({ success: true, data: [] })
+  })
+
+  test('PUT upserts by path id and GET reflects it', async () => {
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body.data).toEqual([{ id: 'milk', name: 'Milk', category: 'dairy' }])
+  })
+
+  test('PUT with the same id twice overwrites rather than duplicating', async () => {
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Oat milk', category: 'dairy' })
+      .expect(200)
+
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body.data).toEqual([{ id: 'milk', name: 'Oat milk', category: 'dairy' }])
+  })
+
+  test('PUT rejects an invalid category with 400 VALIDATION_ERROR', async () => {
+    const response = await request(app)
+      .put('/v1/fridge/mystery')
+      .send({ name: 'Mystery leftovers', category: 'not_a_category' })
+      .expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  test('DELETE removes the item', async () => {
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+    await request(app).delete('/v1/fridge/milk').expect(200)
+
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body.data).toEqual([])
+  })
+
+  test('DELETE of an id that never existed is a no-op, not an error', async () => {
+    const response = await request(app).delete('/v1/fridge/never-existed').expect(200)
+    expect(response.body).toEqual({ success: true, data: null })
+  })
+})
+
+describe('reminders', () => {
+  test('GET returns null before any preference is saved', async () => {
+    const response = await request(app).get('/v1/reminders').expect(200)
+    expect(response.body).toEqual({ success: true, data: null })
+  })
+
+  test('PUT validates and persists, GET reflects it', async () => {
+    const pref = { enabled: true, checkInTime: '08:00' }
+    await request(app).put('/v1/reminders').send(pref).expect(200)
+    const response = await request(app).get('/v1/reminders').expect(200)
+    expect(response.body.data).toEqual(pref)
+  })
+
+  test('PUT rejects a malformed time string', async () => {
+    const response = await request(app)
+      .put('/v1/reminders')
+      .send({ enabled: true, checkInTime: '8am' })
+      .expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+})
+
 describe('nutrition and coach passthrough', () => {
   test('GET /v1/nutrition/:date returns the fixture adapted to the date', async () => {
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)

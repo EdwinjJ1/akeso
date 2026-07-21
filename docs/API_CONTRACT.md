@@ -31,6 +31,11 @@
 | `regeneratePlan(date, instruction?)` | `POST /v1/plan/:date/regenerate` | `{ "instruction"?: string }` | `{ plan: DayPlan, coach: CoachReply }` | Plan |
 | `getNutritionPlan(date)` | `GET /v1/nutrition/:date` | — | `NutritionPlan \| null` | Nutrition / Dashboard |
 | `getCoachReply(date)` | `GET /v1/coach/:date` | — | `CoachReply` | Dashboard / Plan |
+| `getFridgeItems()` | `GET /v1/fridge` | — | `FridgeItem[]` | (无,持久化先行于 UI) |
+| `saveFridgeItem(item)` | `PUT /v1/fridge/:id` | `Omit<FridgeItem, 'id'>` | `FridgeItem` | (无,持久化先行于 UI) |
+| `deleteFridgeItem(id)` | `DELETE /v1/fridge/:id` | — | `null` | (无,持久化先行于 UI) |
+| `getReminderPreference()` | `GET /v1/reminders` | — | `ReminderPreference \| null` | (无,持久化先行于 UI) |
+| `saveReminderPreference(p)` | `PUT /v1/reminders` | `ReminderPreference` | `ReminderPreference` | (无,持久化先行于 UI) |
 
 `date` 一律为本地日期 `YYYY-MM-DD`。鉴权:除 Onboarding 前的注册/登录外,所有端点要求 Supabase Auth Bearer token(登录端点由 API 组在 v1.1 补充,不影响以上结构)。
 
@@ -41,6 +46,8 @@
 - `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
+- `PUT /v1/fridge/:id` 以路径 `id` 为准做 upsert(同一 id 重复提交 = 覆盖,幂等);`GET /v1/nutrition/:date` 目前仍返回 fixture,尚未读取 `fridge_item` 表 —— 两者在 Nutrition 真正做“可编辑冰箱”前是相互独立的;
+- `GET /v1/reminders` 在未设置时返回 `data: null`(HTTP 200);`ReminderPreference` 尚无消费方 UI,是提前持久化的数据层;
 - 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
 
 ## Energy Score 计算语义

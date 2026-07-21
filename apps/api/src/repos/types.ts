@@ -2,6 +2,8 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  FridgeItem,
+  ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -29,10 +31,25 @@ export interface PlanRepo {
   upsert(userId: string, plan: DayPlan): Promise<DayPlan>
 }
 
+export interface FridgeRepo {
+  list(userId: string): Promise<FridgeItem[]>
+  /** Upsert by `item.id` — same id twice overwrites, so retries are safe. */
+  upsert(userId: string, item: FridgeItem): Promise<FridgeItem>
+  /** Idempotent: removing an id that doesn't exist (or never did) is not an error. */
+  remove(userId: string, id: string): Promise<void>
+}
+
+export interface ReminderRepo {
+  get(userId: string): Promise<ReminderPreference | null>
+  upsert(userId: string, pref: ReminderPreference): Promise<ReminderPreference>
+}
+
 export interface Repos {
   profile: ProfileRepo
   checkins: CheckinRepo
   energy: EnergyRepo
   tasks: TaskRepo
   plans: PlanRepo
+  fridge: FridgeRepo
+  reminders: ReminderRepo
 }
