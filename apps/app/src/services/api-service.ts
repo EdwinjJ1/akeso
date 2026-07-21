@@ -5,12 +5,15 @@ import type {
   CoachReply,
   DayPlan,
   EnergyResult,
+  FridgeImageUpload,
   FridgeItem,
+  IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
+import { Platform } from 'react-native'
 
 import { getAccessToken } from './supabase-client'
 
@@ -33,16 +36,25 @@ class ApiRequestError extends Error {
  * does — see packages/domain/src/service.ts.
  */
 export class ApiService implements AkesoService {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly demoMode = false
+  ) {}
+
+  private async authorizationHeaders(): Promise<Record<string, string>> {
+    if (this.demoMode) return {}
+    return { Authorization: `Bearer ${await getAccessToken()}` }
+  }
 
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<T> {
-    const token = await getAccessToken()
+    const authorization = await this.authorizationHeaders()
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
     let response: Response
     try {
@@ -50,7 +62,7 @@ export class ApiService implements AkesoService {
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...authorization,
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
@@ -82,6 +94,48 @@ export class ApiService implements AkesoService {
       )
     }
     return envelope.data
+  }
+
+  private async upload<T>(path: string, image: FridgeImageUpload): Promise<T> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20_000)
+    const data = new FormData()
+    try {
+      if (Platform.OS === 'web') {
+        const blob = await fetch(image.uri).then((response) => response.blob())
+        data.append('image', blob, image.filename)
+      } else {
+        data.append(
+          'image',
+          {
+            uri: image.uri,
+            name: image.filename,
+            type: image.mimeType,
+          } as unknown as Blob
+        )
+      }
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        headers: await this.authorizationHeaders(),
+        body: data,
+        signal: controller.signal,
+      })
+      const envelope = (await response.json()) as ApiResponse<T>
+      if (!envelope.success) {
+        throw new ApiRequestError(envelope.error.code, envelope.error.message)
+      }
+      return envelope.data
+    } catch (error) {
+      if (error instanceof ApiRequestError) throw error
+      throw new ApiRequestError(
+        'NETWORK_ERROR',
+        error instanceof Error && error.name === 'AbortError'
+          ? 'Image recognition timed out. Your edits are still here.'
+          : 'Could not upload this image.'
+      )
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   getProfile(): Promise<UserProfile | null> {
@@ -123,6 +177,15 @@ export class ApiService implements AkesoService {
     return this.request('GET', `/v1/nutrition/${encodeURIComponent(date)}`)
   }
 
+  regenerateNutrition(date: string): Promise<NutritionPlan> {
+    return this.request(
+      'POST',
+      `/v1/nutrition/${encodeURIComponent(date)}/regenerate`,
+      undefined,
+      20_000
+    )
+  }
+
   getCoachReply(date: string): Promise<CoachReply> {
     return this.request('GET', `/v1/coach/${encodeURIComponent(date)}`)
   }
@@ -138,6 +201,16 @@ export class ApiService implements AkesoService {
 
   async deleteFridgeItem(id: string): Promise<void> {
     await this.request('DELETE', `/v1/fridge/${encodeURIComponent(id)}`)
+  }
+
+  saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]> {
+    return this.request('POST', '/v1/fridge-items/batch', { items })
+  }
+
+  recognizeFridgeImage(
+    image: FridgeImageUpload
+  ): Promise<IngredientRecognitionResult> {
+    return this.upload('/v1/fridge/recognitions', image)
   }
 
   getReminderPreference(): Promise<ReminderPreference | null> {

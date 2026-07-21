@@ -1,15 +1,17 @@
 import {
   fixtureCoachReply,
   fixtureDayPlan,
-  fixtureNutritionPlan,
   fixtureTasks,
+  buildInventoryNutritionFallback,
   EnergyEngine,
   type AkesoService,
   type CheckInInput,
   type CoachReply,
   type DayPlan,
   type EnergyResult,
+  type FridgeImageUpload,
   type FridgeItem,
+  type IngredientRecognitionResult,
   type NutritionPlan,
   type ReminderPreference,
   type Task,
@@ -84,7 +86,18 @@ export class FixtureService implements AkesoService {
 
   async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
     await wait(LATENCY_MS)
-    return { ...fixtureNutritionPlan, date }
+    return this.regenerateNutrition(date)
+  }
+
+  async regenerateNutrition(date: string): Promise<NutritionPlan> {
+    await wait(LATENCY_MS)
+    return buildInventoryNutritionFallback({
+      date,
+      fridge: Array.from(this.fridge.values()),
+      energyBand: this.energy?.band ?? 'moderate',
+      dietaryPreference: this.profile?.dietaryPreference ?? 'none',
+      needs: [],
+    })
   }
 
   async getCoachReply(_date: string): Promise<CoachReply> {
@@ -106,6 +119,20 @@ export class FixtureService implements AkesoService {
   async deleteFridgeItem(id: string): Promise<void> {
     await wait(LATENCY_MS / 3)
     this.fridge.delete(id)
+  }
+
+  async saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]> {
+    await wait(LATENCY_MS / 3)
+    items.forEach((item) => this.fridge.set(item.id, item))
+    return items
+  }
+
+  async recognizeFridgeImage(
+    _image: FridgeImageUpload
+  ): Promise<IngredientRecognitionResult> {
+    throw new Error(
+      'Live fridge recognition requires EXPO_PUBLIC_API_URL. Manual entry is available.'
+    )
   }
 
   async getReminderPreference(): Promise<ReminderPreference | null> {

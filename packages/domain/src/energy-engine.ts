@@ -10,8 +10,8 @@ import type {
   LastMealTiming,
   Scale1to5,
   SleepDuration,
-} from './types.js'
-import { localDateSchema } from './schemas.js'
+} from './types'
+import { localDateSchema } from './schemas'
 
 /**
  * The score-only portion of an EnergyResult.  Keeping this as a derived type

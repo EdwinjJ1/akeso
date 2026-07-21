@@ -1,3 +1,3 @@
-export * from './schemas.js'
-export * from './api.js'
-export * from './fixtures.js'
+export * from './schemas'
+export * from './api'
+export * from './fixtures'
