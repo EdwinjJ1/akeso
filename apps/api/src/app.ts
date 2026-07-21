@@ -9,10 +9,12 @@ import { createRepos, type Repos } from './repos'
 import { createCheckinsRouter } from './routes/checkins'
 import { createCoachRouter } from './routes/coach'
 import { createEnergyRouter } from './routes/energy'
+import { createFridgeRouter } from './routes/fridge'
 import { healthRouter } from './routes/health'
 import { createNutritionRouter } from './routes/nutrition'
 import { createPlanRouter } from './routes/plan'
 import { createProfileRouter } from './routes/profile'
+import { createRemindersRouter } from './routes/reminders'
 import { createTasksRouter } from './routes/tasks'
 
 export function createApp(repos: Repos = createRepos()) {
@@ -37,6 +39,8 @@ export function createApp(repos: Repos = createRepos()) {
   app.use('/v1', createProfileRouter(repos))
   app.use('/v1', createNutritionRouter())
   app.use('/v1', createCoachRouter())
+  app.use('/v1', createFridgeRouter(repos, writeRateLimiter))
+  app.use('/v1', createRemindersRouter(repos, writeRateLimiter))
 
   app.use(notFoundHandler)
   app.use(errorHandler)

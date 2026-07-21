@@ -18,10 +18,12 @@ import {
 
 import { getService } from '@/services'
 import { todayISO } from '@/utils/dates'
+import { runSubmitCheckIn } from './checkin-flow'
 
 interface AppState {
   profile: UserProfile | null
   energy: EnergyResult | null
+  latestCheckIn: CheckInInput | null
   plan: DayPlan | null
   tasks: Task[]
   nutrition: NutritionPlan | null
@@ -40,6 +42,7 @@ interface AppActions {
 const initialState: AppState = {
   profile: null,
   energy: null,
+  latestCheckIn: null,
   plan: null,
   tasks: [],
   nutrition: null,
@@ -93,17 +96,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [service])
 
   const submitCheckIn = useCallback(
-    async (input: CheckInInput) => {
-      const energy = await service.submitCheckIn(input)
-      setState((prev) => ({ ...prev, energy }))
-      const [plan, nutrition, coach] = await Promise.all([
-        service.getTodayPlan(input.date),
-        service.getNutritionPlan(input.date),
-        service.getCoachReply(input.date),
-      ])
-      setState((prev) => ({ ...prev, plan, nutrition, coach }))
-      return energy
-    },
+    (input: CheckInInput) =>
+      runSubmitCheckIn(service, input, (patch) =>
+        setState((prev) => ({ ...prev, ...patch }))
+      ),
     [service]
   )
 

@@ -417,6 +417,19 @@ export const NutritionPlanSchema = z.object({
 })
 export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
+// ── Reminders ───────────────────────────────────────────────────────────────
+
+/**
+ * No UI reads or writes this yet — persisted ahead of the feature so the
+ * data layer doesn't block whichever module builds the reminder screen.
+ */
+export const ReminderPreferenceSchema = z.object({
+  enabled: z.boolean(),
+  /** Local time, HH:mm, 24h — when to send the daily check-in reminder. */
+  checkInTime: TimeStringSchema,
+})
+export type ReminderPreference = z.infer<typeof ReminderPreferenceSchema>
+
 // ── API error ───────────────────────────────────────────────────────────────
 
 export const ApiErrorSchema = z.object({

@@ -2,7 +2,9 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  FridgeItem,
   PlanBlock,
+  ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -63,6 +65,17 @@ interface PlanBlockRow {
   task_id: string | null
   energy_level: PlanBlock['energyLevel']
   rationale: string
+}
+
+interface FridgeItemRow {
+  id: string
+  name: string
+  category: FridgeItem['category']
+}
+
+interface ReminderPreferenceRow {
+  enabled: boolean
+  check_in_time: string
 }
 
 /**
@@ -291,6 +304,82 @@ export function createSupabaseRepos(): Repos {
         }
 
         return plan
+      },
+    },
+
+    fridge: {
+      async list(userId) {
+        const rows =
+          unwrap<FridgeItemRow[]>(
+            await supabase
+              .from('fridge_item')
+              .select('id, name, category')
+              .eq('user_id', userId)
+              .order('created_at', { ascending: true }),
+            'fridge_item.list'
+          ) ?? []
+        return rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          category: row.category,
+        }))
+      },
+      async upsert(userId, item: FridgeItem) {
+        unwrap(
+          await supabase.from('fridge_item').upsert(
+            {
+              id: item.id,
+              user_id: userId,
+              name: item.name,
+              category: item.category,
+            },
+            { onConflict: 'user_id,id' }
+          ),
+          'fridge_item.upsert'
+        )
+        return item
+      },
+      async remove(userId, id) {
+        unwrap(
+          await supabase
+            .from('fridge_item')
+            .delete()
+            .eq('user_id', userId)
+            .eq('id', id),
+          'fridge_item.remove'
+        )
+      },
+    },
+
+    reminders: {
+      async get(userId) {
+        const row = unwrap<ReminderPreferenceRow>(
+          await supabase
+            .from('reminder_preference')
+            .select('enabled, check_in_time')
+            .eq('user_id', userId)
+            .maybeSingle(),
+          'reminder_preference.get'
+        )
+        if (!row) return null
+        return { enabled: row.enabled, checkInTime: row.check_in_time }
+      },
+      async upsert(userId, pref: ReminderPreference) {
+        unwrap(
+          await supabase.from('reminder_preference').upsert(
+            {
+              user_id: userId,
+              enabled: pref.enabled,
+              check_in_time: pref.checkInTime,
+              // The column's default now() only fires on insert — without this
+              // an updated row would keep its original timestamp forever.
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' }
+          ),
+          'reminder_preference.upsert'
+        )
+        return pref
       },
     },
   }
