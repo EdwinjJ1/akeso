@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { test } from 'vitest'
 import { strict as assert } from 'node:assert'
 
 import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine.js'
@@ -159,6 +159,20 @@ test('malformed input is sanitized once, consistently', () => {
     reportedEnergy: 1,
   })
   assert.deepEqual(messy, explicitEquivalent)
+})
+
+test('an impossible calendar date is rejected, not just format-checked', () => {
+  // 2026-13-45 satisfies a naive YYYY-MM-DD regex but is not a real day. It
+  // must be sanitized like any other bad input and never echoed back through
+  // `date`/`computedAt` as if it were a genuine date.
+  const impossible = engine.evaluate({ ...canonicalCheckIn, date: '2026-13-45' })
+  assert.equal(impossible.date, '1970-01-01')
+  assert.equal(impossible.computedAt, '1970-01-01T00:00:00.000Z')
+
+  // A real calendar date on the same code path is preserved unchanged.
+  const real = engine.evaluate({ ...canonicalCheckIn, date: '2026-02-28' })
+  assert.equal(real.date, '2026-02-28')
+  assert.equal(real.computedAt, '2026-02-28T00:00:00.000Z')
 })
 
 test('a curve with no afternoon points still yields a dip window', () => {
