@@ -7,7 +7,7 @@ import {
   type UserProfile,
 } from '@akeso/domain'
 import { createHash } from 'node:crypto'
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 
 import { env } from '../env'
 import { ok } from '../http'
@@ -19,7 +19,11 @@ import {
 import type { AiServices } from '../services/types'
 
 /** Inventory-backed nutrition reads are instant; explicit regeneration uses AI. */
-export function createNutritionRouter(repos: Repos, ai: AiServices): Router {
+export function createNutritionRouter(
+  repos: Repos,
+  ai: AiServices,
+  writeRateLimiter: RequestHandler
+): Router {
   const router = Router()
 
   const context = async (userId: string, date: string) => {
@@ -69,20 +73,25 @@ export function createNutritionRouter(repos: Repos, ai: AiServices): Router {
       req.userId,
       cacheKey(req.userId, input)
     )
-    ok(res, cached ? nutritionPlanSchema.parse(cached) : fallback(input))
+    const parsedCache = cached ? nutritionPlanSchema.safeParse(cached) : null
+    ok(res, parsedCache?.success ? parsedCache.data : fallback(input))
   })
 
-  router.post('/nutrition/:date/regenerate', async (req, res) => {
-    const date = localDateSchema.parse(req.params.date)
-    const input = await context(req.userId, date)
-    const plan = nutritionPlanSchema.parse(await ai.generateNutrition(input))
-    await repos.nutritionPlanCache.upsert(
-      req.userId,
-      cacheKey(req.userId, input),
-      plan
-    )
-    ok(res, plan)
-  })
+  router.post(
+    '/nutrition/:date/regenerate',
+    writeRateLimiter,
+    async (req, res) => {
+      const date = localDateSchema.parse(req.params.date)
+      const input = await context(req.userId, date)
+      const plan = nutritionPlanSchema.parse(await ai.generateNutrition(input))
+      await repos.nutritionPlanCache.upsert(
+        req.userId,
+        cacheKey(req.userId, input),
+        plan
+      )
+      ok(res, plan)
+    }
+  )
 
   return router
 }
