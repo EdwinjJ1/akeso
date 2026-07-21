@@ -48,12 +48,10 @@ function energy(date: string, score: number): EnergyResult {
 
 const checkIn = (date: string): CheckInInput => ({
   date,
-  sleepHours: 8,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 2,
-  energyNow: 4,
-  caffeine: 'morning',
+  reportedEnergy: 4,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 })
 
 const plan = (date: string, id: string) =>

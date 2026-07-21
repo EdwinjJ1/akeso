@@ -17,13 +17,11 @@ jest.mock('@/state/app-state', () => ({
 
 const previous: CheckInInput = {
   date: '2026-07-20',
-  sleepHours: 8,
-  sleepQuality: 4,
-  mood: 3,
-  stress: 2,
-  energyNow: 4,
-  caffeine: 'morning',
-  notes: 'deadline tomorrow',
+  reportedEnergy: 4,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  lastMealDescription: 'leftover salmon rice bowl',
+  hydration: '1_1_5l',
 }
 
 beforeEach(() => {
@@ -52,16 +50,14 @@ test('prefills the latest answers and enters update mode', async () => {
   mockLoadLatestCheckIn.mockResolvedValue(previous)
   const screen = await renderCheckIn()
 
-  await waitFor(() => screen.getByText('6 / 6'))
-  expect(screen.getByRole('button', { name: '8h' }).props.accessibilityState).toEqual({
+  await waitFor(() => screen.getByText('4 / 4'))
+  expect(screen.getByRole('button', { name: '7–8h' }).props.accessibilityState).toEqual({
     selected: true,
   })
-  expect(
-    screen
-      .getAllByRole('button', { name: 'Low' })
-      .filter((option) => option.props.accessibilityState?.selected)
-  ).toHaveLength(1)
-  expect(screen.getByDisplayValue('deadline tomorrow')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Good' }).props.accessibilityState).toEqual({
+    selected: true,
+  })
+  expect(screen.getByDisplayValue('leftover salmon rice bowl')).toBeTruthy()
   screen.getByText('Update my energy score')
 })
 
@@ -71,9 +67,9 @@ test('submits changed answers for today and recalculates', async () => {
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Update my energy score'))
-  await fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
+  await fireEvent.press(screen.getByRole('button', { name: 'Charged' }))
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
+    expect(screen.getByRole('button', { name: 'Charged' }).props.accessibilityState).toEqual({
       selected: true,
     })
   )
@@ -82,7 +78,7 @@ test('submits changed answers for today and recalculates', async () => {
     expect(mockSubmitCheckIn).toHaveBeenCalledWith({
       ...previous,
       date: '2026-07-21',
-      stress: 5,
+      reportedEnergy: 5,
     })
   )
   const { router } = jest.requireMock('expo-router') as {
@@ -123,20 +119,20 @@ test('confirms unchanged inherited answers for today', async () => {
   )
 })
 
-test('clears inherited notes when the user removes them', async () => {
+test('clears the inherited meal note when the user removes it', async () => {
   mockLoadLatestCheckIn.mockResolvedValue(previous)
   mockSubmitCheckIn.mockResolvedValue({ score: 60 })
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Update my energy score'))
-  await fireEvent.changeText(screen.getByDisplayValue('deadline tomorrow'), '')
+  await fireEvent.changeText(screen.getByDisplayValue('leftover salmon rice bowl'), '')
   await fireEvent.press(screen.getByText('Update my energy score'))
 
   await waitFor(() =>
     expect(mockSubmitCheckIn).toHaveBeenCalledWith({
       ...previous,
       date: '2026-07-21',
-      notes: undefined,
+      lastMealDescription: undefined,
     })
   )
 })
@@ -147,15 +143,15 @@ test('keeps edited answers when saving fails', async () => {
   const screen = await renderCheckIn()
 
   await waitFor(() => screen.getByText('Update my energy score'))
-  await fireEvent.press(screen.getByRole('button', { name: 'Very high' }))
+  await fireEvent.press(screen.getByRole('button', { name: 'Charged' }))
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
+    expect(screen.getByRole('button', { name: 'Charged' }).props.accessibilityState).toEqual({
       selected: true,
     })
   )
   await fireEvent.press(screen.getByText('Update my energy score'))
   await waitFor(() => screen.getByText('Something went wrong — please try again.'))
-  expect(screen.getByRole('button', { name: 'Very high' }).props.accessibilityState).toEqual({
+  expect(screen.getByRole('button', { name: 'Charged' }).props.accessibilityState).toEqual({
     selected: true,
   })
 })

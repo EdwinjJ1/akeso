@@ -1,4 +1,4 @@
-import type { CaffeineIntake, Scale1to5 } from '@akeso/domain'
+import type { Hydration, LastMealTiming, Scale1to5, SleepDuration } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
@@ -12,23 +12,37 @@ import { useAppState } from '@/state/app-state'
 import { todayISO } from '@/utils/dates'
 import { colors, radius, sp, type } from '@/theme/tokens'
 
-const SLEEP_HOUR_OPTIONS: ChipOption<number>[] = [5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 10].map(
-  (hours) => ({ value: hours, label: `${hours}h` })
-)
-
 const scaleOptions = (labels: [string, string, string, string, string]): ChipOption<Scale1to5>[] =>
   labels.map((label, index) => ({ value: (index + 1) as Scale1to5, label }))
 
-const QUALITY_OPTIONS = scaleOptions(['Rough', 'Poor', 'OK', 'Good', 'Great'])
-const MOOD_OPTIONS = scaleOptions(['Low', 'Meh', 'OK', 'Good', 'Great'])
-const STRESS_OPTIONS = scaleOptions(['Very low', 'Low', 'Medium', 'High', 'Very high'])
 const ENERGY_OPTIONS = scaleOptions(['Drained', 'Low', 'OK', 'Good', 'Charged'])
 
-const CAFFEINE_OPTIONS: ChipOption<CaffeineIntake>[] = [
-  { value: 'none', label: 'None' },
-  { value: 'morning', label: 'Morning' },
-  { value: 'afternoon', label: 'Afternoon' },
-  { value: 'evening', label: 'Evening' },
+const SLEEP_OPTIONS: ChipOption<SleepDuration>[] = [
+  { value: 'under_5h', label: 'Under 5h' },
+  { value: '5_6h', label: '5–6h' },
+  { value: '6_7h', label: '6–7h' },
+  { value: '7_8h', label: '7–8h' },
+  { value: '8_9h', label: '8–9h' },
+  { value: 'over_9h', label: 'Over 9h' },
+  { value: 'not_sure', label: 'Not sure' },
+]
+
+const MEAL_OPTIONS: ChipOption<LastMealTiming>[] = [
+  { value: 'within_1h', label: 'Within 1h' },
+  { value: '1_3h', label: '1–3h ago' },
+  { value: '3_5h', label: '3–5h ago' },
+  { value: 'over_5h', label: 'Over 5h ago' },
+  { value: 'not_today', label: 'Not yet today' },
+  { value: 'not_sure', label: 'Not sure' },
+]
+
+const HYDRATION_OPTIONS: ChipOption<Hydration>[] = [
+  { value: 'under_0_5l', label: 'Under 0.5L' },
+  { value: '0_5_1l', label: '0.5–1L' },
+  { value: '1_1_5l', label: '1–1.5L' },
+  { value: '1_5_2l', label: '1.5–2L' },
+  { value: 'over_2l', label: 'Over 2L' },
+  { value: 'not_sure', label: 'Not sure' },
 ]
 
 // The modal can be the first screen in the stack (web refresh, deep link),
@@ -49,13 +63,11 @@ export default function CheckIn() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [sleepHours, setSleepHours] = useState<number | null>(null)
-  const [sleepQuality, setSleepQuality] = useState<Scale1to5 | null>(null)
-  const [mood, setMood] = useState<Scale1to5 | null>(null)
-  const [stress, setStress] = useState<Scale1to5 | null>(null)
-  const [energyNow, setEnergyNow] = useState<Scale1to5 | null>(null)
-  const [caffeine, setCaffeine] = useState<CaffeineIntake | null>(null)
-  const [notes, setNotes] = useState('')
+  const [reportedEnergy, setReportedEnergy] = useState<Scale1to5 | null>(null)
+  const [sleepDuration, setSleepDuration] = useState<SleepDuration | null>(null)
+  const [lastMealTiming, setLastMealTiming] = useState<LastMealTiming | null>(null)
+  const [lastMealDescription, setLastMealDescription] = useState('')
+  const [hydration, setHydration] = useState<Hydration | null>(null)
 
   const initialize = useCallback(async () => {
     setInitializing(true)
@@ -63,13 +75,11 @@ export default function CheckIn() {
     try {
       const latest = await loadLatestCheckIn(todayISO())
       if (latest) {
-        setSleepHours(latest.sleepHours)
-        setSleepQuality(latest.sleepQuality)
-        setMood(latest.mood)
-        setStress(latest.stress)
-        setEnergyNow(latest.energyNow)
-        setCaffeine(latest.caffeine)
-        setNotes(latest.notes ?? '')
+        setReportedEnergy(latest.reportedEnergy)
+        setSleepDuration(latest.sleepDuration)
+        setLastMealTiming(latest.lastMealTiming)
+        setLastMealDescription(latest.lastMealDescription ?? '')
+        setHydration(latest.hydration)
         setIsUpdate(true)
       } else {
         setIsUpdate(false)
@@ -87,14 +97,12 @@ export default function CheckIn() {
   }, [initialize])
 
   const complete =
-    sleepHours !== null &&
-    sleepQuality !== null &&
-    mood !== null &&
-    stress !== null &&
-    energyNow !== null &&
-    caffeine !== null
+    reportedEnergy !== null &&
+    sleepDuration !== null &&
+    lastMealTiming !== null &&
+    hydration !== null
 
-  const answeredCount = [sleepHours, sleepQuality, mood, stress, energyNow, caffeine]
+  const answeredCount = [reportedEnergy, sleepDuration, lastMealTiming, hydration]
     .filter((value) => value !== null).length
 
   const submit = async () => {
@@ -104,13 +112,11 @@ export default function CheckIn() {
     try {
       await submitCheckIn({
         date: todayISO(),
-        sleepHours,
-        sleepQuality,
-        mood,
-        stress,
-        energyNow,
-        caffeine,
-        notes: notes.trim() || undefined,
+        reportedEnergy,
+        sleepDuration,
+        lastMealTiming,
+        lastMealDescription: lastMealDescription.trim() || undefined,
+        hydration,
       })
       closeCheckIn()
     } catch (submitError) {
@@ -166,43 +172,39 @@ export default function CheckIn() {
       <View style={styles.progressBlock}>
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>TODAY’S SIGNAL</Text>
-          <Text style={styles.progressCount}>{answeredCount} / 6</Text>
+          <Text style={styles.progressCount}>{answeredCount} / 4</Text>
         </View>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${(answeredCount / 6) * 100}%` }]} />
+          <View style={[styles.progressFill, { width: `${(answeredCount / 4) * 100}%` }]} />
         </View>
       </View>
 
-      <Text style={styles.sectionMarker}>01 · REST</Text>
-      <Text style={styles.question}>How many hours did you sleep?</Text>
-      <ChipRow options={SLEEP_HOUR_OPTIONS} value={sleepHours} onChange={setSleepHours} />
+      <Text style={styles.sectionMarker}>01 · ENERGY</Text>
+      <Text style={styles.question}>How’s your energy right now?</Text>
+      <ChipRow options={ENERGY_OPTIONS} value={reportedEnergy} onChange={setReportedEnergy} />
 
-      <Text style={styles.question}>How was the sleep itself?</Text>
-      <ChipRow options={QUALITY_OPTIONS} value={sleepQuality} onChange={setSleepQuality} />
-
-      <Text style={styles.sectionMarker}>02 · HEADSPACE</Text>
-      <Text style={styles.question}>Mood right now?</Text>
-      <ChipRow options={MOOD_OPTIONS} value={mood} onChange={setMood} />
-
-      <Text style={styles.question}>Stress level?</Text>
-      <ChipRow options={STRESS_OPTIONS} value={stress} onChange={setStress} />
+      <Text style={styles.sectionMarker}>02 · REST</Text>
+      <Text style={styles.question}>How much sleep did you get last night?</Text>
+      <ChipRow options={SLEEP_OPTIONS} value={sleepDuration} onChange={setSleepDuration} />
 
       <Text style={styles.sectionMarker}>03 · FUEL</Text>
-      <Text style={styles.question}>Energy right now?</Text>
-      <ChipRow options={ENERGY_OPTIONS} value={energyNow} onChange={setEnergyNow} />
+      <Text style={styles.question}>When did you last eat?</Text>
+      <ChipRow options={MEAL_OPTIONS} value={lastMealTiming} onChange={setLastMealTiming} />
 
-      <Text style={styles.question}>Caffeine today (or planned)?</Text>
-      <ChipRow options={CAFFEINE_OPTIONS} value={caffeine} onChange={setCaffeine} />
-
-      <Text style={styles.question}>Anything else? (optional)</Text>
+      <Text style={styles.question}>What was it? (optional)</Text>
       <TextInput
-        style={styles.notes}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="e.g. big deadline tomorrow"
+        style={styles.mealInput}
+        value={lastMealDescription}
+        onChangeText={setLastMealDescription}
+        placeholder="e.g. leftover salmon rice bowl"
         placeholderTextColor={colors.textMuted}
+        maxLength={280}
         multiline
       />
+
+      <Text style={styles.sectionMarker}>04 · WATER</Text>
+      <Text style={styles.question}>How much water so far today?</Text>
+      <ChipRow options={HYDRATION_OPTIONS} value={hydration} onChange={setHydration} />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -210,7 +212,7 @@ export default function CheckIn() {
         <View style={styles.finishCopy}>
           <Text style={styles.finishKicker}>{complete ? 'ALL SIGNALS IN' : 'ALMOST THERE'}</Text>
           <Text style={styles.finishTitle}>
-            {complete ? 'Let’s shape your day.' : `${6 - answeredCount} quick answers left.`}
+            {complete ? 'Let’s shape your day.' : `${4 - answeredCount} quick answers left.`}
           </Text>
         </View>
         <Mascot state={complete ? 'celebrate' : 'steady'} size={112} />
@@ -286,7 +288,7 @@ const styles = StyleSheet.create({
     marginTop: sp(6),
     marginBottom: sp(2.5),
   },
-  notes: {
+  mealInput: {
     backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.border,

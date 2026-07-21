@@ -1,12 +1,12 @@
 # Akeso API Contract (v1)
 
-对应 Issue #6。**冻结规则**:本文件与 `packages/domain/src/types.ts`、`packages/domain/src/service.ts` 共同构成共享契约。修改任何字段都需要全部模块负责人同意(TEAM_CONTRACT §2)。
+对应 Issue #6。**冻结规则**:本文件与 `packages/contracts`(`@akeso/contracts`,含 Zod 运行时校验)、`packages/domain/src/service.ts` 共同构成共享契约。修改任何字段都需要全部模块负责人同意(TEAM_CONTRACT §2)。
 
 ## 原则
 
 - App 只通过 `AkesoService` 接口(`packages/domain/src/service.ts`)取数据,接口方法与 HTTP 端点 1:1 对应;
 - `FixtureService`(现在)和 `ApiService`(集成后)必须返回**完全相同的结构**,页面在切换时零改动;
-- 所有响应使用统一 envelope;所有类型定义以 `@akeso/domain` 为唯一权威,后端不得另行定义;
+- 所有响应使用统一 envelope;所有类型定义以 `@akeso/contracts` 为唯一权威(`@akeso/domain` re-export 同一份类型,App/API 现有导入不受影响),后端不得另行定义;
 - Energy Score 只由后端 `EnergyEngine` 计算,App 不做任何权威计算(TEAM_CONTRACT §4.1)。
 
 ## 响应 Envelope
@@ -40,7 +40,7 @@
 - `GET /v1/energy/:date` 在**未签到**时返回 `data: null`(HTTP 200),App 以此判断是否显示 Check-in 引导;`getTodayPlan` 同理;
 - `GET /v1/checkins/latest?date=` 返回请求本地日期当天或之前最近一次提交的答案;首次签到前返回 `data: null`(HTTP 200),且不得返回未来日期的记录;
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
-- `EnergyResult.factors[].impact` 为带符号整数,UI 直接渲染 `+/-`;
+- `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
 - 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
