@@ -237,7 +237,19 @@ export async function postJsonWithOneRetry(
       })
       if (response.ok) {
         try {
-          return (await response.json()) as Record<string, unknown>
+          const payload: unknown = await response.json()
+          if (
+            typeof payload !== 'object' ||
+            payload === null ||
+            Array.isArray(payload)
+          ) {
+            throw new HttpError(
+              502,
+              'MALFORMED_AI_OUTPUT',
+              'AI returned invalid JSON.'
+            )
+          }
+          return payload as Record<string, unknown>
         } catch {
           throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned invalid JSON.')
         }

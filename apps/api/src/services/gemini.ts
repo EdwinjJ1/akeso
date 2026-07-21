@@ -25,14 +25,28 @@ import type {
 } from './types'
 
 function outputText(payload: Record<string, unknown>): string {
-  const candidates = payload.candidates
-  const first = Array.isArray(candidates)
-    ? (candidates[0] as
-        | { content?: { parts?: Array<{ text?: unknown }> } }
-        | undefined)
-    : undefined
-  const text = first?.content?.parts
-    ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+  if (!Array.isArray(payload.candidates)) {
+    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+  }
+  const first = payload.candidates[0]
+  const content =
+    typeof first === 'object' && first !== null && !Array.isArray(first)
+      ? (first as Record<string, unknown>).content
+      : undefined
+  const parts =
+    typeof content === 'object' && content !== null && !Array.isArray(content)
+      ? (content as Record<string, unknown>).parts
+      : undefined
+  if (!Array.isArray(parts)) {
+    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+  }
+  const text = parts
+    .map((part) =>
+      typeof part === 'object' && part !== null && !Array.isArray(part)
+        ? (part as Record<string, unknown>).text
+        : undefined
+    )
+    .map((partText) => (typeof partText === 'string' ? partText : ''))
     .join('')
   if (!text) {
     throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')

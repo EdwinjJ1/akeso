@@ -25,10 +25,18 @@ import type {
 const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
 
 function outputText(payload: Record<string, unknown>): string {
-  const first = Array.isArray(payload.choices)
-    ? (payload.choices[0] as { message?: { content?: unknown } } | undefined)
-    : undefined
-  const content = first?.message?.content
+  if (!Array.isArray(payload.choices)) {
+    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+  }
+  const first = payload.choices[0]
+  const message =
+    typeof first === 'object' && first !== null && !Array.isArray(first)
+      ? (first as Record<string, unknown>).message
+      : undefined
+  const content =
+    typeof message === 'object' && message !== null && !Array.isArray(message)
+      ? (message as Record<string, unknown>).content
+      : undefined
   if (typeof content !== 'string') {
     throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
   }

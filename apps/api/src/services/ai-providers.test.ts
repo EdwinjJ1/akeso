@@ -306,6 +306,64 @@ describe('Gemini production provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test.each(['mimo', 'gemini'] as const)(
+    'rejects HTTP 200 null JSON from %s as malformed output',
+    async (provider) => {
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        new Response('null', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+      await expect(
+        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+      ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
+    }
+  )
+
+  test.each([
+    ['mimo', []],
+    ['mimo', 'text'],
+    ['gemini', []],
+    ['gemini', 42],
+  ] as const)(
+    'rejects HTTP 200 non-object JSON from %s as malformed output',
+    async (provider, payload) => {
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+      await expect(
+        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+      ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
+    }
+  )
+
+  test.each([
+    ['mimo', { choices: {} }],
+    ['mimo', { choices: [{ message: { content: [] } }] }],
+    ['gemini', { candidates: {} }],
+    ['gemini', { candidates: [{ content: { parts: {} } }] }],
+  ] as const)(
+    'rejects malformed %s response envelopes without leaking runtime errors',
+    async (provider, payload) => {
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+
+      await expect(
+        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+      ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
+    }
+  )
+
   test('normalizes a 15-second abort as AI_TIMEOUT without retrying', async () => {
     vi.useFakeTimers()
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
@@ -667,5 +725,46 @@ describe('Gemini production provider', () => {
     expect(sliced.meals[0].description).toBe('Slice Tomato.')
     expect(heated.meals[0].description).toBe('Warm Tomato.')
     expect(heated.meals[0].description).not.toBe(sliced.meals[0].description)
+  })
+
+  test('renders grounded MiMo nutrition and falls back on unknown item ids', async () => {
+    const input = {
+      date: '2026-07-22',
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      energy: null,
+      profile: null,
+    }
+    const blueprint = (itemId: string) => ({
+      date: input.date,
+      needs: [],
+      meals: [
+        {
+          slot: 'snack',
+          itemIds: [itemId],
+          actions: [{ method: 'slice', itemIds: [itemId] }],
+          boosts: [],
+          prepMinutes: 5,
+        },
+      ],
+    })
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(mimoResponse(JSON.stringify(blueprint('tomato'))))
+      .mockResolvedValueOnce(mimoResponse(JSON.stringify(blueprint('salmon'))))
+    const services = createServices(config({ provider: 'mimo' }), fetchMock)
+
+    const grounded = await services.generateNutrition(input)
+    const fallback = await services.generateNutrition(input)
+
+    expect(grounded.meals[0]).toMatchObject({
+      title: 'Sliced Tomato',
+      description: 'Slice Tomato.',
+      usesFridgeItemIds: ['tomato'],
+    })
+    expect(fallback.meals[0]).toMatchObject({
+      id: 'confirmed-fridge-1',
+      usesFridgeItemIds: ['tomato'],
+    })
+    expect(JSON.stringify(fallback).toLowerCase()).not.toContain('salmon')
   })
 })
