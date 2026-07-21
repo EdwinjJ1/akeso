@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { fixtureFridge } from './fixtures.js'
-import { NutritionEngine } from './nutrition-engine.js'
+import { hydrationLitresFromBand, NutritionEngine } from './nutrition-engine.js'
 
 const engine = new NutritionEngine()
 
@@ -18,11 +18,15 @@ describe('NutritionEngine', () => {
     expect(first).toEqual(second)
     expect(first.plan.needs).toHaveLength(7)
     expect(first.plan.needs.every((need) => need.unit && need.target > 0 && need.note)).toBe(true)
-    expect(first.plan.needs.find((need) => need.key === 'protein')?.current).toBe(72.9)
+    // Totals derive from the official AFCD Release 3 per-100g rows pinned in
+    // nutrition-data.test.ts, accumulated at full precision then rounded once.
+    expect(first.plan.needs.find((need) => need.key === 'protein')?.current).toBe(68)
     expect(first.plan.needs.find((need) => need.key === 'protein')?.note).toContain(
-      '2.1g remains'
+      '7g remains'
     )
-    expect(first.plan.needs.find((need) => need.key === 'vitamin_c')?.current).toBe(158.7)
+    expect(first.plan.needs.find((need) => need.key === 'vitamin_c')?.current).toBe(259.3)
+    expect(first.plan.needs.find((need) => need.key === 'fiber')?.current).toBe(13.4)
+    expect(first.plan.needs.find((need) => need.key === 'omega3')?.current).toBe(3.4)
     expect(first.plan.needs.find((need) => need.key === 'hydration')?.current).toBe(1.2)
     expect(first.unmatchedFridgeItemIds).toEqual([])
   })
@@ -66,6 +70,29 @@ describe('NutritionEngine', () => {
     expect(result.plan.rationale).toContain('could not be mapped safely')
   })
 
+  test('leaves ambiguous household names unmapped instead of guessing a variety', () => {
+    const result = engine.analyse({
+      date: '2026-07-21',
+      fridge: [
+        { id: 'ambiguous-1', name: 'Rice', category: 'grain' },
+        { id: 'ambiguous-2', name: 'Yogurt', category: 'dairy' },
+        { id: 'ambiguous-3', name: 'Spinach', category: 'vegetable' },
+        { id: 'ambiguous-4', name: 'Capsicum', category: 'vegetable' },
+      ],
+    })
+
+    expect(result.unmatchedFridgeItemIds).toEqual([
+      'ambiguous-1',
+      'ambiguous-2',
+      'ambiguous-3',
+      'ambiguous-4',
+    ])
+    expect(result.matchedFoods).toEqual([])
+    expect(result.plan.needs.every((need) => need.key === 'hydration' || need.current === 0)).toBe(
+      true
+    )
+  })
+
   test('does not trust a name-only match when the confirmed category conflicts', () => {
     const result = engine.analyse({
       date: '2026-07-21',
@@ -84,7 +111,7 @@ describe('NutritionEngine', () => {
     })
 
     expect(result.matchedFoods[0]?.assumedGrams).toBe(50)
-    expect(result.plan.needs.find((need) => need.key === 'protein')?.current).toBe(6.6)
+    expect(result.plan.needs.find((need) => need.key === 'protein')?.current).toBe(6.1)
   })
 
   test('uses zero rather than leaking a non-finite hydration value', () => {
@@ -106,5 +133,30 @@ describe('NutritionEngine', () => {
 
     expect(result.plan.meals.some((meal) => meal.id === 'meal-salmon-rice-spinach-bowl')).toBe(false)
     expect(result.plan.meals.length).toBeGreaterThan(0)
+  })
+
+  test('a vegan preference removes every animal-product recipe', () => {
+    const result = engine.analyse({
+      date: '2026-07-21',
+      fridge: fixtureFridge,
+      dietaryPreference: 'vegan',
+    })
+
+    expect(result.plan.meals).toEqual([])
+  })
+})
+
+describe('hydrationLitresFromBand', () => {
+  test('maps each band to its conservative lower bound', () => {
+    expect(hydrationLitresFromBand('under_0_5l')).toBe(0)
+    expect(hydrationLitresFromBand('0_5_1l')).toBe(0.5)
+    expect(hydrationLitresFromBand('1_1_5l')).toBe(1)
+    expect(hydrationLitresFromBand('1_5_2l')).toBe(1.5)
+    expect(hydrationLitresFromBand('over_2l')).toBe(2)
+  })
+
+  test('reports "nothing logged" for not_sure and missing check-ins', () => {
+    expect(hydrationLitresFromBand('not_sure')).toBeUndefined()
+    expect(hydrationLitresFromBand(undefined)).toBeUndefined()
   })
 })

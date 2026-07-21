@@ -1,6 +1,7 @@
 import type {
   DietaryPreference,
   FridgeItem,
+  Hydration,
   MealRecommendation,
   NutrientKey,
   NutrientNeed,
@@ -22,10 +23,15 @@ const FOOD_NUTRIENT_KEYS: readonly FoodNutrientKey[] = [
   'omega3',
 ]
 
+/**
+ * Fixed planning targets for the demo's generic adult-student flow. Each
+ * `basis` states where the number comes from so the UI can be audited; none
+ * of them is a personalised NRV, clinical advice or treatment.
+ */
 const NUTRIENT_TARGETS: Readonly<
   Record<
     NutrientKey,
-    { label: string; target: number; unit: string; calculation: string }
+    { label: string; target: number; unit: string; calculation: string; basis: string }
   >
 > = {
   protein: {
@@ -33,43 +39,76 @@ const NUTRIENT_TARGETS: Readonly<
     target: 75,
     unit: 'g',
     calculation: 'Sum of mapped food profiles using an assumed edible serving.',
+    basis: 'fixed demo planning baseline, above the NHMRC adult RDI range (46-64 g/day)',
   },
   complex_carbs: {
     label: 'Complex carbs',
     target: 180,
     unit: 'g',
-    calculation: 'Starchy/wholegrain carbohydrate contribution from mapped foods.',
+    calculation: 'Starch contribution from mapped foods (AFCD Starch column).',
+    basis: 'fixed demo planning baseline; no NRV defines a starch intake',
   },
   fiber: {
     label: 'Fibre',
     target: 30,
     unit: 'g',
     calculation: 'Dietary fibre contribution from mapped foods.',
+    basis: 'NHMRC NRV adequate intake for adult men (30 g/day)',
   },
   iron: {
     label: 'Iron',
     target: 12,
     unit: 'mg',
     calculation: 'Iron contribution from mapped foods.',
+    basis: 'fixed demo planning baseline between the NHMRC adult RDIs (8 mg men / 18 mg women)',
   },
   vitamin_c: {
     label: 'Vitamin C',
     target: 45,
     unit: 'mg',
     calculation: 'Vitamin C contribution from mapped foods.',
+    basis: 'NHMRC NRV adult RDI (45 mg/day)',
   },
   omega3: {
     label: 'Omega-3',
     target: 1.5,
     unit: 'g',
-    calculation: 'Omega-3 contribution from mapped foods.',
+    calculation:
+      'Long-chain omega-3 (equated) contribution from mapped foods; plant ALA is not counted.',
+    basis: 'fixed demo planning baseline, above the NHMRC adult SDT (0.43-0.61 g/day)',
   },
   hydration: {
     label: 'Water',
     target: 2.5,
     unit: 'L',
     calculation: 'Only logged drinking water is counted; food water is not estimated.',
+    basis: 'fixed demo planning baseline within the NHMRC adult fluid AI range (2.1-2.6 L/day)',
   },
+}
+
+/**
+ * Conservative lower-bound litres for a check-in hydration band. `not_sure`
+ * (and an absent check-in) return undefined so callers report "nothing
+ * logged" rather than claiming a zero-litre measurement exists.
+ */
+export function hydrationLitresFromBand(
+  hydration: Hydration | undefined
+): number | undefined {
+  switch (hydration) {
+    case 'under_0_5l':
+      return 0
+    case '0_5_1l':
+      return 0.5
+    case '1_1_5l':
+      return 1
+    case '1_5_2l':
+      return 1.5
+    case 'over_2l':
+      return 2
+    case 'not_sure':
+    case undefined:
+      return undefined
+  }
 }
 
 export interface NutritionInventoryItem extends FridgeItem {
@@ -119,7 +158,7 @@ const RECIPES: readonly Recipe[] = [
     id: 'blueberry-yogurt-oats',
     slot: 'breakfast',
     title: 'Blueberry yogurt oats',
-    profileIds: ['greek-yogurt', 'oats', 'blueberries'],
+    profileIds: ['natural-yoghurt', 'oats', 'blueberries'],
     boosts: ['protein', 'complex_carbs', 'fiber'],
     prepMinutes: 5,
     tags: ['from fridge', '5 min'],
@@ -129,7 +168,7 @@ const RECIPES: readonly Recipe[] = [
     id: 'salmon-rice-spinach-bowl',
     slot: 'lunch',
     title: 'Salmon, rice & spinach bowl',
-    profileIds: ['salmon', 'brown-rice', 'spinach', 'capsicum'],
+    profileIds: ['salmon', 'brown-rice', 'baby-spinach', 'red-capsicum'],
     boosts: ['protein', 'complex_carbs', 'iron', 'omega3', 'vitamin_c'],
     prepMinutes: 20,
     tags: ['balanced lunch'],
@@ -139,7 +178,7 @@ const RECIPES: readonly Recipe[] = [
     id: 'spinach-egg-capsicum-scramble',
     slot: 'snack',
     title: 'Spinach, egg & capsicum scramble',
-    profileIds: ['egg', 'spinach', 'capsicum'],
+    profileIds: ['egg', 'baby-spinach', 'red-capsicum'],
     boosts: ['protein', 'iron', 'vitamin_c'],
     prepMinutes: 10,
     tags: ['easy snack'],
@@ -184,10 +223,10 @@ const noteFor = (key: NutrientKey, current: number) => {
     ? `${remaining}${definition.unit} remains to reach the planning target (${coverage}% currently covered).`
     : `The mapped current value covers the planning target (${coverage}%).`
   const source = key === 'hydration'
-    ? 'Source: explicitly logged drinking water.'
+    ? 'Source: explicitly logged drinking water; a check-in hydration band counts as its conservative lower bound.'
     : `Food composition source: ${NUTRITION_DATASET.source} ${NUTRITION_DATASET.version}.`
 
-  return `${status} ${definition.calculation} ${source} Target: generic adult-student demo planning baseline; not a personalised NRV or medical recommendation.`
+  return `${status} ${definition.calculation} ${source} Target basis: ${definition.basis}; not a personalised NRV or medical recommendation.`
 }
 
 /**
@@ -220,8 +259,10 @@ export class NutritionEngine {
       const scale = grams / 100
       const nutrients: Partial<Record<FoodNutrientKey, number>> = {}
       for (const key of FOOD_NUTRIENT_KEYS) {
-        const amount = round(profile.per100g[key] * scale)
-        nutrients[key] = amount
+        // Totals accumulate at full precision and are rounded once at the
+        // end, so per-item display rounding never compounds across a fridge.
+        const amount = profile.per100g[key] * scale
+        nutrients[key] = round(amount)
         totals[key] += amount
       }
       profileToFridge.set(profile.id, item)

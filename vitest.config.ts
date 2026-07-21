@@ -22,6 +22,7 @@ export default defineConfig({
       'apps/app/src/state/checkin-flow.test.ts',
       'packages/domain/src/energy-engine.test.ts',
       'packages/domain/src/nutrition-engine.test.ts',
+      'packages/domain/src/nutrition-data.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
     // real Supabase credentials — tests always run in demo mode.

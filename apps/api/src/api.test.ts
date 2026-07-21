@@ -245,7 +245,41 @@ describe('nutrition and coach', () => {
     expect(response.body.data.date).toBe('2026-08-01')
     expect(response.body.data.needs.length).toBeGreaterThan(0)
     expect(response.body.data.meals.length).toBeGreaterThan(0)
-    expect(response.body.data.needs.find((need: { key: string }) => need.key === 'protein').current).toBe(72.9)
+    expect(response.body.data.needs.find((need: { key: string }) => need.key === 'protein').current).toBe(68)
+  })
+
+  test('GET /v1/nutrition/:date respects the saved vegan dietary preference', async () => {
+    await request(app)
+      .put('/v1/profile')
+      .send({
+        displayName: 'Alex',
+        goal: 'academic',
+        typicalWake: '07:30',
+        typicalSleep: '23:30',
+        dietaryPreference: 'vegan',
+      })
+      .expect(200)
+
+    const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
+    // Every demo recipe contains an animal product, so a vegan profile must
+    // filter all of them rather than still recommending yogurt/salmon/egg.
+    expect(response.body.data.meals).toEqual([])
+  })
+
+  test('GET /v1/nutrition/:date counts hydration from the same-day check-in', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+
+    const sameDay = await request(app).get('/v1/nutrition/2026-07-21').expect(200)
+    const hydration = sameDay.body.data.needs.find(
+      (need: { key: string }) => need.key === 'hydration'
+    )
+    // validCheckIn logs the 1-1.5L band; the conservative lower bound is 1L.
+    expect(hydration.current).toBe(1)
+
+    const otherDay = await request(app).get('/v1/nutrition/2026-07-22').expect(200)
+    expect(
+      otherDay.body.data.needs.find((need: { key: string }) => need.key === 'hydration').current
+    ).toBe(0)
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {

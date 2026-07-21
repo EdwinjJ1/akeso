@@ -67,6 +67,15 @@ interface PlanBlockRow {
   rationale: string
 }
 
+interface CheckinRow {
+  date: string
+  reported_energy: CheckInInput['reportedEnergy']
+  sleep_duration: CheckInInput['sleepDuration']
+  last_meal_timing: CheckInInput['lastMealTiming']
+  last_meal_description: string | null
+  hydration: CheckInInput['hydration']
+}
+
 interface FridgeItemRow {
   id: string
   name: string
@@ -126,6 +135,30 @@ export function createSupabaseRepos(): Repos {
     },
 
     checkins: {
+      async get(userId, date) {
+        const row = unwrap<CheckinRow>(
+          await supabase
+            .from('checkin')
+            .select(
+              'date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration'
+            )
+            .eq('user_id', userId)
+            .eq('date', date)
+            .maybeSingle(),
+          'checkin.get'
+        )
+        if (!row) return null
+        return {
+          date: row.date,
+          reportedEnergy: row.reported_energy,
+          sleepDuration: row.sleep_duration,
+          lastMealTiming: row.last_meal_timing,
+          ...(row.last_meal_description === null
+            ? {}
+            : { lastMealDescription: row.last_meal_description }),
+          hydration: row.hydration,
+        }
+      },
       async upsert(userId, input: CheckInInput) {
         unwrap(
           await supabase.from('checkin').upsert(
