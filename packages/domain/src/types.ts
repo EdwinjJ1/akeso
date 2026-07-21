@@ -39,6 +39,7 @@ export type {
   Task,
   TaskPriority,
   TaskStatus,
+  UpdatePlanBlockInput,
   UserGoal,
   UserProfile,
 } from '@akeso/contracts'

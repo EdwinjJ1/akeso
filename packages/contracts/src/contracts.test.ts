@@ -13,6 +13,9 @@ import {
   RegeneratePlanBodySchema,
   RegeneratePlanResponseSchema,
   TasksQuerySchema,
+  UpdatePlanBlockParamsSchema,
+  UpdatePlanBlockRequestSchema,
+  UpdatePlanBlockResponseSchema,
 } from './api'
 import {
   fixtureApiError,
@@ -27,7 +30,9 @@ import {
   CoachReplySchema,
   DayPlanSchema,
   EnergyResultSchema,
+  PlanBlockSchema,
   TaskSchema,
+  UpdatePlanBlockInputSchema,
 } from './schemas'
 import type { EnergyFactor } from './schemas'
 
@@ -112,6 +117,14 @@ describe('fixtures satisfy the frozen schemas', () => {
     expect(DayPlanSchema.parse(fixtureDayPlan)).toEqual(fixtureDayPlan)
   })
 
+  it('marks generated plan blocks as pending Akeso suggestions', () => {
+    expect(
+      fixtureDayPlan.blocks.every(
+        (block) => block.source === 'akeso' && block.status === 'planned'
+      )
+    ).toBe(true)
+  })
+
   it('CoachReply', () => {
     expect(CoachReplySchema.parse(fixtureCoachReply)).toEqual(fixtureCoachReply)
   })
@@ -149,7 +162,7 @@ describe('fixtures are internally consistent', () => {
 })
 
 describe('API contract: route map matches the implemented /v1 API', () => {
-  it('covers all nine implemented endpoints', () => {
+  it('covers all ten implemented endpoints', () => {
     expect(
       Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
     ).toEqual([
@@ -159,6 +172,7 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'GET /v1/energy/:date',
       'GET /v1/tasks',
       'GET /v1/plan/:date',
+      'PATCH /v1/plan/:date/blocks/:blockId',
       'POST /v1/plan/:date/regenerate',
       'GET /v1/nutrition/:date',
       'GET /v1/coach/:date',
@@ -223,6 +237,33 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(RegeneratePlanResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
+  it('PATCH /v1/plan/:date/blocks/:blockId accepts only editable fields', () => {
+    expect(
+      UpdatePlanBlockParamsSchema.parse({
+        date: fixtureDayPlan.date,
+        blockId: fixtureDayPlan.blocks[0].id,
+      })
+    ).toEqual({
+      date: fixtureDayPlan.date,
+      blockId: fixtureDayPlan.blocks[0].id,
+    })
+    expect(
+      UpdatePlanBlockRequestSchema.parse({
+        title: 'Updated breakfast',
+        start: '08:15',
+        end: '08:45',
+        status: 'completed',
+      })
+    ).toEqual({
+      title: 'Updated breakfast',
+      start: '08:15',
+      end: '08:45',
+      status: 'completed',
+    })
+    const envelope = { success: true, data: fixtureDayPlan }
+    expect(UpdatePlanBlockResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
   it('error envelope validates on every endpoint', () => {
     const envelope = { success: false, error: fixtureApiError }
     for (const endpoint of Object.values(apiContract)) {
@@ -232,6 +273,62 @@ describe('API contract: route map matches the implemented /v1 API', () => {
 })
 
 describe('numeric ranges are enforced at runtime', () => {
+  it('accepts an empty suggestion list as a valid empty Plan', () => {
+    expect(
+      DayPlanSchema.safeParse({ ...fixtureDayPlan, blocks: [] }).success
+    ).toBe(true)
+  })
+
+  it('requires a user-updated block to retain its original suggestion', () => {
+    const block = fixtureDayPlan.blocks[0]
+    expect(
+      PlanBlockSchema.safeParse({
+        ...block,
+        source: 'user',
+        title: 'Updated breakfast',
+      }).success
+    ).toBe(false)
+
+    expect(
+      PlanBlockSchema.safeParse({
+        ...block,
+        source: 'user',
+        title: 'Updated breakfast',
+        originalSuggestion: {
+          title: block.title,
+          start: block.start,
+          end: block.end,
+        },
+      }).success
+    ).toBe(true)
+  })
+
+  it('accepts only the four user-editable plan block fields', () => {
+    expect(
+      UpdatePlanBlockInputSchema.parse({
+        title: 'Write project outline',
+        start: '09:30',
+        end: '10:45',
+        status: 'completed',
+      })
+    ).toEqual({
+      title: 'Write project outline',
+      start: '09:30',
+      end: '10:45',
+      status: 'completed',
+    })
+
+    expect(
+      UpdatePlanBlockInputSchema.safeParse({
+        title: 'Write project outline',
+        start: '09:30',
+        end: '10:45',
+        status: 'planned',
+        energyLevel: 'high',
+      }).success
+    ).toBe(false)
+  })
+
   it('rejects reportedEnergy outside 1–5', () => {
     expect(
       CheckInInputSchema.safeParse({ ...fixtureCheckIn, reportedEnergy: 6 })

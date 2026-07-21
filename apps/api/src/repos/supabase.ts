@@ -236,6 +236,8 @@ export function createSupabaseRepos(): Repos {
             type: row.type,
             title: row.title,
             taskId: row.task_id ?? undefined,
+            status: 'planned',
+            source: 'akeso',
             energyLevel: row.energy_level,
             rationale: row.rationale,
           })),

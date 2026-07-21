@@ -5,6 +5,7 @@ import type {
   EnergyResult,
   NutritionPlan,
   Task,
+  UpdatePlanBlockInput,
   UserProfile,
 } from '@akeso/domain'
 import {
@@ -34,6 +35,7 @@ interface AppActions {
   completeOnboarding(profile: UserProfile): Promise<void>
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
   refreshToday(): Promise<void>
+  updatePlanBlock(blockId: string, input: UpdatePlanBlockInput): Promise<void>
   regeneratePlan(instruction?: string): Promise<void>
 }
 
@@ -115,15 +117,31 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  const updatePlanBlock = useCallback(
+    async (blockId: string, input: UpdatePlanBlockInput) => {
+      const plan = await service.updatePlanBlock(todayISO(), blockId, input)
+      setState((prev) => ({ ...prev, plan }))
+    },
+    [service]
+  )
+
   const value = useMemo(
     () => ({
       ...state,
       completeOnboarding,
       submitCheckIn,
       refreshToday,
+      updatePlanBlock,
       regeneratePlan,
     }),
-    [state, completeOnboarding, submitCheckIn, refreshToday, regeneratePlan]
+    [
+      state,
+      completeOnboarding,
+      submitCheckIn,
+      refreshToday,
+      updatePlanBlock,
+      regeneratePlan,
+    ]
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
