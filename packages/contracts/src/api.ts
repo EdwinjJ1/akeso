@@ -6,6 +6,9 @@ import {
   DateStringSchema,
   DayPlanSchema,
   EnergyResultSchema,
+  NutritionPlanSchema,
+  TaskSchema,
+  UserProfileSchema,
   type ApiError,
 } from './schemas'
 
@@ -28,63 +31,128 @@ export function apiResponseSchema<T extends z.ZodTypeAny>(dataSchema: T) {
   ])
 }
 
-// ── POST /checkin ───────────────────────────────────────────────────────────
+/** Path params for every date-scoped `/v1` route (`:date` = YYYY-MM-DD). */
+export const DateParamsSchema = z.object({ date: DateStringSchema })
+export type DateParams = z.infer<typeof DateParamsSchema>
+
+// ── GET /v1/profile · PUT /v1/profile ───────────────────────────────────────
+
+/** `data: null` until onboarding has saved a profile. */
+export const GetProfileResponseSchema = apiResponseSchema(
+  UserProfileSchema.nullable()
+)
+export const PutProfileRequestSchema = UserProfileSchema
+export const PutProfileResponseSchema = apiResponseSchema(UserProfileSchema)
+
+// ── POST /v1/checkins ───────────────────────────────────────────────────────
 
 export const CheckInRequestSchema = CheckInInputSchema
 export const CheckInResponseSchema = apiResponseSchema(EnergyResultSchema)
 export type CheckInResponse = ApiResponse<z.infer<typeof EnergyResultSchema>>
 
-// ── GET /plan ───────────────────────────────────────────────────────────────
+// ── GET /v1/energy/:date ────────────────────────────────────────────────────
 
-export const PlanQuerySchema = z.object({
-  /** Defaults to today (server-local) when omitted. */
-  date: DateStringSchema.optional(),
+/** `data: null` (HTTP 200) when there is no check-in for that date yet. */
+export const GetEnergyResponseSchema = apiResponseSchema(
+  EnergyResultSchema.nullable()
+)
+
+// ── GET /v1/tasks?date= ─────────────────────────────────────────────────────
+
+export const TasksQuerySchema = z.object({ date: DateStringSchema })
+export type TasksQuery = z.infer<typeof TasksQuerySchema>
+
+export const TasksResponseSchema = apiResponseSchema(z.array(TaskSchema))
+
+// ── GET /v1/plan/:date ──────────────────────────────────────────────────────
+
+/** `data: null` (HTTP 200) when no plan exists for that date yet. */
+export const GetPlanResponseSchema = apiResponseSchema(DayPlanSchema.nullable())
+
+// ── POST /v1/plan/:date/regenerate ──────────────────────────────────────────
+
+export const RegeneratePlanBodySchema = z.object({
+  instruction: z.string().max(280).optional(),
 })
-export type PlanQuery = z.infer<typeof PlanQuerySchema>
+export type RegeneratePlanBody = z.infer<typeof RegeneratePlanBodySchema>
 
-export const PlanResponseSchema = apiResponseSchema(DayPlanSchema)
-export type PlanResponse = ApiResponse<z.infer<typeof DayPlanSchema>>
+export const RegeneratePlanResponseSchema = apiResponseSchema(
+  z.object({ plan: DayPlanSchema, coach: CoachReplySchema })
+)
 
-// ── POST /coach ─────────────────────────────────────────────────────────────
+// ── GET /v1/nutrition/:date ─────────────────────────────────────────────────
 
-export const CoachRequestSchema = z.object({
-  /** The user's free-text message to the coach. */
-  message: z.string().min(1).max(2000),
-  /** Day the question refers to; defaults to today when omitted. */
-  date: DateStringSchema.optional(),
-})
-export type CoachRequest = z.infer<typeof CoachRequestSchema>
+/** `data: null` (HTTP 200) when no nutrition plan exists for that date yet. */
+export const GetNutritionResponseSchema = apiResponseSchema(
+  NutritionPlanSchema.nullable()
+)
 
-export const CoachResponseSchema = apiResponseSchema(CoachReplySchema)
-export type CoachResponse = ApiResponse<z.infer<typeof CoachReplySchema>>
+// ── GET /v1/coach/:date ─────────────────────────────────────────────────────
+
+export const GetCoachResponseSchema = apiResponseSchema(CoachReplySchema)
 
 // ── Route map ───────────────────────────────────────────────────────────────
 
 /**
- * TARGET-STATE route map (Issue #6 口径, 3 端点). The implemented API
- * currently exposes 9 `/v1/*` endpoints with different paths/methods (see
- * docs/API_CONTRACT.md) — do not send requests against this route map as-is.
- * The data shapes in schemas.ts are authoritative for both; only the route
- * surface (path/method count) is unreconciled. See PR #28 for the tracked
- * decision.
+ * Route map of the implemented `/v1` API. Keys mirror the `AkesoService`
+ * methods (packages/domain/src/service.ts) 1:1; paths, methods and shapes
+ * must stay in lockstep with docs/API_CONTRACT.md and apps/api/src/routes/*.
+ * apps/api/src/contract-conformance.test.ts checks real responses against
+ * the response schemas referenced here.
  */
 export const apiContract = {
-  checkIn: {
+  getProfile: {
+    method: 'GET',
+    path: '/v1/profile',
+    response: GetProfileResponseSchema,
+  },
+  saveProfile: {
+    method: 'PUT',
+    path: '/v1/profile',
+    request: PutProfileRequestSchema,
+    response: PutProfileResponseSchema,
+  },
+  submitCheckIn: {
     method: 'POST',
-    path: '/checkin',
+    path: '/v1/checkins',
     request: CheckInRequestSchema,
     response: CheckInResponseSchema,
   },
-  getPlan: {
+  getTodayEnergy: {
     method: 'GET',
-    path: '/plan',
-    query: PlanQuerySchema,
-    response: PlanResponseSchema,
+    path: '/v1/energy/:date',
+    params: DateParamsSchema,
+    response: GetEnergyResponseSchema,
   },
-  coach: {
+  getTasks: {
+    method: 'GET',
+    path: '/v1/tasks',
+    query: TasksQuerySchema,
+    response: TasksResponseSchema,
+  },
+  getTodayPlan: {
+    method: 'GET',
+    path: '/v1/plan/:date',
+    params: DateParamsSchema,
+    response: GetPlanResponseSchema,
+  },
+  regeneratePlan: {
     method: 'POST',
-    path: '/coach',
-    request: CoachRequestSchema,
-    response: CoachResponseSchema,
+    path: '/v1/plan/:date/regenerate',
+    params: DateParamsSchema,
+    request: RegeneratePlanBodySchema,
+    response: RegeneratePlanResponseSchema,
+  },
+  getNutritionPlan: {
+    method: 'GET',
+    path: '/v1/nutrition/:date',
+    params: DateParamsSchema,
+    response: GetNutritionResponseSchema,
+  },
+  getCoachReply: {
+    method: 'GET',
+    path: '/v1/coach/:date',
+    params: DateParamsSchema,
+    response: GetCoachResponseSchema,
   },
 } as const

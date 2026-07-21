@@ -6,8 +6,6 @@ import type {
   EnergyResult,
   Task,
 } from './schemas'
-import type { CoachRequest } from './api'
-
 /**
  * Canonical demo fixtures (Issue #6). Entirely fictional — no real health
  * data. All modules (App UI, API seed data, AI prompt examples) use these
@@ -201,11 +199,6 @@ export const fixtureDayPlan: DayPlan = {
   coachNote:
     'Today is front-loaded on purpose: your two hardest tasks sit near the late-morning peak, and the afternoon dip only carries admin and recovery.',
   generatedAt: `${FIXTURE_DATE}T08:05:10+10:00`,
-}
-
-export const fixtureCoachRequest: CoachRequest = {
-  message: 'I always crash after lunch — what should I change today?',
-  date: FIXTURE_DATE,
 }
 
 export const fixtureCoachReply: CoachReply = {
