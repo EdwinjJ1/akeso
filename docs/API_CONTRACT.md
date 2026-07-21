@@ -38,7 +38,7 @@
 
 - `GET /v1/energy/:date` 在**未签到**时返回 `data: null`(HTTP 200),App 以此判断是否显示 Check-in 引导;`getTodayPlan` 同理;
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
-- `EnergyResult.factors[].impact` 为带符号整数,UI 直接渲染 `+/-`;
+- `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
 - 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
