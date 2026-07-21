@@ -89,6 +89,17 @@ test('removes meals matching a free-text avoid ingredient', () => {
   expect(filtered.meals.map((meal) => meal.id)).not.toContain('meal-2')
 })
 
+test('withholds meal suggestions when an additional safety note cannot be evaluated', () => {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
+    allergens: [],
+    avoidIngredients: [],
+    notes: 'Avoid cross-contamination.',
+  })
+
+  expect(filtered.meals).toEqual([])
+  expect(filtered.rationale).toContain('additional dietary safety note')
+})
+
 test('returns an empty meal list (a valid plan, not an error) when every meal is filtered out', () => {
   const everyAllergen = [
     ...new Set(nutritionPlan.meals.flatMap((meal) => meal.allergenTags)),

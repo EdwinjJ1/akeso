@@ -11,6 +11,9 @@
  *    substring scan over the meal's title, description and tags. It can both
  *    over-match ("egg" also hits "eggplant") and under-match (misspellings), so
  *    it is a convenience layer on top of `allergenTags`, never a substitute.
+ *  - `notes` is an additional safety requirement that this plan cannot verify
+ *    structurally (for example, cross-contamination). To avoid presenting an
+ *    unverified suggestion as safe, any non-empty note withholds all meals.
  *
  * Every function here is pure: it never mutates the input plan, meal or profile,
  * so callers can safely reuse the originals (fixtures are shared across tests).
@@ -56,6 +59,10 @@ function includesAvoidedIngredient(
   )
 }
 
+function hasAdditionalSafetyNote(safety: DietarySafetyProfile): boolean {
+  return Boolean(safety.notes?.trim())
+}
+
 export function isMealAllowedByDietarySafety(
   meal: MealRecommendation,
   safety: DietarySafetyProfile | null | undefined
@@ -74,18 +81,23 @@ export function filterNutritionPlanForDietarySafety(
   plan: NutritionPlan,
   safety: DietarySafetyProfile | null | undefined
 ): NutritionPlan {
-  const filteredMeals = plan.meals.filter((meal) =>
-    isMealAllowedByDietarySafety(meal, safety)
-  )
   const normalized = normalizeSafety(safety)
+  const hasSafetyNote = hasAdditionalSafetyNote(normalized)
+  const filteredMeals = hasSafetyNote
+    ? []
+    : plan.meals.filter((meal) => isMealAllowedByDietarySafety(meal, normalized))
   const hasSafetyFilters =
-    normalized.allergens.length > 0 || normalized.avoidIngredients.length > 0
+    normalized.allergens.length > 0 ||
+    normalized.avoidIngredients.length > 0 ||
+    hasSafetyNote
 
   return {
     ...plan,
     meals: filteredMeals,
-    rationale: hasSafetyFilters
-      ? `${plan.rationale} Meals matching your reported allergies or avoid list are filtered out.`
-      : plan.rationale,
+    rationale: hasSafetyNote
+      ? `${plan.rationale} Meal suggestions are unavailable because an additional dietary safety note requires a manual check.`
+      : hasSafetyFilters
+        ? `${plan.rationale} Meals matching your reported allergies or avoid list are filtered out.`
+        : plan.rationale,
   }
 }

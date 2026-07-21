@@ -231,7 +231,11 @@ export default function Welcome() {
             maxLength={280}
           />
 
-          <Text style={styles.fieldLabel}>Anything else? (optional)</Text>
+          <Text style={styles.fieldLabel}>Additional safety requirement (optional)</Text>
+          <Text style={styles.safetyHint}>
+            We cannot verify free-text safety requirements. Adding one hides meal ideas so you can
+            check ingredients and labels yourself.
+          </Text>
           <TextInput
             style={[styles.input, styles.multilineInput]}
             value={safetyNotes}

@@ -7,6 +7,7 @@
 - `dietarySafety.avoidIngredients` is free text for foods the user wants Akeso to avoid. Each item is capped at 80 characters; the list is capped at 20 items.
 - `FridgeItem.allergenTags` and `MealRecommendation.allergenTags` use the same allergen enum. They are data tags, not medical certification.
 - `GET /v1/nutrition/:date` filters out meal recommendations whose `allergenTags` match the saved profile allergens, or whose title/description/tags contain a saved avoid-list item.
+- A non-empty `dietarySafety.notes` value is an additional safety requirement that cannot be structurally verified. The API returns no meal recommendations and explains that a manual check is required.
 - If no meal recommendation remains after filtering, App UI should show an empty safety state instead of silently hiding the section.
 - Dietary safety does not affect `EnergyResult.score`, `EnergyResult.factors`, or the Energy Engine. It only gates food suggestions.
 - Akeso must not claim that a meal is clinically safe. UI and coach copy should keep the safer position: suggestions are based on user-provided restrictions, and users should still check labels and professional advice for severe allergies.
