@@ -15,22 +15,17 @@ import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
 import { useAppState } from '@/state/app-state'
 import { colors, sp, type } from '@/theme/tokens'
-import { formatHour, greetingForNow, todayISO, todayLabel } from '@/utils/dates'
+import { formatHour, greetingForNow, todayLabel } from '@/utils/dates'
 
 export default function Dashboard() {
-  const { profile, energy, latestCheckIn, nutrition, coach, loading, error, refreshToday } =
-    useAppState()
+  const { profile, energy, nutrition, coach, loading, error, refreshToday } = useAppState()
 
   useEffect(() => {
     refreshToday()
   }, [refreshToday])
 
-  const today = todayISO()
-  const todayEnergy = energy?.date === today ? energy : null
-  const promptMode = latestCheckIn ? 'daily' : 'first'
-
   const mascotState: MascotState =
-    todayEnergy?.band === 'high' ? 'high' : todayEnergy?.band === 'low' ? 'low' : 'steady'
+    energy?.band === 'high' ? 'high' : energy?.band === 'low' ? 'low' : 'steady'
 
   return (
     <Screen tabbed>
@@ -48,11 +43,11 @@ export default function Dashboard() {
         </View>
       </Reveal>
 
-      {loading && !todayEnergy ? (
+      {loading && !energy ? (
         <View style={styles.loading}>
           <Mascot state="steady" size={128} />
           <ActivityIndicator color={colors.text} />
-          <Text style={styles.loadingText}>{"Reading today's rhythm..."}</Text>
+          <Text style={styles.loadingText}>Reading today’s rhythm…</Text>
         </View>
       ) : null}
 
@@ -62,22 +57,19 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      {!loading && !todayEnergy ? <CheckInPrompt mode={promptMode} /> : null}
+      {!loading && !energy ? <CheckInPrompt /> : null}
 
-      {todayEnergy ? (
+      {energy ? (
         <>
           <Reveal delay={60}>
             <View style={styles.heroCard}>
               <View style={styles.heroCopy}>
                 <View style={styles.scoreLine}>
-                  <Text style={styles.score}>{todayEnergy.score}</Text>
+                  <Text style={styles.score}>{energy.score}</Text>
                   <Text style={styles.scoreUnit}>/ 100</Text>
                 </View>
-                <Text style={styles.band}>
-                  {todayEnergy.band === 'moderate' ? 'STEADY' : todayEnergy.band.toUpperCase()}{' '}
-                  ENERGY
-                </Text>
-                <Text style={styles.headline}>{todayEnergy.headline}</Text>
+                <Text style={styles.band}>{energy.band === 'moderate' ? 'STEADY' : energy.band.toUpperCase()} ENERGY</Text>
+                <Text style={styles.headline}>{energy.headline}</Text>
                 <Pressable
                   onPress={() => router.push('/checkin')}
                   style={({ pressed }) => [styles.updateLink, pressed && styles.updatePressed]}
@@ -107,24 +99,20 @@ export default function Dashboard() {
               </View>
               <View style={styles.windowTags}>
                 <Tag
-                  label={`Peak ${formatHour(todayEnergy.peakWindow.startHour)}-${formatHour(
-                    todayEnergy.peakWindow.endHour
-                  )}`}
+                  label={`Peak ${formatHour(energy.peakWindow.startHour)}–${formatHour(energy.peakWindow.endHour)}`}
                   color={colors.text}
                   background={colors.lime}
                 />
                 <Tag
-                  label={`Reset ${formatHour(todayEnergy.dipWindow.startHour)}-${formatHour(
-                    todayEnergy.dipWindow.endHour
-                  )}`}
+                  label={`Reset ${formatHour(energy.dipWindow.startHour)}–${formatHour(energy.dipWindow.endHour)}`}
                   color={colors.text}
                   background={colors.coral}
                 />
               </View>
               <EnergyCurve
-                curve={todayEnergy.curve}
-                peakWindow={todayEnergy.peakWindow}
-                dipWindow={todayEnergy.dipWindow}
+                curve={energy.curve}
+                peakWindow={energy.peakWindow}
+                dipWindow={energy.dipWindow}
               />
             </Card>
           </Reveal>
@@ -136,10 +124,10 @@ export default function Dashboard() {
                   <Text style={styles.sectionKicker}>THE RECEIPT</Text>
                   <Text style={type.h2}>Why this score</Text>
                 </View>
-                <Text style={styles.factorCount}>{todayEnergy.factors.length}</Text>
+                <Text style={styles.factorCount}>{energy.factors.length}</Text>
               </View>
               <View style={styles.factorList}>
-                {todayEnergy.factors.map((factor) => (
+                {energy.factors.map((factor) => (
                   <FactorRow key={factor.key} factor={factor} />
                 ))}
               </View>
