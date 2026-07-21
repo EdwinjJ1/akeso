@@ -9,6 +9,16 @@ import { z } from 'zod'
  * affected module owners (see docs/TEAM_CONTRACT.md §2).
  */
 
+/**
+ * Re-exported so every consumer checks `instanceof ZodError` against the
+ * class that actually throws. All runtime validators live in this package,
+ * so this is the one ZodError class that matters; a workspace-wide npm
+ * hoisting conflict (Expo's CLI pins zod v3) means each package gets its own
+ * nested zod copy, so importing `zod` directly elsewhere would resolve to a
+ * different physical class and break `instanceof` checks.
+ */
+export { ZodError } from 'zod'
+
 // ── Primitives ──────────────────────────────────────────────────────────────
 
 /** Self-report scale: 1 = worst, 5 = best. */
@@ -21,10 +31,26 @@ export const Scale1to5Schema = z.union([
 ])
 export type Scale1to5 = z.infer<typeof Scale1to5Schema>
 
-/** Local calendar date, YYYY-MM-DD. */
+/**
+ * The regex alone accepts calendar nonsense like "2026-13-45" — this
+ * round-trips the parsed components through Date.UTC and rejects anything
+ * that doesn't come back out unchanged (e.g. day 30 rolling Feb into Mar).
+ */
+function isRealCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
+/** Local calendar date, YYYY-MM-DD. Rejects impossible dates like 2026-13-45. */
 export const DateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine(isRealCalendarDate, { message: 'Not a real calendar date' })
 export type DateString = z.infer<typeof DateStringSchema>
 
 /** Local wall-clock time, HH:mm, 24h. */
@@ -240,6 +266,95 @@ export const CoachReplySchema = z.object({
   disclaimer: z.string().min(1),
 })
 export type CoachReply = z.infer<typeof CoachReplySchema>
+
+// ── User & onboarding ───────────────────────────────────────────────────────
+
+export const UserGoalSchema = z.enum(['academic', 'work', 'fitness', 'balance'])
+export type UserGoal = z.infer<typeof UserGoalSchema>
+
+export const DietaryPreferenceSchema = z.enum([
+  'none',
+  'vegetarian',
+  'vegan',
+  'halal',
+  'gluten_free',
+])
+export type DietaryPreference = z.infer<typeof DietaryPreferenceSchema>
+
+export const UserProfileSchema = z.object({
+  displayName: z.string().min(1).max(60),
+  goal: UserGoalSchema,
+  typicalWake: TimeStringSchema,
+  typicalSleep: TimeStringSchema,
+  dietaryPreference: DietaryPreferenceSchema,
+})
+export type UserProfile = z.infer<typeof UserProfileSchema>
+
+// ── Nutrition ───────────────────────────────────────────────────────────────
+
+export const NutrientKeySchema = z.enum([
+  'protein',
+  'complex_carbs',
+  'iron',
+  'vitamin_c',
+  'omega3',
+  'hydration',
+  'fiber',
+])
+export type NutrientKey = z.infer<typeof NutrientKeySchema>
+
+export const NutrientNeedSchema = z.object({
+  key: NutrientKeySchema,
+  label: z.string().min(1),
+  current: z.number().min(0),
+  target: z.number().positive(),
+  unit: z.string().min(1),
+  note: z.string().optional(),
+})
+export type NutrientNeed = z.infer<typeof NutrientNeedSchema>
+
+export const FridgeCategorySchema = z.enum([
+  'protein',
+  'vegetable',
+  'fruit',
+  'dairy',
+  'grain',
+  'other',
+])
+export type FridgeCategory = z.infer<typeof FridgeCategorySchema>
+
+export const FridgeItemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  category: FridgeCategorySchema,
+})
+export type FridgeItem = z.infer<typeof FridgeItemSchema>
+
+export const MealSlotSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack'])
+export type MealSlot = z.infer<typeof MealSlotSchema>
+
+export const MealRecommendationSchema = z.object({
+  id: z.string().min(1),
+  slot: MealSlotSchema,
+  title: z.string().min(1),
+  description: z.string().min(1),
+  /** References NutritionPlan.fridge[].id within the same response. */
+  usesFridgeItemIds: z.array(z.string().min(1)),
+  boosts: z.array(NutrientKeySchema),
+  prepMinutes: z.number().int().positive(),
+  tags: z.array(z.string().min(1)),
+})
+export type MealRecommendation = z.infer<typeof MealRecommendationSchema>
+
+export const NutritionPlanSchema = z.object({
+  date: DateStringSchema,
+  needs: z.array(NutrientNeedSchema),
+  fridge: z.array(FridgeItemSchema),
+  meals: z.array(MealRecommendationSchema),
+  /** Ties recommendations back to today's energy factors. */
+  rationale: z.string().min(1),
+})
+export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
 // ── API error ───────────────────────────────────────────────────────────────
 
