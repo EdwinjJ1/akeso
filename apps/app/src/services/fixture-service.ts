@@ -62,7 +62,7 @@ export class FixtureService implements AkesoService {
 
   async getTodayPlan(date: string): Promise<DayPlan | null> {
     await wait(LATENCY_MS)
-    return this.energy ? { ...fixtureDayPlan, date } : null
+    return this.energy && this.energy.date === date ? { ...fixtureDayPlan, date } : null
   }
 
   async regeneratePlan(

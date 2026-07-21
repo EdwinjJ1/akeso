@@ -15,6 +15,11 @@ export default defineConfig({
       'packages/domain/src/schemas.test.ts',
       'packages/domain/src/planner.test.ts',
       'packages/domain/src/fixtures.test.ts',
+      // apps/app ships its wizard/flow logic as RN-free pure modules
+      // (checkin.logic.ts, checkin-flow.ts) so the riskiest parts are
+      // testable here without a native renderer.
+      'apps/app/src/app/checkin.logic.test.ts',
+      'apps/app/src/state/checkin-flow.test.ts',
       'packages/domain/src/energy-engine.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
