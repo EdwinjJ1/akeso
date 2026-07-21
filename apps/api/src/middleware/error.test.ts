@@ -1,5 +1,4 @@
-import { CheckInInputSchema } from '@akeso/contracts'
-import { localDateSchema, ZodError as ZodErrorV4 } from '@akeso/domain'
+import { localDateSchema, ZodError } from '@akeso/domain'
 import express from 'express'
 import request from 'supertest'
 import { describe, expect, test } from 'vitest'
@@ -7,11 +6,13 @@ import { describe, expect, test } from 'vitest'
 import { errorHandler } from './error'
 
 /**
- * @akeso/domain pins zod v4, @akeso/contracts pins zod v3 — npm gives each
- * workspace its own physical copy, so their ZodError classes fail
- * `instanceof` against each other. This proves errorHandler still returns
- * 400 (not an unhandled 500) for a validation error thrown by a route that
- * validates against a contracts (v3) schema, not just a domain (v4) one.
+ * All runtime validators live in @akeso/contracts (one physical zod copy),
+ * and @akeso/domain re-exports its ZodError, so the `instanceof` fast path
+ * in errorHandler matches every schema this codebase throws. The duck-typing
+ * fallback stays as defence-in-depth: npm nests a separate zod copy per
+ * workspace package (Expo's CLI pins zod v3), so a future package that
+ * validates with its own zod install would throw a ZodError of a different
+ * class — that must still map to 400, not an unhandled 500.
  */
 function appThatThrows(err: unknown) {
   const app = express()
@@ -22,32 +23,30 @@ function appThatThrows(err: unknown) {
   return app
 }
 
-describe('errorHandler ZodError detection across zod v3/v4', () => {
-  test('domain (zod v4) ZodError → 400 VALIDATION_ERROR', async () => {
+describe('errorHandler ZodError detection', () => {
+  test('contract schema ZodError → 400 VALIDATION_ERROR via instanceof', async () => {
     let thrown: unknown
     try {
       localDateSchema.parse('not-a-date')
     } catch (e) {
       thrown = e
     }
-    expect(thrown).toBeInstanceOf(ZodErrorV4)
+    expect(thrown).toBeInstanceOf(ZodError)
 
     const response = await request(appThatThrows(thrown)).get('/boom')
     expect(response.status).toBe(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
   })
 
-  test('contracts (zod v3) ZodError → 400 VALIDATION_ERROR, not 500', async () => {
-    let thrown: unknown
-    try {
-      CheckInInputSchema.parse({})
-    } catch (e) {
-      thrown = e
-    }
-    // Different physical zod install — must NOT be instanceof domain's ZodError.
-    expect(thrown).not.toBeInstanceOf(ZodErrorV4)
+  test('a foreign zod copy’s ZodError (different class) → 400 via duck-typing, not 500', async () => {
+    const foreign = Object.assign(new Error('validation failed'), {
+      name: 'ZodError',
+      issues: [{ path: ['date'], message: 'expected YYYY-MM-DD' }],
+    })
+    // A different physical zod install fails instanceof against our class.
+    expect(foreign).not.toBeInstanceOf(ZodError)
 
-    const response = await request(appThatThrows(thrown)).get('/boom')
+    const response = await request(appThatThrows(foreign)).get('/boom')
     expect(response.status).toBe(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
   })
