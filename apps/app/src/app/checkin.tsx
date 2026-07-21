@@ -136,6 +136,7 @@ export default function CheckIn() {
         onChangeText={setNotes}
         placeholder="e.g. big deadline tomorrow"
         placeholderTextColor={colors.textMuted}
+        maxLength={280}
         multiline
       />
 

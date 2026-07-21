@@ -1,0 +1,90 @@
+import type { CheckInInput } from '@akeso/domain'
+import {
+  apiResponseSchema,
+  CoachReplySchema,
+  DayPlanSchema,
+  EnergyResultSchema,
+} from '@akeso/contracts'
+import request from 'supertest'
+import { beforeEach, describe, expect, test } from 'vitest'
+
+import { createApp } from './app'
+import { createMemoryRepos } from './repos/memory'
+
+/**
+ * @akeso/contracts' apiContract route map is TARGET-STATE (Issue #6, 3
+ * endpoints) — the real API exposes 9 /v1/* routes with different paths.
+ * These tests don't hit apiContract's route map; they check the one thing
+ * that IS reconciled today: that real /v1/* response bodies parse against
+ * the contract's *data* schemas. That's the part "frozen" actually protects.
+ */
+
+const validCheckIn: CheckInInput = {
+  date: '2026-07-21',
+  sleepHours: 7.5,
+  sleepQuality: 4,
+  mood: 4,
+  stress: 4,
+  energyNow: 3,
+  caffeine: 'afternoon',
+}
+
+let app: ReturnType<typeof createApp>
+
+beforeEach(() => {
+  app = createApp(createMemoryRepos())
+})
+
+describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
+  test('POST /v1/checkins → EnergyResult envelope', async () => {
+    const response = await request(app)
+      .post('/v1/checkins')
+      .send(validCheckIn)
+      .expect(200)
+
+    const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/energy/:date → EnergyResult envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app).get('/v1/energy/2026-07-21').expect(200)
+
+    const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/plan/:date → DayPlan envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app).get('/v1/plan/2026-07-21').expect(200)
+
+    const result = apiResponseSchema(DayPlanSchema).safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/coach/:date → CoachReply envelope', async () => {
+    const response = await request(app).get('/v1/coach/2026-07-21').expect(200)
+
+    const result = apiResponseSchema(CoachReplySchema).safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('400 VALIDATION_ERROR body conforms to the ApiError envelope shape', async () => {
+    const response = await request(app)
+      .post('/v1/checkins')
+      .send({ ...validCheckIn, mood: 9 })
+      .expect(400)
+
+    const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.success).toBe(false)
+  })
+})
