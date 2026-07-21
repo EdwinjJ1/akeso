@@ -29,6 +29,17 @@ import {
   EnergyResultSchema,
   TaskSchema,
 } from './schemas'
+import type { EnergyFactor } from './schemas'
+
+const isReportedFactor = (
+  factor: EnergyFactor
+): factor is Extract<EnergyFactor, { role: 'reported_energy' }> =>
+  factor.role === 'reported_energy'
+
+const isContextFactor = (
+  factor: EnergyFactor
+): factor is Extract<EnergyFactor, { role: 'possible_context' }> =>
+  factor.role === 'possible_context'
 
 describe('fixtures satisfy the frozen schemas', () => {
   it('CheckInInput', () => {
@@ -48,9 +59,47 @@ describe('fixtures satisfy the frozen schemas', () => {
         expect(factor.impact).toBeTypeOf('number')
       } else {
         expect(factor.role).toBe('possible_context')
-        expect(factor.impact).toBeUndefined()
+        expect('impact' in factor).toBe(false)
       }
     }
+  })
+
+  it('rejects factor attribution that disagrees with the role', () => {
+    const reportedFactor = fixtureEnergyResult.factors.find(isReportedFactor)
+    const contextFactor = fixtureEnergyResult.factors.find(isContextFactor)
+    expect(reportedFactor).toBeDefined()
+    expect(contextFactor).toBeDefined()
+    if (!reportedFactor || !contextFactor) throw new Error('Fixture factors are incomplete')
+
+    const restFactors = fixtureEnergyResult.factors.filter(
+      (factor) => factor !== reportedFactor && factor !== contextFactor
+    )
+    const { impact: _impact, ...reportedWithoutImpact } = reportedFactor
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [reportedWithoutImpact, contextFactor, ...restFactors],
+      }).success
+    ).toBe(false)
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [reportedFactor, { ...contextFactor, impact: -10 }, ...restFactors],
+      }).success
+    ).toBe(false)
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [
+          { ...reportedFactor, key: 'sleep_duration' },
+          contextFactor,
+          ...restFactors,
+        ],
+      }).success
+    ).toBe(false)
   })
 
   it('every Task', () => {

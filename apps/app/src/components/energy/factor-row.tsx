@@ -21,7 +21,7 @@ interface FactorRowProps {
  * factors carry no impact by design, so no number is shown for them.
  */
 export function FactorRow({ factor }: FactorRowProps) {
-  const impact = factor.impact
+  const impact = factor.role === 'reported_energy' ? factor.impact : undefined
 
   return (
     <View style={styles.row}>

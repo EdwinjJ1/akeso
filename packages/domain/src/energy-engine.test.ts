@@ -1,5 +1,5 @@
 import { EnergyEngine, ENERGY_ENGINE_CONFIG } from './energy-engine.js'
-import type { CheckInInput } from './types.js'
+import type { CheckInInput, EnergyFactor } from './types.js'
 
 const engine = new EnergyEngine()
 const { baseline } = ENERGY_ENGINE_CONFIG
@@ -27,8 +27,12 @@ function assertWithinScoreRange(score: number, message: string) {
   assert(score >= 0 && score <= 100, `${message}: ${score} is outside 0–100`)
 }
 
-const sumImpacts = (factors: { impact?: number }[]) =>
-  factors.reduce((total, factor) => total + (factor.impact ?? 0), 0)
+const sumImpacts = (factors: EnergyFactor[]) =>
+  factors.reduce(
+    (total, factor) =>
+      total + (factor.role === 'reported_energy' ? factor.impact : 0),
+    0
+  )
 
 // Demo evidence: this fixed, ordinary check-in always gives the same score.
 const canonical = engine.evaluate(canonicalCheckIn)
@@ -57,7 +61,7 @@ for (const key of ['sleep_duration', 'last_meal', 'hydration'] as const) {
   const factor = canonical.factors.find((f) => f.key === key)
   assert(factor !== undefined, `A ${key} factor is present for a known value`)
   assertEqual(factor!.role, 'possible_context', `${key} role is possible_context`)
-  assertEqual(factor!.impact, undefined, `${key} carries no impact`)
+  assert(!('impact' in factor!), `${key} carries no impact`)
 }
 
 const repeated = engine.evaluate(canonicalCheckIn)

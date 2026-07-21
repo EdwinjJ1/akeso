@@ -144,18 +144,28 @@ export const EnergyFactorRoleSchema = z.enum([
 ])
 export type EnergyFactorRole = z.infer<typeof EnergyFactorRoleSchema>
 
-export const EnergyFactorSchema = z.object({
-  key: EnergyFactorKeySchema,
-  label: z.string().min(1),
-  role: EnergyFactorRoleSchema,
-  /**
-   * Signed integer points this factor contributed to the score. Only set on
-   * the `reported_energy` factor; `possible_context` factors are
-   * informational and deliberately carry no attribution.
-   */
-  impact: z.number().int().min(-50).max(50).optional(),
-  explanation: z.string().min(1),
-})
+const FactorImpactSchema = z.number().int().min(-50).max(50)
+
+export const EnergyFactorSchema = z.discriminatedUnion('role', [
+  z
+    .object({
+      key: z.literal('reported_energy'),
+      label: z.string().min(1),
+      role: z.literal('reported_energy'),
+      /** Signed integer points this factor contributed to the score. */
+      impact: FactorImpactSchema,
+      explanation: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      key: z.enum(['sleep_duration', 'last_meal', 'hydration']),
+      label: z.string().min(1),
+      role: z.literal('possible_context'),
+      explanation: z.string().min(1),
+    })
+    .strict(),
+])
 export type EnergyFactor = z.infer<typeof EnergyFactorSchema>
 
 export const EnergyCurvePointSchema = z.object({

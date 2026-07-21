@@ -22,6 +22,7 @@ export type EnergyScore = Pick<
 >
 
 type ScaleScoreMap = Readonly<Record<Scale1to5, number>>
+type ContextFactorKey = Exclude<EnergyFactorKey, 'reported_energy'>
 
 export interface EnergyEngineConfig {
   /**
@@ -176,7 +177,7 @@ const reportedEnergyExplanation = (level: Scale1to5, impact: number) => {
 }
 
 const contextFactor = (
-  key: EnergyFactorKey,
+  key: ContextFactorKey,
   copy: ContextCopy | undefined
 ): EnergyFactor | null =>
   copy
