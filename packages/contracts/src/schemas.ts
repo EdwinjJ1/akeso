@@ -340,6 +340,57 @@ export const FridgeItemSchema = z.object({
 })
 export type FridgeItem = z.infer<typeof FridgeItemSchema>
 
+/**
+ * Presence-only ingredient returned by a vision provider.
+ *
+ * Quantity, unit, weight and expiry intentionally do not belong in this
+ * contract: a recognition only claims that the ingredient is visible. The
+ * user confirms and edits these candidates before anything reaches inventory.
+ */
+export const DetectedIngredientSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    category: FridgeCategorySchema,
+    confidence: z.number().min(0).max(1),
+    uncertaintyReason: z.string().trim().min(1).max(280).nullable(),
+  })
+  .strict()
+export type DetectedIngredient = z.infer<typeof DetectedIngredientSchema>
+
+const RecognizedIngredientsSchema = z.array(DetectedIngredientSchema)
+
+/**
+ * AI structured output for fridge-photo recognition.
+ *
+ * Empty and refused outcomes must carry an empty ingredient list so callers
+ * never have to guess whether a provider-generated item is real.
+ */
+export const IngredientRecognitionResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('ok'),
+      ingredients: RecognizedIngredientsSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('empty'),
+      ingredients: RecognizedIngredientsSchema.length(0),
+      reason: z.enum(['no_food_detected', 'unrecognizable_image']),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('refused'),
+      ingredients: RecognizedIngredientsSchema.length(0),
+      reason: z.string().trim().min(1).max(280),
+    })
+    .strict(),
+])
+export type IngredientRecognitionResult = z.infer<
+  typeof IngredientRecognitionResultSchema
+>
+
 export const MealSlotSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack'])
 export type MealSlot = z.infer<typeof MealSlotSchema>
 

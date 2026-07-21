@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "verifiedAt": "2026-07-21",
+  "sourcePolicy": "Publicly redistributable Wikimedia Commons media. Akeso stores URLs and attribution only; original image files are not committed.",
+  "images": [
+    {
+      "id": "fridge-full-night",
+      "scenario": "full_fridge",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Open_refrigerator_with_food_at_night.jpg/1920px-Open_refrigerator_with_food_at_night.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Open_refrigerator_with_food_at_night.jpg",
+      "author": "W.carter",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [
+        { "name": "egg", "aliases": ["eggs"], "category": "protein" },
+        { "name": "green bell pepper", "aliases": ["bell pepper", "green pepper"], "category": "vegetable" },
+        { "name": "ham", "category": "protein" },
+        { "name": "butter", "category": "dairy" },
+        { "name": "cheese", "category": "dairy" },
+        { "name": "pickled cucumber", "aliases": ["gherkin", "pickles"], "category": "vegetable" },
+        { "name": "lemon", "aliases": ["lemons"], "category": "fruit" },
+        { "name": "tomato", "aliases": ["tomatoes"], "category": "vegetable" },
+        { "name": "grapes", "aliases": ["green grapes"], "category": "fruit" },
+        { "name": "carrot", "aliases": ["carrots"], "category": "vegetable" },
+        { "name": "onion", "aliases": ["yellow onion", "onions"], "category": "vegetable" },
+        { "name": "orange", "aliases": ["oranges"], "category": "fruit" }
+      ],
+      "notes": "Featured full-fridge scene with many partly occluded ingredients. Ground truth follows the photographer's itemized description."
+    },
+    {
+      "id": "fridge-packaged-occlusion",
+      "scenario": "occluded_or_blurry",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Gfp-fridge-contents.jpg/1920px-Gfp-fridge-contents.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Gfp-fridge-contents.jpg",
+      "author": "Yinan Chen",
+      "license": "Public domain",
+      "groundTruth": [
+        { "name": "milk", "aliases": ["skim milk"], "category": "dairy" },
+        { "name": "bread", "category": "grain" },
+        { "name": "lettuce", "aliases": ["leafy greens"], "category": "vegetable" },
+        { "name": "honey", "category": "other" },
+        { "name": "cooking oil", "aliases": ["oil", "canola oil"], "category": "other" },
+        { "name": "chili sauce", "aliases": ["sweet chili sauce"], "category": "other" }
+      ],
+      "notes": "Packaged shelf with foil and containers obscuring several items. Truth was manually reviewed from the 1600 px thumbnail."
+    },
+    {
+      "id": "fridge-tilted-cluttered",
+      "scenario": "full_fridge",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/K%C3%BChlschrank1.jpg/1280px-K%C3%BChlschrank1.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:K%C3%BChlschrank1.jpg",
+      "author": "fihu",
+      "license": "CC BY-SA 2.0",
+      "groundTruth": [
+        { "name": "milk", "category": "dairy" },
+        { "name": "bread", "category": "grain" },
+        { "name": "egg", "aliases": ["eggs"], "category": "protein" },
+        { "name": "yogurt", "aliases": ["yoghurt"], "category": "dairy" },
+        { "name": "orange juice", "aliases": ["juice"], "category": "fruit" }
+      ],
+      "notes": "Tilted, cluttered refrigerator; truth is deliberately limited to clearly identifiable items."
+    },
+    {
+      "id": "fridge-door-milk",
+      "scenario": "multi_ingredient_shelf",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Two_milk_gallons_in_refrigerator_door.agr.jpg/1920px-Two_milk_gallons_in_refrigerator_door.agr.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Two_milk_gallons_in_refrigerator_door.agr.jpg",
+      "author": "ArnoldReinhold",
+      "license": "CC BY 4.0",
+      "groundTruth": [
+        { "name": "milk", "category": "dairy" }
+      ],
+      "notes": "Presence-only truth: two containers still map to one milk ingredient."
+    },
+    {
+      "id": "fridge-labelled-milk-bottles",
+      "scenario": "multi_ingredient_shelf",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Bottles_of_Donated_Human_Milk_in_a_Fridge.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Bottles_of_Donated_Human_Milk_in_a_Fridge.jpg",
+      "author": "Rudolf Ascherl",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [
+        { "name": "milk", "aliases": ["human milk", "breast milk"], "category": "dairy" }
+      ],
+      "notes": "Repeated labelled bottles test presence-only deduplication. This image is evaluation-only and should not seed product nutrition advice."
+    },
+    {
+      "id": "fridge-blurred-beverages",
+      "scenario": "occluded_or_blurry",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/%28289-365%29_My_fridge_%286066183611%29.jpg/1920px-%28289-365%29_My_fridge_%286066183611%29.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:(289-365)_My_fridge_(6066183611).jpg",
+      "author": "Sander van der Wel",
+      "license": "CC BY-SA 2.0",
+      "groundTruth": [],
+      "notes": "Shallow-focus beverage bottles with no supported pantry ingredient. Expected empty; any food claim counts as hallucination."
+    },
+    {
+      "id": "empty-fridge-interior",
+      "scenario": "no_food",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Inside_the_refrigerator.jpg/1920px-Inside_the_refrigerator.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Inside_the_refrigerator.jpg",
+      "author": "Satirdan kahraman",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [],
+      "notes": "Empty refrigerator interior."
+    },
+    {
+      "id": "closed-double-door-fridge",
+      "scenario": "no_food",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Double-door_Fridge.jpg/1920px-Double-door_Fridge.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Double-door_Fridge.jpg",
+      "author": "Fanti Salms",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [],
+      "notes": "Closed appliance exterior; the model cannot observe its contents."
+    },
+    {
+      "id": "closed-fridge-with-cat",
+      "scenario": "no_food",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/30/Fridge_in_porch_with_cat.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Fridge_in_porch_with_cat.jpg",
+      "author": "ChippyTimeCom",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [],
+      "notes": "Non-food subject beside a closed fridge."
+    },
+    {
+      "id": "old-fridge-garden",
+      "scenario": "no_food",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Old_fridge_garden.jpg/1920px-Old_fridge_garden.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Old_fridge_garden.jpg",
+      "author": "TheBrick",
+      "license": "CC BY 4.0",
+      "groundTruth": [],
+      "notes": "Outdoor garden decoration made from an old refrigerator."
+    },
+    {
+      "id": "single-banana",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Banana-Single.jpg/1920px-Banana-Single.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Banana-Single.jpg",
+      "author": "Evan-Amos",
+      "license": "CC BY-SA 3.0",
+      "groundTruth": [{ "name": "banana", "category": "fruit" }]
+    },
+    {
+      "id": "single-broccoli",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/03/Broccoli_and_cross_section_edit.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Broccoli_and_cross_section_edit.jpg",
+      "author": "Fir0002",
+      "license": "GFDL 1.2",
+      "groundTruth": [{ "name": "broccoli", "category": "vegetable" }]
+    },
+    {
+      "id": "single-carrots",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Carrots.jpg/1920px-Carrots.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Carrots.jpg",
+      "author": "Medved'",
+      "license": "Public domain",
+      "groundTruth": [{ "name": "carrot", "aliases": ["carrots"], "category": "vegetable" }]
+    },
+    {
+      "id": "single-cheese",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Cheese.jpg/1920px-Cheese.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Cheese.jpg",
+      "author": "Renee Comet / National Cancer Institute",
+      "license": "Public domain",
+      "groundTruth": [{ "name": "cheese", "aliases": ["swiss cheese"], "category": "dairy" }]
+    },
+    {
+      "id": "single-cucumber",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0a/Cucumber.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Cucumber.jpg",
+      "author": "Kalliopi Alexopoulou",
+      "license": "Attribution license (see source page)",
+      "groundTruth": [{ "name": "cucumber", "category": "vegetable" }]
+    },
+    {
+      "id": "single-milk",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0e/Milk_glass.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Milk_glass.jpg",
+      "author": "Stefan Kühn",
+      "license": "CC BY-SA 3.0",
+      "groundTruth": [{ "name": "milk", "category": "dairy" }]
+    },
+    {
+      "id": "single-red-apple",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Red_Apple.jpg/1920px-Red_Apple.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Red_Apple.jpg",
+      "author": "Abhijit Tembhekar",
+      "license": "CC BY 2.0",
+      "groundTruth": [{ "name": "apple", "aliases": ["red apple"], "category": "fruit" }]
+    },
+    {
+      "id": "single-tomato",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/8/89/Tomato_je.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Tomato_je.jpg",
+      "author": "Softeis",
+      "license": "CC BY-SA 3.0",
+      "groundTruth": [{ "name": "tomato", "aliases": ["tomatoes"], "category": "vegetable" }]
+    },
+    {
+      "id": "single-chicken-egg",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5e/Chicken_egg_2009-06-04.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Chicken_egg_2009-06-04.jpg",
+      "author": "Sun Ladder",
+      "license": "CC BY-SA 3.0",
+      "groundTruth": [{ "name": "egg", "aliases": ["chicken egg"], "category": "protein" }]
+    },
+    {
+      "id": "single-brown-rice",
+      "scenario": "single_ingredient",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Brown_Rice.jpg/1920px-Brown_Rice.jpg",
+      "sourcePageUrl": "https://commons.wikimedia.org/wiki/File:Brown_Rice.jpg",
+      "author": "Gaurav Dhwaj Khadka",
+      "license": "CC BY-SA 4.0",
+      "groundTruth": [{ "name": "brown rice", "aliases": ["rice"], "category": "grain" }]
+    }
+  ]
+}

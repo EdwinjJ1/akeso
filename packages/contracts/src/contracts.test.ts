@@ -26,7 +26,9 @@ import {
   CheckInInputSchema,
   CoachReplySchema,
   DayPlanSchema,
+  DetectedIngredientSchema,
   EnergyResultSchema,
+  IngredientRecognitionResultSchema,
   TaskSchema,
 } from './schemas'
 import type { EnergyFactor } from './schemas'
@@ -144,6 +146,78 @@ describe('fixtures are internally consistent', () => {
       for (const ref of suggestion.basedOn) {
         expect(evidence.has(ref)).toBe(true)
       }
+    }
+  })
+})
+
+describe('ingredient recognition contract', () => {
+  const tomato = {
+    name: 'tomato',
+    category: 'vegetable',
+    confidence: 0.94,
+    uncertaintyReason: null,
+  }
+
+  it('accepts a successful presence-only recognition', () => {
+    const result = { status: 'ok', ingredients: [tomato] }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(DetectedIngredientSchema.parse(tomato)).toEqual(tomato)
+  })
+
+  it('represents empty images without inventing ingredients', () => {
+    const result = {
+      status: 'empty',
+      ingredients: [],
+      reason: 'no_food_detected',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('represents provider refusal without inventing ingredients', () => {
+    const result = {
+      status: 'refused',
+      ingredients: [],
+      reason: 'The image cannot be processed under the provider policy.',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects invalid categories and confidence outside 0..1', () => {
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, category: 'snack' }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: 1.01 }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: -0.01 }).success
+    ).toBe(false)
+  })
+
+  it('rejects quantity, unit and gram fields from recognition output', () => {
+    for (const extra of [
+      { quantity: 2 },
+      { unit: 'pieces' },
+      { grams: 300 },
+    ]) {
+      expect(DetectedIngredientSchema.safeParse({ ...tomato, ...extra }).success).toBe(
+        false
+      )
     }
   })
 })

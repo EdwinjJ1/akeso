@@ -16,6 +16,7 @@ export default defineConfig({
       'packages/domain/src/planner.test.ts',
       'packages/domain/src/fixtures.test.ts',
       'packages/domain/src/energy-engine.test.ts',
+      'scripts/vision-eval/**/*.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
     // real Supabase credentials — tests always run in demo mode.
