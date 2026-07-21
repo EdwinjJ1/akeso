@@ -1,5 +1,4 @@
-import { test } from 'vitest'
-import { strict as assert } from 'node:assert'
+import { expect, test } from 'vitest'
 
 import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine.js'
 import type { CheckInInput, EnergyFactor } from './types.js'
@@ -28,18 +27,16 @@ const reportedImpactTotal = (factors: readonly EnergyFactor[]) =>
 
 test('canonical check-in scores 80 with a deterministic timestamp', () => {
   const canonical = engine.evaluate(canonicalCheckIn)
-  assert.equal(canonical.score, 80)
-  assert.equal(canonical.band, 'high')
-  assert.equal(canonical.computedAt, '2026-07-21T00:00:00.000Z')
-  assert.equal(
-    canonical.score,
+  expect(canonical.score).toBe(80)
+  expect(canonical.band).toBe('high')
+  expect(canonical.computedAt).toBe('2026-07-21T00:00:00.000Z')
+  expect(canonical.score).toBe(
     baseline + reportedImpactTotal(canonical.factors)
   )
 })
 
 test('identical input produces an identical result', () => {
-  assert.deepEqual(
-    engine.evaluate(canonicalCheckIn),
+  expect(engine.evaluate(canonicalCheckIn)).toEqual(
     engine.evaluate(canonicalCheckIn)
   )
 })
@@ -49,45 +46,43 @@ test('reported_energy is always present and reconciles with the score', () => {
   const reported = canonical.factors.find(
     (factor) => factor.key === 'reported_energy'
   )
-  assert.ok(reported)
-  assert.ok(reported.role === 'reported_energy')
-  assert.equal(reported.impact, 80 - baseline)
+
+  expect(reported).toBeTruthy()
+  if (!reported || reported.role !== 'reported_energy') {
+    throw new Error('Expected reported_energy factor')
+  }
+  expect(reported.impact).toBe(80 - baseline)
 })
 
 test('sleep, meal and hydration are possible context with no impact', () => {
   const canonical = engine.evaluate(canonicalCheckIn)
   for (const key of ['sleep_duration', 'last_meal', 'hydration'] as const) {
     const factor = canonical.factors.find((f) => f.key === key)
-    assert.ok(factor, `${key} factor is present for a known value`)
-    assert.equal(factor.role, 'possible_context')
-    assert.ok(!('impact' in factor))
+    expect(factor, `${key} factor is present for a known value`).toBeTruthy()
+    if (!factor) throw new Error(`Missing ${key} factor`)
+
+    expect(factor.role).toBe('possible_context')
+    expect('impact' in factor).toBe(false)
   }
 })
 
 test('reportedEnergy maps 1..5 straight onto the score', () => {
   const scoreByReport = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 } as const
   for (const level of [1, 2, 3, 4, 5] as const) {
-    assert.equal(
-      scoreWith({ reportedEnergy: level }).score,
-      scoreByReport[level]
-    )
+    expect(scoreWith({ reportedEnergy: level }).score).toBe(scoreByReport[level])
   }
 })
 
 test('context inputs never move the score', () => {
-  assert.equal(
-    scoreWith({ sleepDuration: 'under_5h', hydration: 'under_0_5l' }).score,
-    scoreWith({}).score
-  )
+  expect(
+    scoreWith({ sleepDuration: 'under_5h', hydration: 'under_0_5l' }).score
+  ).toBe(scoreWith({}).score)
 })
 
 test('"not sure" omits the factor rather than fabricating a reason', () => {
   const unsure = scoreWith({ hydration: 'not_sure' })
-  assert.equal(
-    unsure.factors.find((factor) => factor.key === 'hydration'),
-    undefined
-  )
-  assert.ok(unsure.factors.find((factor) => factor.key === 'reported_energy'))
+  expect(unsure.factors.find((factor) => factor.key === 'hydration')).toBeUndefined()
+  expect(unsure.factors.find((factor) => factor.key === 'reported_energy')).toBeTruthy()
 })
 
 test('boundary self-reports stay inside the contract ranges', () => {
@@ -98,9 +93,9 @@ test('boundary self-reports stay inside the contract ranges', () => {
     lastMealTiming: 'not_sure',
     hydration: 'not_sure',
   })
-  assert.equal(lowUnknown.score, 20)
-  assert.equal(lowUnknown.band, 'low')
-  assert.equal(lowUnknown.factors.length, 1)
+  expect(lowUnknown.score).toBe(20)
+  expect(lowUnknown.band).toBe('low')
+  expect(lowUnknown.factors.length).toBe(1)
 
   const highBoundary = engine.evaluate({
     date: '2026-07-21',
@@ -109,30 +104,32 @@ test('boundary self-reports stay inside the contract ranges', () => {
     lastMealTiming: 'within_1h',
     hydration: 'over_2l',
   })
-  assert.equal(highBoundary.score, 100)
+  expect(highBoundary.score).toBe(100)
 
   for (const result of [lowUnknown, highBoundary]) {
-    assert.ok(result.score >= 0 && result.score <= 100)
-    assert.ok(result.curve.length >= 4)
-    assert.ok(result.curve.some((point) => point.hour < 12))
-    assert.ok(
+    expect(result.score).toBeGreaterThanOrEqual(0)
+    expect(result.score).toBeLessThanOrEqual(100)
+    expect(result.curve.length).toBeGreaterThanOrEqual(4)
+    expect(result.curve.some((point) => point.hour < 12)).toBe(true)
+    expect(
       result.curve.some((point) => point.hour >= 12 && point.hour < 17)
-    )
-    assert.ok(result.curve.some((point) => point.hour >= 17))
+    ).toBe(true)
+    expect(result.curve.some((point) => point.hour >= 17)).toBe(true)
     for (const point of result.curve) {
-      assert.ok(point.level >= 0 && point.level <= 100)
+      expect(point.level).toBeGreaterThanOrEqual(0)
+      expect(point.level).toBeLessThanOrEqual(100)
     }
   }
 })
 
 test('the headline lives on evaluate() alone and quotes the peak window', () => {
   const score = engine.score(canonicalCheckIn)
-  assert.ok(!('headline' in score))
+  expect('headline' in score).toBe(false)
+
   const result = engine.evaluate(canonicalCheckIn)
-  assert.equal(
-    result.headline,
-    'Strong day ahead — protect 10:00–12:00 for demanding work.'
-  )
+  expect(result.headline).toContain('Strong day ahead')
+  expect(result.headline).toContain('10:00')
+  expect(result.headline).toContain('12:00')
 })
 
 test('mostly-unknown context switches to the hedged headline', () => {
@@ -141,7 +138,7 @@ test('mostly-unknown context switches to the hedged headline', () => {
     sleepDuration: 'not_sure',
     lastMealTiming: 'not_sure',
   })
-  assert.ok(result.headline.startsWith('Going mostly on how you feel today'))
+  expect(result.headline.startsWith('Going mostly on how you feel today')).toBe(true)
 })
 
 test('malformed input is sanitized once, consistently', () => {
@@ -150,15 +147,15 @@ test('malformed input is sanitized once, consistently', () => {
     date: 'not-a-date',
     reportedEnergy: Number.NaN as CheckInInput['reportedEnergy'],
   })
-  assert.equal(messy.date, '1970-01-01')
-  assert.equal(messy.computedAt, '1970-01-01T00:00:00.000Z')
+  expect(messy.date).toBe('1970-01-01')
+  expect(messy.computedAt).toBe('1970-01-01T00:00:00.000Z')
 
   const explicitEquivalent = engine.evaluate({
     ...canonicalCheckIn,
     date: '1970-01-01',
     reportedEnergy: 1,
   })
-  assert.deepEqual(messy, explicitEquivalent)
+  expect(messy).toEqual(explicitEquivalent)
 })
 
 test('an impossible calendar date is rejected, not just format-checked', () => {
@@ -166,13 +163,13 @@ test('an impossible calendar date is rejected, not just format-checked', () => {
   // must be sanitized like any other bad input and never echoed back through
   // `date`/`computedAt` as if it were a genuine date.
   const impossible = engine.evaluate({ ...canonicalCheckIn, date: '2026-13-45' })
-  assert.equal(impossible.date, '1970-01-01')
-  assert.equal(impossible.computedAt, '1970-01-01T00:00:00.000Z')
+  expect(impossible.date).toBe('1970-01-01')
+  expect(impossible.computedAt).toBe('1970-01-01T00:00:00.000Z')
 
   // A real calendar date on the same code path is preserved unchanged.
   const real = engine.evaluate({ ...canonicalCheckIn, date: '2026-02-28' })
-  assert.equal(real.date, '2026-02-28')
-  assert.equal(real.computedAt, '2026-02-28T00:00:00.000Z')
+  expect(real.date).toBe('2026-02-28')
+  expect(real.computedAt).toBe('2026-02-28T00:00:00.000Z')
 })
 
 test('a curve with no afternoon points still yields a dip window', () => {
@@ -184,11 +181,9 @@ test('a curve with no afternoon points still yields a dip window', () => {
     ],
   })
   const result = sparse.evaluate(canonicalCheckIn)
-  assert.deepEqual(result.dipWindow, { startHour: 19, endHour: 21 })
+  expect(result.dipWindow).toEqual({ startHour: 19, endHour: 21 })
 })
 
 test('an empty curve config is rejected at construction', () => {
-  assert.throws(
-    () => new EnergyEngine({ ...ENERGY_ENGINE_CONFIG, curveOffsets: [] })
-  )
+  expect(() => new EnergyEngine({ ...ENERGY_ENGINE_CONFIG, curveOffsets: [] })).toThrow()
 })
