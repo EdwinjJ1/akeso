@@ -49,13 +49,22 @@ async function upsertDeduplicated(
   items: FridgeItem[]
 ): Promise<FridgeItem[]> {
   const existing = await repos.fridge.list(userId)
+  const existingIds = new Set(existing.map((item) => item.id))
   const byName = new Map(existing.map((item) => [normalizeName(item.name), item]))
   const saved = new Map<string, FridgeItem>()
   for (const item of items) {
     const duplicate = byName.get(normalizeName(item.name))
     const canonical = duplicate ? { ...item, id: duplicate.id } : item
+    // Renaming an existing item to collide with a different existing item's
+    // name merges into that item's id — remove the old row so it doesn't
+    // linger as an orphaned duplicate under its previous id.
+    if (duplicate && item.id !== duplicate.id && existingIds.has(item.id)) {
+      await repos.fridge.remove(userId, item.id)
+      existingIds.delete(item.id)
+    }
     const result = await repos.fridge.upsert(userId, canonical)
     byName.set(normalizeName(result.name), result)
+    existingIds.add(result.id)
     saved.set(result.id, result)
   }
   return Array.from(saved.values())

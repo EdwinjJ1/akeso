@@ -42,7 +42,7 @@ export function createApp(
   app.use('/v1', createTasksRouter(repos))
   app.use('/v1', createPlanRouter(repos, writeRateLimiter))
   app.use('/v1', createProfileRouter(repos))
-  app.use('/v1', createNutritionRouter(repos, ai))
+  app.use('/v1', createNutritionRouter(repos, ai, writeRateLimiter))
   app.use('/v1', createCoachRouter())
   app.use('/v1', createFridgeRouter(repos, writeRateLimiter, ai))
   app.use('/v1', createRemindersRouter(repos, writeRateLimiter))

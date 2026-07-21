@@ -181,11 +181,26 @@ async function generateNutritionWithMiMo(
       stream: false,
     })
     const parsed = nutritionPlanSchema.safeParse(parseJson(outputText(payload)))
-    if (parsed.success) return parsed.data
-    console.warn(
-      'Nutrition AI output failed schema validation:',
-      parsed.error.issues.map((issue) => ({ path: issue.path, message: issue.message }))
-    )
+    if (parsed.success) {
+      // Never trust the model's echoed fridge array as the source of truth:
+      // substitute the server's confirmed inventory and re-validate so a
+      // meal referencing a hallucinated (non-existent) item id is rejected
+      // here rather than reaching the client as a real inventory reference.
+      const verified = nutritionPlanSchema.safeParse({
+        ...parsed.data,
+        fridge: input.fridge,
+      })
+      if (verified.success) return verified.data
+      console.warn(
+        'Nutrition AI referenced ingredients outside the confirmed inventory:',
+        verified.error.issues.map((issue) => ({ path: issue.path, message: issue.message }))
+      )
+    } else {
+      console.warn(
+        'Nutrition AI output failed schema validation:',
+        parsed.error.issues.map((issue) => ({ path: issue.path, message: issue.message }))
+      )
+    }
   } catch (error) {
     // Recognition errors must surface, but nutrition always has a safe,
     // deterministic plan that uses only the user's confirmed inventory.

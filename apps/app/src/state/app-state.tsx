@@ -138,7 +138,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await service.saveFridgeItemsBatch(items)
       const [fridge, nutrition] = await Promise.all([
         service.getFridgeItems(),
-        service.regenerateNutrition(todayISO()),
+        service.getNutritionPlan(todayISO()),
       ])
       setState((prev) => ({ ...prev, fridge, nutrition }))
     },
@@ -150,7 +150,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await service.saveFridgeItem(item)
       const [fridge, nutrition] = await Promise.all([
         service.getFridgeItems(),
-        service.regenerateNutrition(todayISO()),
+        service.getNutritionPlan(todayISO()),
       ])
       setState((prev) => ({ ...prev, fridge, nutrition }))
     },
@@ -162,7 +162,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await service.deleteFridgeItem(id)
       const [fridge, nutrition] = await Promise.all([
         service.getFridgeItems(),
-        service.regenerateNutrition(todayISO()),
+        service.getNutritionPlan(todayISO()),
       ])
       setState((prev) => ({ ...prev, fridge, nutrition }))
     },

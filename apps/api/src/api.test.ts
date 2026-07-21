@@ -233,6 +233,27 @@ describe('fridge', () => {
     expect(response.body.data).toEqual([{ id: 'milk', name: 'Oat milk', category: 'dairy' }])
   })
 
+  test('renaming an item into an existing name merges without leaving an orphan', async () => {
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+    await request(app)
+      .put('/v1/fridge/oat-milk')
+      .send({ name: 'Oat milk', category: 'dairy' })
+      .expect(200)
+
+    // Renaming "oat-milk" to collide with "milk"'s name should merge into
+    // the existing "milk" row, not leave a stale "oat-milk" row behind.
+    await request(app)
+      .put('/v1/fridge/oat-milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body.data).toEqual([{ id: 'milk', name: 'Milk', category: 'dairy' }])
+  })
+
   test('PUT rejects an invalid category with 400 VALIDATION_ERROR', async () => {
     const response = await request(app)
       .put('/v1/fridge/mystery')
@@ -412,6 +433,16 @@ describe('nutrition and coach', () => {
       'tomato',
       'rice',
     ])
+  })
+
+  test('rate-limits repeated regeneration requests (the AI-calling path)', async () => {
+    for (let i = 0; i < env.rateLimit.writeMax; i++) {
+      await request(app).post('/v1/nutrition/2026-08-01/regenerate').expect(200)
+    }
+    const response = await request(app)
+      .post('/v1/nutrition/2026-08-01/regenerate')
+      .expect(429)
+    expect(response.body.error.code).toBe('RATE_LIMITED')
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
