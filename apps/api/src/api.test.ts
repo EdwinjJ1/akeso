@@ -9,12 +9,10 @@ import { createMemoryRepos } from './repos/memory'
 
 const validCheckIn: CheckInInput = {
   date: '2026-07-21',
-  sleepHours: 7.5,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 4,
-  energyNow: 3,
-  caffeine: 'afternoon',
+  reportedEnergy: 3,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
 
 let app: ReturnType<typeof createApp>
@@ -41,7 +39,7 @@ describe('POST /v1/checkins', () => {
   test('rejects an out-of-range scale value with 400 VALIDATION_ERROR', async () => {
     const response = await request(app)
       .post('/v1/checkins')
-      .send({ ...validCheckIn, mood: 9 })
+      .send({ ...validCheckIn, reportedEnergy: 9 })
       .expect(400)
 
     expect(response.body.success).toBe(false)
@@ -203,7 +201,7 @@ describe('hardening', () => {
   test('rejects an oversized body with 413 (not a raw 500)', async () => {
     const response = await request(app)
       .post('/v1/checkins')
-      .send({ ...validCheckIn, notes: 'x'.repeat(200_000) })
+      .send({ ...validCheckIn, lastMealDescription: 'x'.repeat(200_000) })
       .expect(413)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
   })
