@@ -108,11 +108,24 @@ Rules:
 - Deduplicate repeated containers into one ingredient.
 - Use concise English ingredient names and exactly one allowed category.
 - Set uncertaintyReason to null when confident; otherwise explain the visual ambiguity briefly.
+- Include only a concrete edible ingredient identified from visible appearance or a readable label.
+- Omit containers and unidentified contents. Never emit generic placeholders such as "canned food", "packaged food", "preserved food", "dark liquid", or "unknown beverage".
+- If uncertaintyReason would say the specific contents are not identifiable, omit that candidate entirely.
 - If there is no visible food ingredient, return status "empty" with reason "no_food_detected".
 - If the image is too unclear to identify food safely, return status "empty" with reason "unrecognizable_image".
 - If policy prevents processing, return status "refused" and no ingredients.
 - Do not infer what may be inside a closed refrigerator or opaque unlabelled container.
-- Return exactly one JSON object and no markdown or surrounding prose.`
+- Return exactly one JSON object and no markdown or surrounding prose.
+
+The output must match exactly one of these shapes. Never invent another status:
+{"status":"ok","ingredients":[{"name":"tomato","category":"vegetable","confidence":0.95,"uncertaintyReason":null}]}
+{"status":"empty","ingredients":[],"reason":"no_food_detected"}
+{"status":"empty","ingredients":[],"reason":"unrecognizable_image"}
+{"status":"refused","ingredients":[],"reason":"brief policy reason"}
+
+For status "ok", every ingredient must include exactly name, category,
+confidence, and uncertaintyReason. Allowed categories are protein, vegetable,
+fruit, dairy, grain, and other.`
 
 const capabilities: Record<VisionProviderName, VisionProviderCapability> = {
   mimo: {

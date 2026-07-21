@@ -2,6 +2,35 @@ import { describe, expect, it } from 'vitest'
 import { aggregateVisionMetrics, scoreRecognition } from './metrics'
 
 describe('vision evaluation metrics', () => {
+  it('treats basic English singular and plural ingredient names as equivalent', () => {
+    const score = scoreRecognition(
+      [
+        { name: 'grapes', category: 'fruit' },
+        { name: 'pickles', category: 'vegetable' },
+      ],
+      [
+        {
+          name: 'grape',
+          category: 'fruit',
+          confidence: 0.9,
+          uncertaintyReason: null,
+        },
+        {
+          name: 'pickle',
+          category: 'vegetable',
+          confidence: 0.9,
+          uncertaintyReason: null,
+        },
+      ]
+    )
+
+    expect(score).toMatchObject({
+      truePositives: 2,
+      falsePositives: 0,
+      falseNegatives: 0,
+    })
+  })
+
   it('counts additions, deletions and category edits from presence-only output', () => {
     const score = scoreRecognition(
       [

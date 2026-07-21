@@ -44,7 +44,8 @@ Commons cases: full refrigerators, multi-ingredient shelves, occluded/blurry
 scenes, single ingredients, and no-food images. Source URL, author, license,
 scene, and human truth are recorded. Original images are not redistributed.
 
-Metrics are exact/alias name matching plus category comparison:
+Metrics use normalized exact/alias matching, including basic English
+singular/plural equivalence, plus category comparison:
 
 - schema success, precision, recall, F1, category accuracy, hallucination rate
 - human additions (false negatives), edits (category corrections), and deletions
@@ -53,22 +54,36 @@ Metrics are exact/alias name matching plus category comparison:
 
 ## Live result status
 
-A one-image connectivity smoke test was attempted for the previously configured
-OpenAI and Gemini environments. OpenAI returned HTTP 401 and Gemini returned
-HTTP 403, so neither credential was valid for an authorized evaluation. No
-quality or admission metric is inferred from those failures.
+The repository owner explicitly authorized a live MiMo run using a locally
+installed, Git-ignored credential. The credential is not present in the report,
+source tree, Git history, command line, or application logs. The final 20-image
+report is committed at
+[`results/mimo-v2.5-2026-07-21.json`](./results/mimo-v2.5-2026-07-21.json).
 
-The MiMo credential supplied during planning was disclosed in a conversation and
-was therefore treated as compromised: it was not stored, logged, or called. A
-rotated credential must be installed locally as `MIMO_API_KEY` before the full
-20-image benchmark. MiniMax was not called because M2.7 has no image-input
-capability.
+| Metric | MiMo V2.5 | Gate | Result |
+| --- | ---: | ---: | --- |
+| Schema success | 100% | 100% | pass |
+| Precision | 57.14% | at least 85% | fail |
+| Recall | 57.14% | at least 75% | fail |
+| F1 | 57.14% | reported | — |
+| Category accuracy | 95% | reported | — |
+| Hallucination rate | 42.86% | at most 10% | fail |
+| p50 latency | 3.72 s | reported | — |
+| p95 latency | 8.59 s | at most 15 s | pass |
+| Total cost | $0.009468 | reported | — |
+| Cost per image | $0.000473 | reported | — |
 
-Consequently there is no valid complete live report yet. Production recognition
-must remain behind a disabled feature flag, with manual ingredient entry as the
-only release path. When fresh credentials are available, run each provider
-explicitly and attach the generated reports to #23; do not run providers in
-parallel against user photos.
+Across the set, a user would need to add 15 missed ingredients, edit one
+category, and delete 15 false positives. MiMo therefore passes structure and
+latency but fails all quality gates. It may only generate provisional candidates
+in an explicitly enabled test flow where every item starts unconfirmed and the
+user can add, edit, delete, and selectively confirm it. It must not write
+inventory automatically. Production recognition remains disabled by default;
+manual entry is always available.
+
+The previously configured OpenAI and Gemini environments returned HTTP 401 and
+403 in one-image connectivity smoke tests, so no quality metric is inferred for
+them. MiniMax was not called because M2.7 has no image-input capability.
 
 ## Current pricing assumptions
 

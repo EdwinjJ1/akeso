@@ -50,6 +50,22 @@ const normalizeName = (value: string): string =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
 
+const singularizeLastWord = (value: string): string => {
+  const words = value.split(' ')
+  const last = words.at(-1)
+  if (!last || last.length <= 3 || last.endsWith('ss')) return value
+
+  if (last.endsWith('ies')) words[words.length - 1] = `${last.slice(0, -3)}y`
+  else if (last.endsWith('oes')) words[words.length - 1] = last.slice(0, -2)
+  else if (last.endsWith('s')) words[words.length - 1] = last.slice(0, -1)
+  return words.join(' ')
+}
+
+const nameVariants = (value: string): string[] => {
+  const normalized = normalizeName(value)
+  return [...new Set([normalized, singularizeLastWord(normalized)])]
+}
+
 export function scoreRecognition(
   expected: GroundTruthIngredient[],
   predicted: DetectedIngredient[]
@@ -57,7 +73,7 @@ export function scoreRecognition(
   const remainingExpected = expected.map((ingredient) => ({
     ...ingredient,
     acceptedNames: new Set(
-      [ingredient.name, ...(ingredient.aliases ?? [])].map(normalizeName)
+      [ingredient.name, ...(ingredient.aliases ?? [])].flatMap(nameVariants)
     ),
   }))
 
@@ -67,9 +83,9 @@ export function scoreRecognition(
   let humanEdits = 0
 
   for (const candidate of predicted) {
-    const normalized = normalizeName(candidate.name)
+    const candidateNames = nameVariants(candidate.name)
     const expectedIndex = remainingExpected.findIndex((ingredient) =>
-      ingredient.acceptedNames.has(normalized)
+      candidateNames.some((name) => ingredient.acceptedNames.has(name))
     )
 
     if (expectedIndex < 0) {

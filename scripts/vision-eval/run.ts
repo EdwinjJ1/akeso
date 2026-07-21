@@ -12,6 +12,7 @@ import {
   UnsupportedVisionProviderError,
   type EncodedImage,
   type VisionProviderName,
+  type VisionProviderResponse,
 } from './providers'
 
 const FIVE_MIB = 5 * 1024 * 1024
@@ -93,37 +94,70 @@ function loadEnvironment(envFile?: string): void {
   if (existsSync(candidate)) process.loadEnvFile(candidate)
 }
 
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolveWait) => setTimeout(resolveWait, milliseconds))
+
 async function downloadImage(imageUrl: string): Promise<EncodedImage> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15_000)
-  try {
-    const response = await fetch(imageUrl, { signal: controller.signal })
-    if (!response.ok) throw new Error(`image download failed with HTTP ${response.status}`)
-    const declaredLength = Number(response.headers.get('content-length') ?? 0)
-    if (declaredLength > FIVE_MIB) throw new Error('image exceeds 5 MiB evaluation limit')
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15_000)
+    try {
+      const response = await fetch(imageUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent':
+            'AkesoIngredientVisionSpike/1.0 (+https://github.com/EdwinjJ1/akeso)',
+        },
+      })
+      if (!response.ok) {
+        const retryable = response.status === 429 || response.status >= 500
+        if (attempt === 0 && retryable) {
+          await wait(1_000)
+          continue
+        }
+        throw new Error(`image download failed with HTTP ${response.status}`)
+      }
+      const declaredLength = Number(response.headers.get('content-length') ?? 0)
+      if (declaredLength > FIVE_MIB) {
+        throw new Error('image exceeds 5 MiB evaluation limit')
+      }
 
-    const mimeType = response.headers.get('content-type')?.split(';')[0]
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType ?? '')) {
-      throw new Error(`unsupported image content type: ${mimeType ?? 'unknown'}`)
-    }
+      const mimeType = response.headers.get('content-type')?.split(';')[0]
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType ?? '')) {
+        throw new Error(`unsupported image content type: ${mimeType ?? 'unknown'}`)
+      }
 
-    const bytes = Buffer.from(await response.arrayBuffer())
-    if (bytes.byteLength > FIVE_MIB) throw new Error('image exceeds 5 MiB evaluation limit')
-    if (!hasValidImageSignature(mimeType as EncodedImage['mimeType'], bytes)) {
-      throw new Error('image signature does not match its content type')
-    }
+      const bytes = Buffer.from(await response.arrayBuffer())
+      if (bytes.byteLength > FIVE_MIB) {
+        throw new Error('image exceeds 5 MiB evaluation limit')
+      }
+      if (!hasValidImageSignature(mimeType as EncodedImage['mimeType'], bytes)) {
+        throw new Error('image signature does not match its content type')
+      }
 
-    return {
-      mimeType: mimeType as EncodedImage['mimeType'],
-      base64: bytes.toString('base64'),
+      return {
+        mimeType: mimeType as EncodedImage['mimeType'],
+        base64: bytes.toString('base64'),
+      }
+    } finally {
+      clearTimeout(timeout)
     }
-  } finally {
-    clearTimeout(timeout)
   }
+
+  throw new Error('image download retry loop ended unexpectedly')
 }
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'unknown evaluation error'
+
+class RecognitionContractError extends Error {
+  constructor(
+    public readonly issues: Array<{ code: string; path: string[] }>
+  ) {
+    super('provider output failed the recognition contract')
+    this.name = 'RecognitionContractError'
+  }
+}
 
 const configuredModel = (
   provider: VisionProviderName,
@@ -158,9 +192,10 @@ async function evaluateProvider(
   const evaluations = []
   for (const imageCase of images) {
     const startedAt = performance.now()
+    let response: VisionProviderResponse | undefined
     try {
       const image = await downloadImage(imageCase.imageUrl)
-      const response = await callVisionProvider(provider, image, process.env)
+      response = await callVisionProvider(provider, image, process.env)
       let parsedJson: unknown
       try {
         parsedJson = JSON.parse(response.rawOutput)
@@ -169,7 +204,12 @@ async function evaluateProvider(
       }
       const contractResult = IngredientRecognitionResultSchema.safeParse(parsedJson)
       if (!contractResult.success) {
-        throw new Error('provider output failed the recognition contract')
+        throw new RecognitionContractError(
+          contractResult.error.issues.map((issue) => ({
+            code: issue.code,
+            path: issue.path.map(String),
+          }))
+        )
       }
       const recognition = contractResult.data
       const ingredients = recognition.status === 'ok' ? recognition.ingredients : []
@@ -190,9 +230,14 @@ async function evaluateProvider(
         id: imageCase.id,
         scenario: imageCase.scenario,
         schemaValid: false,
-        latencyMs: performance.now() - startedAt,
-        costUsd: 0,
+        latencyMs: response?.latencyMs ?? performance.now() - startedAt,
+        inputTokens: response?.inputTokens,
+        outputTokens: response?.outputTokens,
+        costUsd: response?.costUsd ?? 0,
         error: errorMessage(error),
+        ...(error instanceof RecognitionContractError
+          ? { validationIssues: error.issues }
+          : {}),
       })
     }
   }
