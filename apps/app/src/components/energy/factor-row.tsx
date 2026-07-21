@@ -5,23 +5,23 @@ import { StyleSheet, Text, View } from 'react-native'
 import { colors, sp } from '@/theme/tokens'
 
 const FACTOR_ICONS: Record<EnergyFactor['key'], keyof typeof Ionicons.glyphMap> = {
+  reported_energy: 'flash',
   sleep_duration: 'moon',
-  sleep_quality: 'bed',
-  stress: 'alert-circle',
-  mood: 'happy',
-  caffeine: 'cafe',
-  self_report: 'person',
+  last_meal: 'restaurant',
+  hydration: 'water',
 }
 
 interface FactorRowProps {
   factor: EnergyFactor
 }
 
-/** One "why this score" row: icon, label, explanation, signed impact */
+/**
+ * One "why this score" row: icon, label, explanation, and — only for the
+ * scoring `reported_energy` factor — a signed impact. `possible_context`
+ * factors carry no impact by design, so no number is shown for them.
+ */
 export function FactorRow({ factor }: FactorRowProps) {
-  const positive = factor.impact > 0
-  const impactColor = positive ? colors.primaryDark : colors.danger
-  const impactLabel = `${positive ? '+' : ''}${factor.impact}`
+  const impact = factor.impact
 
   return (
     <View style={styles.row}>
@@ -32,7 +32,16 @@ export function FactorRow({ factor }: FactorRowProps) {
         <Text style={styles.label}>{factor.label}</Text>
         <Text style={styles.explanation}>{factor.explanation}</Text>
       </View>
-      <Text style={[styles.impact, { color: impactColor }]}>{impactLabel}</Text>
+      {impact !== undefined ? (
+        <Text
+          style={[
+            styles.impact,
+            { color: impact < 0 ? colors.danger : colors.primaryDark },
+          ]}
+        >
+          {impact > 0 ? `+${impact}` : `${impact}`}
+        </Text>
+      ) : null}
     </View>
   )
 }
