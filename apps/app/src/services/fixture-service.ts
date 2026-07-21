@@ -1,7 +1,7 @@
 import {
+  buildInventoryNutritionFallback,
   fixtureCoachReply,
   fixtureDayPlan,
-  fixtureNutritionPlan,
   fixtureTasks,
   filterNutritionPlanForDietarySafety,
   EnergyEngine,
@@ -10,7 +10,9 @@ import {
   type CoachReply,
   type DayPlan,
   type EnergyResult,
+  type FridgeImageUpload,
   type FridgeItem,
+  type IngredientRecognitionResult,
   type NutritionPlan,
   type ReminderPreference,
   type Task,
@@ -83,12 +85,25 @@ export class FixtureService implements AkesoService {
     }
   }
 
+  private buildNutrition(date: string): NutritionPlan {
+    const plan = buildInventoryNutritionFallback({
+      date,
+      fridge: Array.from(this.fridge.values()),
+      energyBand: this.energy?.band ?? 'moderate',
+      dietaryPreference: this.profile?.dietaryPreference ?? 'none',
+      needs: [],
+    })
+    return filterNutritionPlanForDietarySafety(plan, this.profile?.dietarySafety)
+  }
+
   async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
     await wait(LATENCY_MS)
-    return filterNutritionPlanForDietarySafety(
-      { ...fixtureNutritionPlan, date },
-      this.profile?.dietarySafety
-    )
+    return this.buildNutrition(date)
+  }
+
+  async regenerateNutrition(date: string): Promise<NutritionPlan> {
+    await wait(LATENCY_MS)
+    return this.buildNutrition(date)
   }
 
   async getCoachReply(_date: string): Promise<CoachReply> {
@@ -110,6 +125,20 @@ export class FixtureService implements AkesoService {
   async deleteFridgeItem(id: string): Promise<void> {
     await wait(LATENCY_MS / 3)
     this.fridge.delete(id)
+  }
+
+  async saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]> {
+    await wait(LATENCY_MS / 3)
+    items.forEach((item) => this.fridge.set(item.id, item))
+    return items
+  }
+
+  async recognizeFridgeImage(
+    _image: FridgeImageUpload
+  ): Promise<IngredientRecognitionResult> {
+    throw new Error(
+      'Live fridge recognition requires EXPO_PUBLIC_API_URL. Manual entry is available.'
+    )
   }
 
   async getReminderPreference(): Promise<ReminderPreference | null> {

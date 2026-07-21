@@ -1,5 +1,6 @@
 import { EnergyEngine } from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
+import type { AiServices } from './services/types'
 import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
 
@@ -17,9 +18,50 @@ const validCheckIn: CheckInInput = {
 
 let app: ReturnType<typeof createApp>
 
+const fakeAiServices: AiServices = {
+  async recognizeIngredients() {
+    return {
+      status: 'ok',
+      ingredients: [
+        {
+          name: 'Tomato',
+          category: 'vegetable',
+          confidence: 0.93,
+          uncertaintyReason: null,
+        },
+      ],
+    }
+  },
+  async generateNutrition({ date, fridge }) {
+    return {
+      date,
+      needs: [],
+      fridge,
+      meals: fridge.length
+        ? [
+            {
+              id: 'meal-1',
+              slot: 'lunch',
+              title: `Use ${fridge[0].name}`,
+              description: 'Uses a confirmed fridge ingredient.',
+              usesFridgeItemIds: [fridge[0].id],
+              allergenTags: fridge[0].allergenTags,
+              boosts: [],
+              prepMinutes: 10,
+              tags: ['confirmed fridge'],
+            },
+          ]
+        : [],
+      rationale: fridge.length
+        ? 'Generated from confirmed inventory.'
+        : 'Add and confirm fridge ingredients first.',
+    }
+  },
+}
+
 beforeEach(() => {
   // Fresh in-memory repos per test so state never leaks across cases.
-  app = createApp(createMemoryRepos())
+  app = createApp(createMemoryRepos(), fakeAiServices)
 })
 
 describe('POST /v1/checkins', () => {
@@ -204,12 +246,50 @@ describe('fridge', () => {
     ])
   })
 
+  test('renaming an item into an existing name merges without leaving an orphan', async () => {
+    await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+    await request(app)
+      .put('/v1/fridge/oat-milk')
+      .send({ name: 'Oat milk', category: 'dairy' })
+      .expect(200)
+
+    // Renaming "oat-milk" to collide with "milk"'s name should merge into
+    // the existing "milk" row, not leave a stale "oat-milk" row behind.
+    await request(app)
+      .put('/v1/fridge/oat-milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+
+    const response = await request(app).get('/v1/fridge').expect(200)
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
+    ])
+  })
+
   test('PUT rejects an invalid category with 400 VALIDATION_ERROR', async () => {
     const response = await request(app)
       .put('/v1/fridge/mystery')
       .send({ name: 'Mystery leftovers', category: 'not_a_category' })
       .expect(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  test('POST and partial PATCH aliases provide presence-only CRUD', async () => {
+    await request(app)
+      .post('/v1/fridge-items')
+      .send({ id: 'apple', name: 'Apple', category: 'fruit' })
+      .expect(200)
+    await request(app)
+      .patch('/v1/fridge-items/apple')
+      .send({ name: 'Green apple' })
+      .expect(200)
+    const response = await request(app).get('/v1/fridge-items').expect(200)
+    expect(response.body.data).toEqual([
+      { id: 'apple', name: 'Green apple', category: 'fruit', allergenTags: [] },
+    ])
   })
 
   test('DELETE removes the item', async () => {
@@ -226,6 +306,74 @@ describe('fridge', () => {
   test('DELETE of an id that never existed is a no-op, not an error', async () => {
     const response = await request(app).delete('/v1/fridge/never-existed').expect(200)
     expect(response.body).toEqual({ success: true, data: null })
+  })
+
+  test('recognition returns editable candidates without writing inventory', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
+    const response = await request(app)
+      .post('/v1/fridge/recognitions')
+      .attach('image', jpeg, { filename: 'fridge.jpg', contentType: 'image/jpeg' })
+      .expect(200)
+
+    expect(response.body.data.ingredients).toEqual([
+      expect.objectContaining({ name: 'Tomato', confidence: 0.93 }),
+    ])
+    const inventory = await request(app).get('/v1/fridge').expect(200)
+    expect(inventory.body.data).toEqual([])
+  })
+
+  test('recognition rejects a spoofed image MIME type by file signature', async () => {
+    const response = await request(app)
+      .post('/v1/fridge/recognitions')
+      .attach('image', Buffer.from('not an image'), {
+        filename: 'fake.jpg',
+        contentType: 'image/jpeg',
+      })
+      .expect(400)
+    expect(response.body.error.code).toBe('INVALID_IMAGE')
+  })
+
+  test('recognition rejects images larger than 5 MiB without writing them', async () => {
+    const oversized = Buffer.alloc(5 * 1024 * 1024 + 1)
+    oversized.set([0xff, 0xd8, 0xff], 0)
+    const response = await request(app)
+      .post('/v1/fridge/recognitions')
+      .attach('image', oversized, {
+        filename: 'oversized.jpg',
+        contentType: 'image/jpeg',
+      })
+      .expect(413)
+    expect(response.body.error.code).toBe('INVALID_IMAGE')
+  })
+
+  test('batch persists only items the user submitted as confirmed', async () => {
+    const response = await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({
+        items: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+      })
+      .expect(200)
+
+    expect(response.body.data).toEqual([
+      { id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] },
+    ])
+    const inventory = await request(app).get('/v1/fridge').expect(200)
+    expect(inventory.body.data).toHaveLength(1)
+  })
+
+  test('batch deduplicates normalized ingredient names', async () => {
+    const response = await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({
+        items: [
+          { id: 'oat-1', name: ' Oat   milk ', category: 'dairy' },
+          { id: 'oat-2', name: 'oat milk', category: 'other' },
+        ],
+      })
+      .expect(200)
+    expect(response.body.data).toHaveLength(1)
+    const inventory = await request(app).get('/v1/fridge').expect(200)
+    expect(inventory.body.data).toHaveLength(1)
   })
 })
 
@@ -251,11 +399,66 @@ describe('reminders', () => {
   })
 })
 
-describe('nutrition and coach passthrough', () => {
-  test('GET /v1/nutrition/:date returns the fixture adapted to the date', async () => {
+describe('nutrition and coach', () => {
+  test('empty confirmed inventory produces no invented meals', async () => {
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
     expect(response.body.data.date).toBe('2026-08-01')
-    expect(response.body.data.needs.length).toBeGreaterThan(0)
+    expect(response.body.data.fridge).toEqual([])
+    expect(response.body.data.meals).toEqual([])
+  })
+
+  test('regeneration uses only persisted inventory ids', async () => {
+    await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({ items: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }] })
+      .expect(200)
+    const response = await request(app)
+      .post('/v1/nutrition/2026-08-01/regenerate')
+      .expect(200)
+    expect(response.body.data.fridge).toEqual([
+      { id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] },
+    ])
+    expect(response.body.data.meals[0].usesFridgeItemIds).toEqual(['tomato'])
+    expect(response.body.data.meals[0].allergenTags).toEqual([])
+  })
+
+  test('cached AI plan is invalidated when confirmed inventory changes', async () => {
+    await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({ items: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }] })
+      .expect(200)
+    await request(app)
+      .post('/v1/nutrition/2026-08-01/regenerate')
+      .expect(200)
+
+    const cached = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
+    expect(cached.body.data.meals).toHaveLength(1)
+
+    await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({ items: [{ id: 'rice', name: 'Rice', category: 'grain' }] })
+      .expect(200)
+    const invalidated = await request(app)
+      .get('/v1/nutrition/2026-08-01')
+      .expect(200)
+    expect(invalidated.body.data.fridge.map((item: { id: string }) => item.id)).toEqual([
+      'tomato',
+      'rice',
+    ])
+    expect(invalidated.body.data.meals[0].usesFridgeItemIds).toEqual([
+      'tomato',
+      'rice',
+    ])
+  })
+
+  test('rate-limits repeated regeneration requests (the AI-calling path)', async () => {
+    for (let i = 0; i < env.rateLimit.writeMax; i++) {
+      await request(app).post('/v1/nutrition/2026-08-01/regenerate').expect(200)
+    }
+    const response = await request(app)
+      .post('/v1/nutrition/2026-08-01/regenerate')
+      .expect(429)
+    expect(response.body.error.code).toBe('RATE_LIMITED')
   })
 
   test('GET /v1/nutrition/:date filters meals matching the saved safety profile', async () => {
@@ -273,11 +476,17 @@ describe('nutrition and coach passthrough', () => {
         },
       })
       .expect(200)
+    await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({
+        items: [
+          { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: ['milk'] },
+        ],
+      })
+      .expect(200)
 
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
-    expect(response.body.data.meals.map((meal: { id: string }) => meal.id)).not.toContain(
-      'meal-1'
-    )
+    expect(response.body.data.meals).toEqual([])
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {

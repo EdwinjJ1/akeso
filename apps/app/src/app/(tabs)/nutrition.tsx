@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { MealCard } from '@/components/nutrition/meal-card'
 import { NutrientBar } from '@/components/nutrition/nutrient-bar'
+import { FridgeRecognition } from '@/components/nutrition/fridge-recognition'
 import { Card } from '@/components/ui/card'
-import { Tag } from '@/components/ui/chips'
 import { Screen } from '@/components/ui/screen'
 import { SectionHeader } from '@/components/ui/section-header'
 import { Reveal } from '@/components/ui/reveal'
@@ -15,8 +15,14 @@ import { colors, radius, sp, type } from '@/theme/tokens'
 type Mode = 'fridge' | 'needs'
 
 export default function Nutrition() {
-  const { nutrition } = useAppState()
+  const { nutrition, refreshToday, regenerateNutrition } = useAppState()
   const [mode, setMode] = useState<Mode>('fridge')
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!nutrition) void refreshToday()
+  }, [nutrition, refreshToday])
 
   if (!nutrition) {
     return (
@@ -29,19 +35,7 @@ export default function Nutrition() {
     )
   }
 
-  const fridgeSection = (
-    <Card>
-      <Text style={type.h3}>In your fridge</Text>
-      <View style={styles.fridgeChips}>
-        {nutrition.fridge.map((item) => (
-          <Tag key={item.id} label={item.name} />
-        ))}
-      </View>
-      <Text style={styles.fridgeHint}>
-        Editing your fridge (and receipt scanning) lands in a later round.
-      </Text>
-    </Card>
-  )
+  const fridgeSection = <FridgeRecognition />
 
   const needsSection = (
     <Card>
@@ -51,8 +45,27 @@ export default function Nutrition() {
           <NutrientBar key={need.key} need={need} />
         ))}
       </View>
+      {nutrition.needs.length === 0 ? (
+        <Text style={styles.emptyText}>
+          Add confirmed ingredients to generate today’s real priorities.
+        </Text>
+      ) : null}
     </Card>
   )
+
+  const runRegenerate = async () => {
+    setRegenerating(true)
+    setRegenerateError(null)
+    try {
+      await regenerateNutrition()
+    } catch (error) {
+      setRegenerateError(
+        error instanceof Error ? error.message : 'Could not regenerate advice.'
+      )
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   return (
     <Screen tabbed>
@@ -110,6 +123,19 @@ export default function Nutrition() {
           </Text>
         </Card>
       )}
+
+      <Pressable
+        style={[styles.regenerateButton, regenerating && styles.disabled]}
+        onPress={runRegenerate}
+        disabled={regenerating}
+        accessibilityRole="button"
+      >
+        <Ionicons name="sparkles" size={17} color={colors.textOnColor} />
+        <Text style={styles.regenerateText}>
+          {regenerating ? 'Generating real advice…' : 'Regenerate from current fridge'}
+        </Text>
+      </Pressable>
+      {regenerateError ? <Text style={styles.errorText}>{regenerateError}</Text> : null}
 
       <Card tone="muted" style={styles.rationaleCard}>
         <Ionicons name="information-circle" size={17} color={colors.primaryDark} />
@@ -173,17 +199,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '900',
   },
-  fridgeChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: sp(2),
-    marginTop: sp(3),
-  },
-  fridgeHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: sp(3),
-  },
+  emptyText: { ...type.small, marginTop: sp(3) },
   needsList: {
     marginTop: sp(3),
   },
@@ -204,6 +220,19 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     flex: 1,
   },
+  regenerateButton: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    backgroundColor: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sp(2),
+    marginBottom: sp(4),
+  },
+  regenerateText: { color: colors.textOnColor, fontWeight: '900' },
+  disabled: { opacity: 0.55 },
+  errorText: { ...type.small, color: colors.danger, marginBottom: sp(4) },
   rationaleCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',

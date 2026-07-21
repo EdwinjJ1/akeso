@@ -1,22 +1,77 @@
 import { expect, test } from 'vitest'
 
-import { fixtureNutritionPlan } from './fixtures'
 import { filterNutritionPlanForDietarySafety } from './nutrition-safety'
+import type { NutritionPlan } from './types'
+
+const nutritionPlan: NutritionPlan = {
+  date: '2026-07-21',
+  needs: [
+    {
+      key: 'protein',
+      label: 'Protein',
+      current: 38,
+      target: 90,
+      unit: 'g',
+      note: 'Supports steady energy through the afternoon.',
+    },
+  ],
+  fridge: [
+    { id: 'fridge-1', name: 'Greek yogurt', category: 'dairy', allergenTags: ['milk'] },
+    { id: 'fridge-2', name: 'Salmon fillet', category: 'protein', allergenTags: ['fish'] },
+    { id: 'fridge-3', name: 'Eggs', category: 'protein', allergenTags: ['eggs'] },
+  ],
+  meals: [
+    {
+      id: 'meal-1',
+      slot: 'breakfast',
+      title: 'Blueberry yogurt oats',
+      description: 'Oats + Greek yogurt + blueberries.',
+      usesFridgeItemIds: ['fridge-1'],
+      allergenTags: ['milk'],
+      boosts: ['protein'],
+      prepMinutes: 5,
+      tags: ['pre-focus', '5 min'],
+    },
+    {
+      id: 'meal-2',
+      slot: 'lunch',
+      title: 'Salmon rice bowl',
+      description: 'Salmon + brown rice + spinach.',
+      usesFridgeItemIds: ['fridge-2'],
+      allergenTags: ['fish'],
+      boosts: ['protein'],
+      prepMinutes: 20,
+      tags: ['balanced lunch'],
+    },
+    {
+      id: 'meal-3',
+      slot: 'snack',
+      title: '3pm egg wrap',
+      description: 'A simple protein snack.',
+      usesFridgeItemIds: ['fridge-3'],
+      allergenTags: ['eggs'],
+      boosts: ['protein'],
+      prepMinutes: 10,
+      tags: ['easy snack'],
+    },
+  ],
+  rationale: "Today's meals keep fuel steady.",
+}
 
 test('keeps all meals when the user has no dietary safety filters', () => {
-  const filtered = filterNutritionPlanForDietarySafety(fixtureNutritionPlan, {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
     allergens: [],
     avoidIngredients: [],
   })
 
   expect(filtered.meals.map((meal) => meal.id)).toEqual(
-    fixtureNutritionPlan.meals.map((meal) => meal.id)
+    nutritionPlan.meals.map((meal) => meal.id)
   )
-  expect(filtered.rationale).toBe(fixtureNutritionPlan.rationale)
+  expect(filtered.rationale).toBe(nutritionPlan.rationale)
 })
 
 test('removes meals tagged with a reported food allergy', () => {
-  const filtered = filterNutritionPlanForDietarySafety(fixtureNutritionPlan, {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
     allergens: ['milk'],
     avoidIngredients: [],
   })
@@ -26,7 +81,7 @@ test('removes meals tagged with a reported food allergy', () => {
 })
 
 test('removes meals matching a free-text avoid ingredient', () => {
-  const filtered = filterNutritionPlanForDietarySafety(fixtureNutritionPlan, {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
     allergens: [],
     avoidIngredients: ['salmon'],
   })
@@ -36,33 +91,33 @@ test('removes meals matching a free-text avoid ingredient', () => {
 
 test('returns an empty meal list (a valid plan, not an error) when every meal is filtered out', () => {
   const everyAllergen = [
-    ...new Set(fixtureNutritionPlan.meals.flatMap((meal) => meal.allergenTags)),
+    ...new Set(nutritionPlan.meals.flatMap((meal) => meal.allergenTags)),
   ]
 
-  const filtered = filterNutritionPlanForDietarySafety(fixtureNutritionPlan, {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
     allergens: everyAllergen,
     avoidIngredients: [],
   })
 
   expect(filtered.meals).toEqual([])
   // The rest of the plan stays intact and structurally valid.
-  expect(filtered.date).toBe(fixtureNutritionPlan.date)
-  expect(filtered.needs).toEqual(fixtureNutritionPlan.needs)
-  expect(filtered.fridge).toEqual(fixtureNutritionPlan.fridge)
+  expect(filtered.date).toBe(nutritionPlan.date)
+  expect(filtered.needs).toEqual(nutritionPlan.needs)
+  expect(filtered.fridge).toEqual(nutritionPlan.fridge)
   expect(filtered.rationale).toContain('filtered out')
 })
 
 test('does not mutate the input plan while filtering', () => {
-  const snapshot = JSON.parse(JSON.stringify(fixtureNutritionPlan))
+  const snapshot = JSON.parse(JSON.stringify(nutritionPlan))
 
-  const filtered = filterNutritionPlanForDietarySafety(fixtureNutritionPlan, {
+  const filtered = filterNutritionPlanForDietarySafety(nutritionPlan, {
     allergens: ['milk'],
     avoidIngredients: ['salmon'],
   })
 
   // The original plan is untouched...
-  expect(fixtureNutritionPlan).toEqual(snapshot)
+  expect(nutritionPlan).toEqual(snapshot)
   // ...and the result is a fresh array, never an alias of the input.
-  expect(filtered.meals).not.toBe(fixtureNutritionPlan.meals)
-  expect(filtered.meals.length).toBeLessThan(fixtureNutritionPlan.meals.length)
+  expect(filtered.meals).not.toBe(nutritionPlan.meals)
+  expect(filtered.meals.length).toBeLessThan(nutritionPlan.meals.length)
 })

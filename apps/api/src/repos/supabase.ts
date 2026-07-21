@@ -3,6 +3,7 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  NutritionPlan,
   PlanBlock,
   ReminderPreference,
   Task,
@@ -78,6 +79,10 @@ interface FridgeItemRow {
 interface ReminderPreferenceRow {
   enabled: boolean
   check_in_time: string
+}
+
+interface NutritionPlanCacheRow {
+  plan: NutritionPlan
 }
 
 /**
@@ -358,6 +363,36 @@ export function createSupabaseRepos(): Repos {
             .eq('user_id', userId)
             .eq('id', id),
           'fridge_item.remove'
+        )
+      },
+    },
+
+    nutritionPlanCache: {
+      async get(userId, cacheKey) {
+        const row = unwrap<NutritionPlanCacheRow>(
+          await supabase
+            .from('nutrition_plan_cache')
+            .select('plan')
+            .eq('user_id', userId)
+            .eq('cache_key', cacheKey)
+            .maybeSingle(),
+          'nutrition_plan_cache.get'
+        )
+        return row?.plan ?? null
+      },
+      async upsert(userId, cacheKey, plan) {
+        unwrap(
+          await supabase.from('nutrition_plan_cache').upsert(
+            {
+              user_id: userId,
+              cache_key: cacheKey,
+              date: plan.date,
+              plan,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,cache_key' }
+          ),
+          'nutrition_plan_cache.upsert'
         )
       },
     },

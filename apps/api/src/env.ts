@@ -67,6 +67,12 @@ export const env = {
     : undefined,
   corsOrigins: parseOrigins(process.env.CORS_ORIGINS),
   memoryRepoLimit: parsePositiveInt(process.env.MEMORY_REPO_LIMIT, 1000),
+  vision: {
+    enabled: process.env.VISION_FEATURE_ENABLED !== 'false',
+    provider: process.env.VISION_PROVIDER ?? 'mimo',
+    mimoApiKey: process.env.MIMO_API_KEY,
+    mimoModel: process.env.MIMO_VISION_MODEL ?? 'mimo-v2.5',
+  },
   rateLimit: {
     windowMs: parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
     max: parsePositiveInt(process.env.RATE_LIMIT_MAX, 60),

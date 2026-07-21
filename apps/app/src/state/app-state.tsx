@@ -3,6 +3,9 @@ import type {
   CoachReply,
   DayPlan,
   EnergyResult,
+  FridgeImageUpload,
+  FridgeItem,
+  IngredientRecognitionResult,
   NutritionPlan,
   Task,
   UserProfile,
@@ -27,6 +30,7 @@ interface AppState {
   plan: DayPlan | null
   tasks: Task[]
   nutrition: NutritionPlan | null
+  fridge: FridgeItem[]
   coach: CoachReply | null
   loading: boolean
   error: string | null
@@ -37,6 +41,11 @@ interface AppActions {
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
   refreshToday(): Promise<void>
   regeneratePlan(instruction?: string): Promise<void>
+  recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
+  saveFridgeItems(items: FridgeItem[]): Promise<void>
+  updateFridgeItem(item: FridgeItem): Promise<void>
+  deleteFridgeItem(id: string): Promise<void>
+  regenerateNutrition(): Promise<void>
 }
 
 const initialState: AppState = {
@@ -46,6 +55,7 @@ const initialState: AppState = {
   plan: null,
   tasks: [],
   nutrition: null,
+  fridge: [],
   coach: null,
   loading: false,
   error: null,
@@ -69,12 +79,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, loading: true, error: null }))
     try {
       const date = todayISO()
-      const [energy, tasks, plan, nutrition, coach] = await Promise.all([
+      const [energy, tasks, plan, nutrition, coach, fridge] = await Promise.all([
         service.getTodayEnergy(date),
         service.getTasks(date),
         service.getTodayPlan(date),
         service.getNutritionPlan(date),
         service.getCoachReply(date),
+        service.getFridgeItems(),
       ])
       setState((prev) => ({
         ...prev,
@@ -83,6 +94,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         plan,
         nutrition,
         coach,
+        fridge,
         loading: false,
       }))
     } catch (error) {
@@ -111,6 +123,52 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  const recognizeFridgeImage = useCallback(
+    (image: FridgeImageUpload) => service.recognizeFridgeImage(image),
+    [service]
+  )
+
+  const regenerateNutrition = useCallback(async () => {
+    const nutrition = await service.regenerateNutrition(todayISO())
+    setState((prev) => ({ ...prev, nutrition }))
+  }, [service])
+
+  const saveFridgeItems = useCallback(
+    async (items: FridgeItem[]) => {
+      await service.saveFridgeItemsBatch(items)
+      const [fridge, nutrition] = await Promise.all([
+        service.getFridgeItems(),
+        service.getNutritionPlan(todayISO()),
+      ])
+      setState((prev) => ({ ...prev, fridge, nutrition }))
+    },
+    [service]
+  )
+
+  const updateFridgeItem = useCallback(
+    async (item: FridgeItem) => {
+      await service.saveFridgeItem(item)
+      const [fridge, nutrition] = await Promise.all([
+        service.getFridgeItems(),
+        service.getNutritionPlan(todayISO()),
+      ])
+      setState((prev) => ({ ...prev, fridge, nutrition }))
+    },
+    [service]
+  )
+
+  const deleteFridgeItem = useCallback(
+    async (id: string) => {
+      await service.deleteFridgeItem(id)
+      const [fridge, nutrition] = await Promise.all([
+        service.getFridgeItems(),
+        service.getNutritionPlan(todayISO()),
+      ])
+      setState((prev) => ({ ...prev, fridge, nutrition }))
+    },
+    [service]
+  )
+
   const value = useMemo(
     () => ({
       ...state,
@@ -118,8 +176,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       submitCheckIn,
       refreshToday,
       regeneratePlan,
+      recognizeFridgeImage,
+      saveFridgeItems,
+      updateFridgeItem,
+      deleteFridgeItem,
+      regenerateNutrition,
     }),
-    [state, completeOnboarding, submitCheckIn, refreshToday, regeneratePlan]
+    [
+      state,
+      completeOnboarding,
+      submitCheckIn,
+      refreshToday,
+      regeneratePlan,
+      recognizeFridgeImage,
+      saveFridgeItems,
+      updateFridgeItem,
+      deleteFridgeItem,
+      regenerateNutrition,
+    ]
   )
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>

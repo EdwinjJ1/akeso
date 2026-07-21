@@ -19,7 +19,7 @@ import {
   progressRatio,
   shouldShowContinue,
   type CheckInAnswers,
-} from './checkin.logic'
+} from '../state/checkin-logic'
 import { Button } from '@/components/ui/buttons'
 import { ChipRow, Tag, type ChipOption } from '@/components/ui/chips'
 import { Mascot } from '@/components/mascot'
