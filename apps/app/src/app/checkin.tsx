@@ -135,6 +135,7 @@ export default function CheckIn() {
         onChangeText={setLastMealDescription}
         placeholder="e.g. leftover salmon rice bowl"
         placeholderTextColor={colors.textMuted}
+        maxLength={280}
         multiline
       />
 

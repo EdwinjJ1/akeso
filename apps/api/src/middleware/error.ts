@@ -9,10 +9,28 @@ export function notFoundHandler(req: Request, res: Response): void {
   fail(res, 404, 'NOT_FOUND', `No route for ${req.method} ${req.path}`)
 }
 
-const describeZodError = (err: ZodError) =>
+/** Structural shape shared by zod v3's and v4's ZodError — see isZodError below. */
+interface ZodErrorLike {
+  issues: { path: (string | number)[]; message: string }[]
+}
+
+const describeZodError = (err: ZodErrorLike) =>
   err.issues
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join('; ')
+
+/**
+ * `instanceof ZodError` only catches errors thrown by @akeso/domain's zod v4
+ * copy. @akeso/contracts pins zod v3, a separate physical install (npm
+ * nests it per-workspace) — its ZodError fails `instanceof` against the v4
+ * class. Any route that validates against a contracts schema would otherwise
+ * turn a 400 into an unhandled 500. Fall back to duck-typing by name.
+ */
+const isZodError = (err: unknown): err is ZodErrorLike =>
+  err instanceof ZodError ||
+  (err instanceof Error &&
+    err.name === 'ZodError' &&
+    Array.isArray((err as unknown as ZodErrorLike).issues))
 
 /** Mounted last. Never forwards stack traces or error internals to the client. */
 export function errorHandler(
@@ -31,7 +49,7 @@ export function errorHandler(
     return
   }
 
-  if (err instanceof ZodError) {
+  if (isZodError(err)) {
     fail(res, 400, 'VALIDATION_ERROR', describeZodError(err))
     return
   }

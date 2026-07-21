@@ -10,8 +10,10 @@ export default defineConfig({
   test: {
     include: [
       'apps/api/src/**/*.test.ts',
+      'packages/contracts/src/**/*.test.ts',
       'packages/domain/src/schemas.test.ts',
       'packages/domain/src/planner.test.ts',
+      'packages/domain/src/fixtures.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
     // real Supabase credentials — tests always run in demo mode.
