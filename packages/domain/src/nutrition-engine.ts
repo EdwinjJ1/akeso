@@ -154,9 +154,16 @@ const normaliseFoodName = (value: string) =>
 
 const profileFor = (item: FridgeItem): FoodNutrientProfile | undefined => {
   const normalized = normaliseFoodName(item.name)
-  return FOOD_NUTRIENT_PROFILES.find((profile) =>
+  const candidates = FOOD_NUTRIENT_PROFILES.filter((profile) =>
     profile.aliases.includes(normalized)
   )
+
+  if (candidates.length !== 1) return undefined
+  const profile = candidates[0]
+
+  // A contradictory manual category makes a name-only match uncertain. Keep
+  // it visible in the fridge, but do not assume a nutrient profile for it.
+  return profile?.fridgeCategory === item.category ? profile : undefined
 }
 
 const safeGrams = (item: NutritionInventoryItem, profile: FoodNutrientProfile) =>
@@ -166,9 +173,21 @@ const safeGrams = (item: NutritionInventoryItem, profile: FoodNutrientProfile) =
     ? Math.min(item.quantityGrams, 2_000)
     : profile.defaultServingGrams
 
-const noteFor = (key: NutrientKey) => {
+const safeWaterIntake = (value: number | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
+
+const noteFor = (key: NutrientKey, current: number) => {
   const definition = NUTRIENT_TARGETS[key]
-  return `${definition.calculation} Baseline: ${NUTRITION_DATASET.source} ${NUTRITION_DATASET.version}; planning guide only, not medical advice.`
+  const remaining = round(Math.max(0, definition.target - current))
+  const coverage = round((current / definition.target) * 100)
+  const status = remaining > 0
+    ? `${remaining}${definition.unit} remains to reach the planning target (${coverage}% currently covered).`
+    : `The mapped current value covers the planning target (${coverage}%).`
+  const source = key === 'hydration'
+    ? 'Source: explicitly logged drinking water.'
+    : `Food composition source: ${NUTRITION_DATASET.source} ${NUTRITION_DATASET.version}.`
+
+  return `${status} ${definition.calculation} ${source} Target: generic adult-student demo planning baseline; not a personalised NRV or medical recommendation.`
 }
 
 /**
@@ -184,7 +203,7 @@ export class NutritionEngine {
       iron: 0,
       vitamin_c: 0,
       omega3: 0,
-      hydration: Math.max(0, input.waterIntakeLitres ?? 0),
+      hydration: safeWaterIntake(input.waterIntakeLitres),
     }
     const matchedFoods: MatchedFoodContribution[] = []
     const unmatchedFridgeItemIds: string[] = []
@@ -222,7 +241,7 @@ export class NutritionEngine {
         current: round(totals[key]),
         target: NUTRIENT_TARGETS[key].target,
         unit: NUTRIENT_TARGETS[key].unit,
-        note: noteFor(key),
+        note: noteFor(key, round(totals[key])),
       })
     )
 

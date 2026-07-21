@@ -19,6 +19,9 @@ describe('NutritionEngine', () => {
     expect(first.plan.needs).toHaveLength(7)
     expect(first.plan.needs.every((need) => need.unit && need.target > 0 && need.note)).toBe(true)
     expect(first.plan.needs.find((need) => need.key === 'protein')?.current).toBe(72.9)
+    expect(first.plan.needs.find((need) => need.key === 'protein')?.note).toContain(
+      '2.1g remains'
+    )
     expect(first.plan.needs.find((need) => need.key === 'vitamin_c')?.current).toBe(158.7)
     expect(first.plan.needs.find((need) => need.key === 'hydration')?.current).toBe(1.2)
     expect(first.unmatchedFridgeItemIds).toEqual([])
@@ -63,6 +66,17 @@ describe('NutritionEngine', () => {
     expect(result.plan.rationale).toContain('could not be mapped safely')
   })
 
+  test('does not trust a name-only match when the confirmed category conflicts', () => {
+    const result = engine.analyse({
+      date: '2026-07-21',
+      fridge: [{ id: 'uncertain-1', name: 'Salmon fillet', category: 'vegetable' }],
+    })
+
+    expect(result.unmatchedFridgeItemIds).toEqual(['uncertain-1'])
+    expect(result.matchedFoods).toEqual([])
+    expect(result.plan.needs.every((need) => need.current === 0)).toBe(true)
+  })
+
   test('uses the documented default serving when a fridge quantity is missing or invalid', () => {
     const result = engine.analyse({
       date: '2026-07-21',
@@ -71,6 +85,16 @@ describe('NutritionEngine', () => {
 
     expect(result.matchedFoods[0]?.assumedGrams).toBe(50)
     expect(result.plan.needs.find((need) => need.key === 'protein')?.current).toBe(6.6)
+  })
+
+  test('uses zero rather than leaking a non-finite hydration value', () => {
+    const result = engine.analyse({
+      date: '2026-07-21',
+      fridge: [],
+      waterIntakeLitres: Number.NaN,
+    })
+
+    expect(result.plan.needs.find((need) => need.key === 'hydration')?.current).toBe(0)
   })
 
   test('respects dietary preferences while keeping the personalization input optional', () => {

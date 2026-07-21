@@ -38,11 +38,17 @@ fictional demo-fridge foods rather than copying the full database.
   Issue #21 supplies a quantity, the profile's documented default serving is
   used. The engine already accepts optional `quantityGrams` for that handoff.
 - Water is counted only from an explicitly supplied drinking-water amount;
-  water content in food is never estimated.
-- An unknown food name, a missing numeric quantity or an unmapped category is
-  shown as unmapped and contributes no invented nutrient values.
+  water content in food is never estimated. Missing, negative or non-finite
+  logged amounts safely contribute zero.
+- An unknown food name or a name/category conflict is shown as unmapped and
+  contributes no invented nutrient values. A missing or invalid quantity uses
+  the profile's documented default serving as described above.
 - A meal uses available fridge item IDs only. If a recipe has enough available
   ingredients but is incomplete, its description and tag explicitly say
   `needs purchase: …`.
+- Each nutrient note reports the amount or percentage still needed to reach its
+  target. Food coverage means nutrients mapped from available inventory, not
+  confirmed food consumption; hydration coverage means explicitly logged water.
 - Targets are transparent, generic demo planning baselines for an adult student
-  flow. They are not personalised requirements, clinical advice or treatment.
+  flow, not claims that AFCD defines recommended intake. They are not
+  personalised NRVs, clinical advice or treatment.
