@@ -1,9 +1,10 @@
 import {
   fixtureCoachReply,
   fixtureDayPlan,
-  fixtureNutritionPlan,
+  fixtureFridge,
   fixtureTasks,
   EnergyEngine,
+  NutritionEngine,
   type AkesoService,
   type CheckInInput,
   type CoachReply,
@@ -24,6 +25,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * scoring weights.  Production API requests use this same engine server-side.
  */
 const energyEngine = new EnergyEngine()
+const nutritionEngine = new NutritionEngine()
 
 export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
@@ -80,7 +82,7 @@ export class FixtureService implements AkesoService {
 
   async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
     await wait(LATENCY_MS)
-    return { ...fixtureNutritionPlan, date }
+    return nutritionEngine.plan({ date, fridge: fixtureFridge })
   }
 
   async getCoachReply(_date: string): Promise<CoachReply> {

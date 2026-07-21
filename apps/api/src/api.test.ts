@@ -162,11 +162,13 @@ describe('profile', () => {
   })
 })
 
-describe('nutrition and coach passthrough', () => {
-  test('GET /v1/nutrition/:date returns the fixture adapted to the date', async () => {
+describe('nutrition and coach', () => {
+  test('GET /v1/nutrition/:date returns deterministic mapped fridge analysis', async () => {
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
     expect(response.body.data.date).toBe('2026-08-01')
     expect(response.body.data.needs.length).toBeGreaterThan(0)
+    expect(response.body.data.meals.length).toBeGreaterThan(0)
+    expect(response.body.data.needs.find((need: { key: string }) => need.key === 'protein').current).toBe(72.9)
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
