@@ -147,11 +147,11 @@ const capabilities: Record<VisionProviderName, VisionProviderCapability> = {
   },
   gemini: {
     provider: 'gemini',
-    model: 'gemini-3.1-flash-lite',
+    model: 'gemini-3.5-flash-lite',
     supportsImageInput: true,
     supportsStructuredOutput: true,
     officialDocumentation:
-      'https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite',
+      'https://ai.google.dev/gemini-api/docs/models',
     note: 'Multimodal input with application/json structured output.',
   },
   minimax: {

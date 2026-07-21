@@ -11,6 +11,12 @@ const image = {
 } as const
 
 describe('vision spike providers', () => {
+  it('uses the production Gemini 3.5 Flash-Lite model by default', () => {
+    expect(getVisionProviderCapability('gemini').model).toBe(
+      'gemini-3.5-flash-lite'
+    )
+  })
+
   it('maps MiMo V2.5 image input using the domestic OpenAI-compatible API', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(url).toBe('https://api.xiaomimimo.com/v1/chat/completions')

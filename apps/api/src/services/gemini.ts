@@ -7,6 +7,8 @@ import {
 import { HttpError } from '../http-error'
 import {
   fallbackNutrition,
+  ingredientRecognitionJsonSchema,
+  nutritionPlanJsonSchema,
   nutritionPrompt,
   parseJson,
   postJsonWithOneRetry,
@@ -21,31 +23,34 @@ import type {
   VisionConfig,
 } from './types'
 
-const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions'
-
 function outputText(payload: Record<string, unknown>): string {
-  const first = Array.isArray(payload.choices)
-    ? (payload.choices[0] as { message?: { content?: unknown } } | undefined)
+  const candidates = payload.candidates
+  const first = Array.isArray(candidates)
+    ? (candidates[0] as
+        | { content?: { parts?: Array<{ text?: unknown }> } }
+        | undefined)
     : undefined
-  const content = first?.message?.content
-  if (typeof content !== 'string') {
+  const text = first?.content?.parts
+    ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+    .join('')
+  if (!text) {
     throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
   }
-  return content
+  return text
 }
 
-export function createMimoAiServices(
+export function createGeminiAiServices(
   config: VisionConfig,
   fetchImpl: typeof fetch
 ): AiServices {
-  const postMiMo = (body: unknown) => {
-    if (!config.enabled || !config.mimoApiKey || !config.mimoModel) {
+  const postGemini = (body: unknown) => {
+    if (!config.enabled || !config.geminiApiKey || !config.geminiModel) {
       throw unavailableError()
     }
     return postJsonWithOneRetry(
-      MIMO_URL,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`,
       {
-        Authorization: `Bearer ${config.mimoApiKey}`,
+        'x-goog-api-key': config.geminiApiKey,
         'Content-Type': 'application/json',
       },
       body,
@@ -56,26 +61,26 @@ export function createMimoAiServices(
   const recognizeIngredients = async (
     image: UploadedImage
   ): Promise<IngredientRecognitionResult> => {
-    const payload = await postMiMo({
-      model: config.mimoModel,
-      messages: [
+    const payload = await postGemini({
+      contents: [
         {
           role: 'user',
-          content: [
-            { type: 'text', text: recognitionPrompt },
+          parts: [
+            { text: recognitionPrompt },
             {
-              type: 'image_url',
-              image_url: {
-                url: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`,
+              inlineData: {
+                mimeType: image.mimeType,
+                data: image.bytes.toString('base64'),
               },
             },
           ],
         },
       ],
-      response_format: { type: 'json_object' },
-      max_completion_tokens: 2_048,
-      thinking: { type: 'disabled' },
-      stream: false,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: ingredientRecognitionJsonSchema,
+        temperature: 0,
+      },
     })
     const parsed = ingredientRecognitionResultSchema.safeParse(
       parseJson(outputText(payload))
@@ -92,13 +97,18 @@ export function createMimoAiServices(
     if (input.fridge.length === 0) return fallbackNutrition(input)
 
     try {
-      const payload = await postMiMo({
-        model: config.mimoModel,
-        messages: [{ role: 'user', content: nutritionPrompt(input) }],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 3_000,
-        thinking: { type: 'disabled' },
-        stream: false,
+      const payload = await postGemini({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: nutritionPrompt(input) }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseJsonSchema: nutritionPlanJsonSchema,
+          temperature: 0,
+        },
       })
       const parsed = validateNutritionPlanOutput(
         input,

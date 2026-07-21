@@ -17,7 +17,7 @@ Keep production photo recognition disabled until one provider passes the full
 20-image admission suite. Manual ingredient CRUD is the release-safe fallback.
 
 The first live candidate is Xiaomi MiMo `mimo-v2.5` through the domestic API.
-OpenAI `gpt-5.6-luna` and Gemini `gemini-3.1-flash-lite` are alternatives.
+OpenAI `gpt-5.6-luna` and Gemini `gemini-3.5-flash-lite` are alternatives.
 MiniMax `MiniMax-M2.7` is excluded from vision because its official domestic
 compatibility documentation says image input is unsupported; it may later be
 evaluated independently for text-only nutrition suggestions. Retired MiMo V2
