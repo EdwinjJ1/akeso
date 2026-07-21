@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Config comes from EXPO_PUBLIC_* vars, which Expo inlines into the client
@@ -36,22 +36,40 @@ function getClient(): SupabaseClient {
 }
 
 /**
+ * In-flight anonymous sign-in, shared by concurrent callers. Without this,
+ * the App's parallel refreshToday() (five service calls at once) would each
+ * find no session and fire its own signInAnonymously(), creating several
+ * anonymous users and splitting one day's reads and writes across different
+ * auth.uid()s. Cleared once settled so a failed attempt can be retried.
+ */
+let pendingSignIn: Promise<Session> | undefined
+
+/**
  * Akeso's MVP has no sign-in screen (single-user product, TEAM_CONTRACT
  * §9/architecture.html) — anonymous auth gives every install a real,
  * persisted `auth.uid()` so the API's per-user RLS still applies, without
  * building a login flow nobody asked for. The session (and so the anonymous
  * identity) persists in AsyncStorage across restarts.
  */
-async function ensureSession() {
+async function ensureSession(): Promise<Session> {
   const supabase = getClient()
   const { data } = await supabase.auth.getSession()
   if (data.session) return data.session
 
-  const { data: signInData, error } = await supabase.auth.signInAnonymously()
-  if (error || !signInData.session) {
-    throw new Error(`Could not start an anonymous session: ${error?.message ?? 'unknown error'}`)
+  if (!pendingSignIn) {
+    pendingSignIn = (async () => {
+      const { data: signInData, error } = await supabase.auth.signInAnonymously()
+      if (error || !signInData.session) {
+        throw new Error(
+          `Could not start an anonymous session: ${error?.message ?? 'unknown error'}`
+        )
+      }
+      return signInData.session
+    })().finally(() => {
+      pendingSignIn = undefined
+    })
   }
-  return signInData.session
+  return pendingSignIn
 }
 
 /** Resolves once the anonymous (or real, once that ships) session is ready. */
