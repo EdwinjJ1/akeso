@@ -27,7 +27,8 @@ export default function Dashboard() {
 
   const today = todayISO()
   const todayEnergy = energy?.date === today ? energy : null
-  const promptMode = latestCheckIn ? 'daily' : 'first'
+  const hasTodayCheckIn = latestCheckIn?.date === today
+  const promptMode = hasTodayCheckIn ? 'daily' : 'first'
 
   const mascotState: MascotState =
     todayEnergy?.band === 'high' ? 'high' : todayEnergy?.band === 'low' ? 'low' : 'steady'

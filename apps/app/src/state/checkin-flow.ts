@@ -53,17 +53,25 @@ export async function runSubmitCheckIn(
     error: null,
   })
 
+  void loadGuidance(service, input.date, applyPatch)
+
+  return energy
+}
+
+async function loadGuidance(
+  service: CheckInFlowService,
+  date: string,
+  applyPatch: (patch: AppStatePatch) => void
+) {
   try {
     const [plan, nutrition, coach] = await Promise.all([
-      service.getTodayPlan(input.date),
-      service.getNutritionPlan(input.date),
-      service.getCoachReply(input.date),
+      service.getTodayPlan(date),
+      service.getNutritionPlan(date),
+      service.getCoachReply(date),
     ])
     applyPatch({ plan, nutrition, coach })
   } catch (error) {
     console.error('Post-check-in refresh failed:', error)
     applyPatch({ error: GUIDANCE_FAILED_MESSAGE })
   }
-
-  return energy
 }

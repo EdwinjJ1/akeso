@@ -152,6 +152,19 @@ export default function CheckIn() {
   const current = STEP_META[step]
   const currentStepAnswered = isStepAnswered(step, answers)
   const showContinue = shouldShowContinue(step, answers)
+  const helperText = (() => {
+    if (!currentStepAnswered) {
+      if (step === 2) return 'Pick when you last ate to continue.'
+      if (isLastStep) return 'Pick your water intake to finish.'
+      return 'Pick an answer to continue.'
+    }
+
+    if (step <= 1) {
+      return isUpdate ? 'Change it, or keep the previous answer.' : 'Tap an answer to continue.'
+    }
+
+    return null
+  })()
 
   return (
     <Screen>
@@ -227,11 +240,7 @@ export default function CheckIn() {
         <ChipRow options={HYDRATION_OPTIONS} value={hydration} onChange={setHydration} />
       ) : null}
 
-      {step <= 1 ? (
-        <Text style={styles.hint}>
-          {isUpdate ? 'Change it, or keep the previous answer.' : 'Tap an answer to continue.'}
-        </Text>
-      ) : null}
+      {helperText ? <Text style={styles.hint}>{helperText}</Text> : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 

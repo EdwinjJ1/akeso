@@ -26,6 +26,16 @@ const plan = { date: '2026-07-21' } as unknown as DayPlan
 const nutrition = { date: '2026-07-21' } as unknown as NutritionPlan
 const coach = { message: 'hi' } as unknown as CoachReply
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0))
+
 function makeService(
   overrides: Partial<CheckInFlowService> = {}
 ): CheckInFlowService {
@@ -39,11 +49,19 @@ function makeService(
 }
 
 test('lands the score first, then fills guidance in a second patch', async () => {
+  const planDeferred = deferred<DayPlan>()
+  const nutritionDeferred = deferred<NutritionPlan>()
+  const coachDeferred = deferred<CoachReply>()
+  const service = makeService({
+    getTodayPlan: vi.fn(() => planDeferred.promise),
+    getNutritionPlan: vi.fn(() => nutritionDeferred.promise),
+    getCoachReply: vi.fn(() => coachDeferred.promise),
+  })
   const patches: AppStatePatch[] = []
-  const result = await runSubmitCheckIn(makeService(), input, (p) => patches.push(p))
+  const result = await runSubmitCheckIn(service, input, (p) => patches.push(p))
 
   expect(result).toBe(energy)
-  expect(patches).toHaveLength(2)
+  expect(patches).toHaveLength(1)
   // Phase 1: score arrives, stale dependent guidance is cleared, error reset.
   expect(patches[0]).toMatchObject({
     energy,
@@ -53,7 +71,14 @@ test('lands the score first, then fills guidance in a second patch', async () =>
     error: null,
   })
   expect(patches[0].latestCheckIn).toEqual(input)
+
+  planDeferred.resolve(plan)
+  nutritionDeferred.resolve(nutrition)
+  coachDeferred.resolve(coach)
+  await flushPromises()
+
   // Phase 2: guidance fills in.
+  expect(patches).toHaveLength(2)
   expect(patches[1]).toEqual({ plan, nutrition, coach })
 })
 
@@ -72,7 +97,7 @@ test('stores a copy of the submitted input, not the caller mutable object', asyn
 })
 
 test('keeps the score when guidance fails and reports a recoverable error', async () => {
-  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
   const service = makeService({
     getTodayPlan: vi.fn(async () => {
       throw new Error('network down')
@@ -83,6 +108,8 @@ test('keeps the score when guidance fails and reports a recoverable error', asyn
 
   expect(result).toBe(energy) // the check-in itself still succeeds
   expect(patches[0]).toMatchObject({ energy }) // score already applied
+  await flushPromises()
   expect(patches[1].error).toMatch(/check-in was saved/i)
   expect(patches[1]).not.toHaveProperty('plan')
+  consoleError.mockRestore()
 })
