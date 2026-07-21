@@ -335,7 +335,7 @@ export type FridgeCategory = z.infer<typeof FridgeCategorySchema>
 
 export const FridgeItemSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(100),
   category: FridgeCategorySchema,
 })
 export type FridgeItem = z.infer<typeof FridgeItemSchema>
@@ -407,14 +407,29 @@ export const MealRecommendationSchema = z.object({
 })
 export type MealRecommendation = z.infer<typeof MealRecommendationSchema>
 
-export const NutritionPlanSchema = z.object({
-  date: DateStringSchema,
-  needs: z.array(NutrientNeedSchema),
-  fridge: z.array(FridgeItemSchema),
-  meals: z.array(MealRecommendationSchema),
-  /** Ties recommendations back to today's energy factors. */
-  rationale: z.string().min(1),
-})
+export const NutritionPlanSchema = z
+  .object({
+    date: DateStringSchema,
+    needs: z.array(NutrientNeedSchema),
+    fridge: z.array(FridgeItemSchema),
+    meals: z.array(MealRecommendationSchema),
+    /** Ties recommendations back to today's energy factors. */
+    rationale: z.string().min(1),
+  })
+  .superRefine((plan, context) => {
+    const fridgeIds = new Set(plan.fridge.map((item) => item.id))
+    plan.meals.forEach((meal, mealIndex) => {
+      meal.usesFridgeItemIds.forEach((itemId, itemIndex) => {
+        if (!fridgeIds.has(itemId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['meals', mealIndex, 'usesFridgeItemIds', itemIndex],
+            message: `Unknown fridge item id: ${itemId}`,
+          })
+        }
+      })
+    })
+  })
 export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
 // ── Reminders ───────────────────────────────────────────────────────────────

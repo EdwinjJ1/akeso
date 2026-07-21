@@ -11,7 +11,7 @@ import {
   progressRatio,
   shouldShowContinue,
   type CheckInAnswers,
-} from './checkin.logic'
+} from './checkin-logic'
 
 const empty: CheckInAnswers = {
   reportedEnergy: null,

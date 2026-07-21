@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   apiContract,
+  BatchFridgeItemsRequestSchema,
+  BatchFridgeItemsResponseSchema,
   CheckInResponseSchema,
   DateParamsSchema,
   GetCoachResponseSchema,
@@ -34,6 +36,7 @@ import {
   DetectedIngredientSchema,
   EnergyResultSchema,
   IngredientRecognitionResultSchema,
+  NutritionPlanSchema,
   TaskSchema,
 } from './schemas'
 import type { EnergyFactor } from './schemas'
@@ -227,8 +230,45 @@ describe('ingredient recognition contract', () => {
   })
 })
 
+describe('nutrition plan inventory integrity', () => {
+  it('rejects meal references to fridge items that are not in the same plan', () => {
+    const result = NutritionPlanSchema.safeParse({
+      date: '2026-07-21',
+      needs: [],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+      meals: [
+        {
+          id: 'meal-1',
+          slot: 'lunch',
+          title: 'Imaginary meal',
+          description: 'Must not reference ingredients the user does not have.',
+          usesFridgeItemIds: ['salmon'],
+          boosts: [],
+          prepMinutes: 10,
+          tags: [],
+        },
+      ],
+      rationale: 'Uses only confirmed inventory.',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts an empty-inventory plan only when fridge-based meals are empty', () => {
+    expect(
+      NutritionPlanSchema.safeParse({
+        date: '2026-07-21',
+        needs: [],
+        fridge: [],
+        meals: [],
+        rationale: 'Add confirmed fridge items to generate meal suggestions.',
+      }).success
+    ).toBe(true)
+  })
+})
+
 describe('API contract: route map matches the implemented /v1 API', () => {
-  it('covers all fourteen implemented endpoints', () => {
+  it('covers every implemented endpoint', () => {
     expect(
       Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
     ).toEqual([
@@ -244,6 +284,9 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'GET /v1/fridge',
       'PUT /v1/fridge/:id',
       'DELETE /v1/fridge/:id',
+      'POST /v1/fridge-items/batch',
+      'POST /v1/fridge/recognitions',
+      'POST /v1/nutrition/:date/regenerate',
       'GET /v1/reminders',
       'PUT /v1/reminders',
     ])
@@ -293,6 +336,23 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(body)
     const envelope = { success: true, data: { id: 'milk', ...body } }
     expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
+  it('batch fridge writes contain only the explicitly submitted presence-only items', () => {
+    const body = {
+      items: [
+        { id: 'tomato', name: 'Tomato', category: 'vegetable' },
+        { id: 'tofu', name: 'Tofu', category: 'protein' },
+      ],
+    }
+    expect(BatchFridgeItemsRequestSchema.parse(body)).toEqual(body)
+    expect(
+      BatchFridgeItemsRequestSchema.safeParse({
+        items: [{ ...body.items[0], quantity: 3 }],
+      }).success
+    ).toBe(true)
+    const envelope = { success: true, data: body.items }
+    expect(BatchFridgeItemsResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
   it('PUT /v1/reminders: preference round-trips and rejects a malformed time', () => {

@@ -11,17 +11,20 @@ import { isSupabaseConfigured } from './supabase-client'
  * changes either way.
  */
 const apiUrl = process.env.EXPO_PUBLIC_API_URL
+const demoApi = process.env.EXPO_PUBLIC_DEMO_MODE === 'true'
 
 // ApiService needs Supabase Auth for its bearer token — half-configured env
 // would otherwise surface as a runtime error on every single request.
-if (apiUrl && !isSupabaseConfigured()) {
+if (apiUrl && !demoApi && !isSupabaseConfigured()) {
   console.warn(
     'EXPO_PUBLIC_API_URL is set but EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY are not — falling back to the FixtureService demo.'
   )
 }
 
 const service: AkesoService =
-  apiUrl && isSupabaseConfigured() ? new ApiService(apiUrl) : new FixtureService()
+  apiUrl && (demoApi || isSupabaseConfigured())
+    ? new ApiService(apiUrl, demoApi)
+    : new FixtureService()
 
 export function getService(): AkesoService {
   return service
