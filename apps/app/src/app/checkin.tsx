@@ -1,4 +1,10 @@
-import type { Hydration, LastMealTiming, Scale1to5, SleepDuration } from '@akeso/domain'
+import type {
+  CheckInInput,
+  Hydration,
+  LastMealTiming,
+  Scale1to5,
+  SleepDuration,
+} from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useState } from 'react'
@@ -45,8 +51,21 @@ const HYDRATION_OPTIONS: ChipOption<Hydration>[] = [
   { value: 'not_sure', label: 'Not sure' },
 ]
 
+const STEP_META = [
+  { marker: '01 · ENERGY', question: 'How’s your energy right now?' },
+  { marker: '02 · REST', question: 'How much sleep did you get last night?' },
+  { marker: '03 · FUEL', question: 'When did you last eat?' },
+  { marker: '04 · WATER', question: 'How much water so far today?' },
+] as const
+
+const STEP_COUNT = STEP_META.length
+
+/** One-question-per-step daily check-in. Chip taps advance automatically so
+ * the whole thing takes about 20 seconds and never needs the keyboard, except
+ * the single optional "what did you eat" note. */
 export default function CheckIn() {
   const { submitCheckIn } = useAppState()
+  const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,49 +75,95 @@ export default function CheckIn() {
   const [lastMealDescription, setLastMealDescription] = useState('')
   const [hydration, setHydration] = useState<Hydration | null>(null)
 
-  const complete =
-    reportedEnergy !== null &&
-    sleepDuration !== null &&
-    lastMealTiming !== null &&
-    hydration !== null
+  // How many of the four required answers are in — drives the progress bar's
+  // fill so it reflects real completion, not just which step you're standing on.
+  const answeredCount = [reportedEnergy, sleepDuration, lastMealTiming, hydration].filter(
+    (value) => value !== null
+  ).length
 
-  const answeredCount = [reportedEnergy, sleepDuration, lastMealTiming, hydration]
-    .filter((value) => value !== null).length
+  // Single source of truth for a valid check-in: both the submit button's
+  // enabled state and submit() derive from it, so adding a field later is a
+  // one-place edit and the two can never drift.
+  const buildCheckInInput = (): CheckInInput | null => {
+    if (
+      reportedEnergy === null ||
+      sleepDuration === null ||
+      lastMealTiming === null ||
+      hydration === null
+    ) {
+      return null
+    }
+    return {
+      date: todayISO(),
+      reportedEnergy,
+      sleepDuration,
+      lastMealTiming,
+      lastMealDescription: lastMealDescription.trim() || undefined,
+      hydration,
+    }
+  }
+
+  const complete = buildCheckInInput() !== null
+  const isLastStep = step === STEP_COUNT - 1
+
+  // Safe back: dismiss the modal if we can, otherwise land on the dashboard.
+  const closeCheckIn = () => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(tabs)')
+  }
+
+  const goNext = () => setStep((current) => Math.min(current + 1, STEP_COUNT - 1))
+
+  const goBack = () => {
+    setError(null)
+    if (step === 0) closeCheckIn()
+    else setStep((current) => current - 1)
+  }
+
+  // Energy and sleep are pure single-select, so a tap both records the answer
+  // and moves the flow forward. Fuel keeps its optional note in view and
+  // hydration is the final step, so those two advance via a button instead.
+  const onEnergy = (value: Scale1to5) => {
+    setReportedEnergy(value)
+    goNext()
+  }
+  const onSleep = (value: SleepDuration) => {
+    setSleepDuration(value)
+    goNext()
+  }
 
   const submit = async () => {
-    if (!complete) return
+    const input = buildCheckInInput()
+    if (!input) return
     setSubmitting(true)
     setError(null)
     try {
-      await submitCheckIn({
-        date: todayISO(),
-        reportedEnergy,
-        sleepDuration,
-        lastMealTiming,
-        lastMealDescription: lastMealDescription.trim() || undefined,
-        hydration,
-      })
-      router.back()
+      await submitCheckIn(input)
+      closeCheckIn()
     } catch (submitError) {
+      // Keep every answer the user gave so they can retry with one tap.
       console.error('Check-in failed:', submitError)
       setError('Something went wrong — please try again.')
       setSubmitting(false)
     }
   }
 
+  const current = STEP_META[step]
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>A SMALL PAUSE FOR YOURSELF</Text>
-          <Text style={type.h1}>Daily check-in</Text>
-          <View style={styles.timeHint}>
-            <Tag label="~20 seconds" color={colors.primaryDark} background={colors.primarySoft} />
-          </View>
-        </View>
+      <View style={styles.controls}>
         <Pressable
-          onPress={() => router.back()}
-          style={styles.closeButton}
+          onPress={goBack}
+          style={styles.iconButton}
+          accessibilityRole="button"
+          accessibilityLabel={step === 0 ? 'Close check-in' : 'Previous question'}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <Pressable
+          onPress={closeCheckIn}
+          style={styles.iconButton}
           accessibilityRole="button"
           accessibilityLabel="Close check-in"
         >
@@ -106,84 +171,113 @@ export default function CheckIn() {
         </Pressable>
       </View>
 
+      <View style={styles.headerText}>
+        <Text style={styles.eyebrow}>A SMALL PAUSE FOR YOURSELF</Text>
+        <Text style={type.h1}>Daily check-in</Text>
+        <View style={styles.timeHint}>
+          <Tag label="~20 seconds" color={colors.primaryDark} background={colors.primarySoft} />
+        </View>
+      </View>
+
       <View style={styles.progressBlock}>
         <View style={styles.progressHeader}>
           <Text style={styles.progressLabel}>TODAY’S SIGNAL</Text>
-          <Text style={styles.progressCount}>{answeredCount} / 4</Text>
+          <Text style={styles.progressCount}>
+            Step {step + 1} / {STEP_COUNT}
+          </Text>
         </View>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${(answeredCount / 4) * 100}%` }]} />
+          <View
+            style={[styles.progressFill, { width: `${(answeredCount / STEP_COUNT) * 100}%` }]}
+          />
         </View>
       </View>
 
-      <Text style={styles.sectionMarker}>01 · ENERGY</Text>
-      <Text style={styles.question}>How’s your energy right now?</Text>
-      <ChipRow options={ENERGY_OPTIONS} value={reportedEnergy} onChange={setReportedEnergy} />
+      <Text style={styles.sectionMarker}>{current.marker}</Text>
+      <Text style={styles.question}>{current.question}</Text>
 
-      <Text style={styles.sectionMarker}>02 · REST</Text>
-      <Text style={styles.question}>How much sleep did you get last night?</Text>
-      <ChipRow options={SLEEP_OPTIONS} value={sleepDuration} onChange={setSleepDuration} />
+      {step === 0 ? (
+        <ChipRow options={ENERGY_OPTIONS} value={reportedEnergy} onChange={onEnergy} />
+      ) : null}
 
-      <Text style={styles.sectionMarker}>03 · FUEL</Text>
-      <Text style={styles.question}>When did you last eat?</Text>
-      <ChipRow options={MEAL_OPTIONS} value={lastMealTiming} onChange={setLastMealTiming} />
+      {step === 1 ? (
+        <ChipRow options={SLEEP_OPTIONS} value={sleepDuration} onChange={onSleep} />
+      ) : null}
 
-      <Text style={styles.question}>What was it? (optional)</Text>
-      <TextInput
-        style={styles.mealInput}
-        value={lastMealDescription}
-        onChangeText={setLastMealDescription}
-        placeholder="e.g. leftover salmon rice bowl"
-        placeholderTextColor={colors.textMuted}
-        maxLength={280}
-        multiline
-      />
+      {step === 2 ? (
+        <>
+          <ChipRow options={MEAL_OPTIONS} value={lastMealTiming} onChange={setLastMealTiming} />
+          <Text style={styles.optionalQuestion}>What was it? (optional)</Text>
+          <TextInput
+            style={styles.mealInput}
+            value={lastMealDescription}
+            onChangeText={setLastMealDescription}
+            placeholder="e.g. leftover salmon rice bowl"
+            placeholderTextColor={colors.textMuted}
+            maxLength={280}
+            multiline
+          />
+        </>
+      ) : null}
 
-      <Text style={styles.sectionMarker}>04 · WATER</Text>
-      <Text style={styles.question}>How much water so far today?</Text>
-      <ChipRow options={HYDRATION_OPTIONS} value={hydration} onChange={setHydration} />
+      {step === 3 ? (
+        <ChipRow options={HYDRATION_OPTIONS} value={hydration} onChange={setHydration} />
+      ) : null}
+
+      {step <= 1 ? <Text style={styles.hint}>Tap an answer to continue.</Text> : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <View style={[styles.finishPanel, complete && styles.finishPanelReady]}>
-        <View style={styles.finishCopy}>
-          <Text style={styles.finishKicker}>{complete ? 'ALL SIGNALS IN' : 'ALMOST THERE'}</Text>
-          <Text style={styles.finishTitle}>
-            {complete ? 'Let’s shape your day.' : `${4 - answeredCount} quick answers left.`}
-          </Text>
+      {isLastStep ? (
+        <View style={[styles.finishPanel, complete && styles.finishPanelReady]}>
+          <View style={styles.finishCopy}>
+            <Text style={styles.finishKicker}>{complete ? 'ALL SIGNALS IN' : 'ONE LAST ANSWER'}</Text>
+            <Text style={styles.finishTitle}>
+              {complete ? 'Let’s shape your day.' : 'How much water so far?'}
+            </Text>
+          </View>
+          <Mascot state={complete ? 'celebrate' : 'steady'} size={112} />
         </View>
-        <Mascot state={complete ? 'celebrate' : 'steady'} size={112} />
-      </View>
+      ) : null}
 
-      <View style={styles.footer}>
-        <Button
-          label={complete ? 'Get my energy plan' : 'Answer all questions to continue'}
-          onPress={submit}
-          disabled={!complete}
-          loading={submitting}
-          variant="cta"
-        />
-      </View>
+      {step === 2 ? (
+        <View style={styles.footer}>
+          <Button
+            label="Continue"
+            onPress={goNext}
+            disabled={lastMealTiming === null}
+            variant="cta"
+          />
+        </View>
+      ) : null}
+
+      {isLastStep ? (
+        <View style={styles.footer}>
+          <Button
+            label={complete ? 'Get my energy plan' : 'Pick one to continue'}
+            onPress={submit}
+            disabled={!complete}
+            loading={submitting}
+            variant="cta"
+          />
+        </View>
+      ) : null}
+
+      <Text style={styles.disclaimer}>
+        Akeso estimates your daily energy from your own check-in; it is not medical advice.
+      </Text>
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
-  header: {
+  controls: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: sp(2),
   },
-  eyebrow: { ...type.label, color: colors.primaryDark, marginBottom: sp(2) },
-  headerText: {
-    flex: 1,
-  },
-  timeHint: {
-    flexDirection: 'row',
-    marginTop: sp(2),
-  },
-  closeButton: {
+  iconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -192,6 +286,14 @@ const styles = StyleSheet.create({
     borderColor: colors.text,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerText: {
+    marginTop: sp(2),
+  },
+  eyebrow: { ...type.label, color: colors.primaryDark, marginBottom: sp(2) },
+  timeHint: {
+    flexDirection: 'row',
+    marginTop: sp(2),
   },
   progressBlock: {
     backgroundColor: colors.text,
@@ -212,6 +314,11 @@ const styles = StyleSheet.create({
     marginTop: sp(6),
     marginBottom: sp(2.5),
   },
+  optionalQuestion: {
+    ...type.h3,
+    marginTop: sp(6),
+    marginBottom: sp(2.5),
+  },
   mealInput: {
     backgroundColor: colors.surface,
     borderWidth: 1.5,
@@ -227,6 +334,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 72,
     textAlignVertical: 'top',
+  },
+  hint: {
+    ...type.small,
+    color: colors.textMuted,
+    marginTop: sp(4),
   },
   error: {
     ...type.body,
@@ -253,5 +365,11 @@ const styles = StyleSheet.create({
   finishTitle: { ...type.h2, marginTop: sp(2), maxWidth: 190 },
   footer: {
     marginTop: sp(8),
+  },
+  disclaimer: {
+    ...type.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: sp(6),
   },
 })
