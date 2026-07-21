@@ -9,9 +9,19 @@ import { z } from 'zod'
  * affected module owners (see docs/TEAM_CONTRACT.md §2).
  */
 
+/**
+ * Re-exported so every consumer checks `instanceof ZodError` against the
+ * class that actually throws. All runtime validators live in this package,
+ * so this is the one ZodError class that matters; a workspace-wide npm
+ * hoisting conflict (Expo's CLI pins zod v3) means each package gets its own
+ * nested zod copy, so importing `zod` directly elsewhere would resolve to a
+ * different physical class and break `instanceof` checks.
+ */
+export { ZodError } from 'zod'
+
 // ── Primitives ──────────────────────────────────────────────────────────────
 
-/** Self-report scale: 1 = worst, 5 = best (for stress: 5 = most stressed). */
+/** Self-report scale: 1 = worst, 5 = best. */
 export const Scale1to5Schema = z.union([
   z.literal(1),
   z.literal(2),
@@ -21,10 +31,26 @@ export const Scale1to5Schema = z.union([
 ])
 export type Scale1to5 = z.infer<typeof Scale1to5Schema>
 
-/** Local calendar date, YYYY-MM-DD. */
+/**
+ * The regex alone accepts calendar nonsense like "2026-13-45" — this
+ * round-trips the parsed components through Date.UTC and rejects anything
+ * that doesn't come back out unchanged (e.g. day 30 rolling Feb into Mar).
+ */
+function isRealCalendarDate(value: string): boolean {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
+/** Local calendar date, YYYY-MM-DD. Rejects impossible dates like 2026-13-45. */
 export const DateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  .refine(isRealCalendarDate, { message: 'Not a real calendar date' })
 export type DateString = z.infer<typeof DateStringSchema>
 
 /** Local wall-clock time, HH:mm, 24h. */
@@ -39,28 +65,55 @@ export type IsoDateTime = z.infer<typeof IsoDateTimeSchema>
 
 // ── Check-in ────────────────────────────────────────────────────────────────
 
-export const CaffeineIntakeSchema = z.enum([
-  'none',
-  'morning',
-  'afternoon',
-  'evening',
+/** Bucketed hours of sleep last night. */
+export const SleepDurationSchema = z.enum([
+  'under_5h',
+  '5_6h',
+  '6_7h',
+  '7_8h',
+  '8_9h',
+  'over_9h',
+  'not_sure',
 ])
-export type CaffeineIntake = z.infer<typeof CaffeineIntakeSchema>
+export type SleepDuration = z.infer<typeof SleepDurationSchema>
 
-export const CheckInInputSchema = z.object({
-  date: DateStringSchema,
-  /** Hours slept last night, 0–14 in 0.5 steps. */
-  sleepHours: z.number().min(0).max(14).multipleOf(0.5),
-  sleepQuality: Scale1to5Schema,
-  mood: Scale1to5Schema,
-  /** 5 = very stressed. */
-  stress: Scale1to5Schema,
-  /** Self-reported energy right now. */
-  energyNow: Scale1to5Schema,
-  caffeine: CaffeineIntakeSchema,
-  /** Matches the 280-char cap the API actually enforces (see domain/schemas.ts). */
-  notes: z.string().max(280).optional(),
-})
+/** How long ago the last meal was. */
+export const LastMealTimingSchema = z.enum([
+  'within_1h',
+  '1_3h',
+  '3_5h',
+  'over_5h',
+  'not_today',
+  'not_sure',
+])
+export type LastMealTiming = z.infer<typeof LastMealTimingSchema>
+
+/** Rough water intake so far today, in litre bands. */
+export const HydrationSchema = z.enum([
+  'under_0_5l',
+  '0_5_1l',
+  '1_1_5l',
+  '1_5_2l',
+  'over_2l',
+  'not_sure',
+])
+export type Hydration = z.infer<typeof HydrationSchema>
+
+export const CheckInInputSchema = z
+  .object({
+    date: DateStringSchema,
+    /** Self-reported energy right now; 1..5 maps to 20/40/60/80/100. */
+    reportedEnergy: Scale1to5Schema,
+    sleepDuration: SleepDurationSchema,
+    lastMealTiming: LastMealTimingSchema,
+    /** Optional free-text description of the last meal (280-char cap, matches server). */
+    lastMealDescription: z.string().max(280).optional(),
+    hydration: HydrationSchema,
+  })
+  // Reject unknown keys rather than silently dropping them, so a stale UI
+  // still sending legacy fields (sleepHours, caffeine, …) fails loudly during
+  // the contract migration instead of posting a half-empty check-in.
+  .strict()
 export type CheckInInput = z.infer<typeof CheckInInputSchema>
 
 // ── Energy ──────────────────────────────────────────────────────────────────
@@ -73,22 +126,46 @@ export const EnergyBandSchema = z.enum(['low', 'moderate', 'high'])
 export type EnergyBand = z.infer<typeof EnergyBandSchema>
 
 export const EnergyFactorKeySchema = z.enum([
+  'reported_energy',
   'sleep_duration',
-  'sleep_quality',
-  'stress',
-  'mood',
-  'caffeine',
-  'self_report',
+  'last_meal',
+  'hydration',
 ])
 export type EnergyFactorKey = z.infer<typeof EnergyFactorKeySchema>
 
-export const EnergyFactorSchema = z.object({
-  key: EnergyFactorKeySchema,
-  label: z.string().min(1),
-  /** Signed integer points this factor contributed to the score. */
-  impact: z.number().int().min(-50).max(50),
-  explanation: z.string().min(1),
-})
+/**
+ * Whether a factor actually drove the score (`reported_energy`) or is only
+ * shown as possible context. Sleep, last meal and hydration are context: they
+ * are never forced into a point attribution.
+ */
+export const EnergyFactorRoleSchema = z.enum([
+  'reported_energy',
+  'possible_context',
+])
+export type EnergyFactorRole = z.infer<typeof EnergyFactorRoleSchema>
+
+const FactorImpactSchema = z.number().int().min(-50).max(50)
+
+export const EnergyFactorSchema = z.discriminatedUnion('role', [
+  z
+    .object({
+      key: z.literal('reported_energy'),
+      label: z.string().min(1),
+      role: z.literal('reported_energy'),
+      /** Signed integer points this factor contributed to the score. */
+      impact: FactorImpactSchema,
+      explanation: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      key: z.enum(['sleep_duration', 'last_meal', 'hydration']),
+      label: z.string().min(1),
+      role: z.literal('possible_context'),
+      explanation: z.string().min(1),
+    })
+    .strict(),
+])
 export type EnergyFactor = z.infer<typeof EnergyFactorSchema>
 
 export const EnergyCurvePointSchema = z.object({
@@ -199,6 +276,95 @@ export const CoachReplySchema = z.object({
   disclaimer: z.string().min(1),
 })
 export type CoachReply = z.infer<typeof CoachReplySchema>
+
+// ── User & onboarding ───────────────────────────────────────────────────────
+
+export const UserGoalSchema = z.enum(['academic', 'work', 'fitness', 'balance'])
+export type UserGoal = z.infer<typeof UserGoalSchema>
+
+export const DietaryPreferenceSchema = z.enum([
+  'none',
+  'vegetarian',
+  'vegan',
+  'halal',
+  'gluten_free',
+])
+export type DietaryPreference = z.infer<typeof DietaryPreferenceSchema>
+
+export const UserProfileSchema = z.object({
+  displayName: z.string().min(1).max(60),
+  goal: UserGoalSchema,
+  typicalWake: TimeStringSchema,
+  typicalSleep: TimeStringSchema,
+  dietaryPreference: DietaryPreferenceSchema,
+})
+export type UserProfile = z.infer<typeof UserProfileSchema>
+
+// ── Nutrition ───────────────────────────────────────────────────────────────
+
+export const NutrientKeySchema = z.enum([
+  'protein',
+  'complex_carbs',
+  'iron',
+  'vitamin_c',
+  'omega3',
+  'hydration',
+  'fiber',
+])
+export type NutrientKey = z.infer<typeof NutrientKeySchema>
+
+export const NutrientNeedSchema = z.object({
+  key: NutrientKeySchema,
+  label: z.string().min(1),
+  current: z.number().min(0),
+  target: z.number().positive(),
+  unit: z.string().min(1),
+  note: z.string().optional(),
+})
+export type NutrientNeed = z.infer<typeof NutrientNeedSchema>
+
+export const FridgeCategorySchema = z.enum([
+  'protein',
+  'vegetable',
+  'fruit',
+  'dairy',
+  'grain',
+  'other',
+])
+export type FridgeCategory = z.infer<typeof FridgeCategorySchema>
+
+export const FridgeItemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  category: FridgeCategorySchema,
+})
+export type FridgeItem = z.infer<typeof FridgeItemSchema>
+
+export const MealSlotSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack'])
+export type MealSlot = z.infer<typeof MealSlotSchema>
+
+export const MealRecommendationSchema = z.object({
+  id: z.string().min(1),
+  slot: MealSlotSchema,
+  title: z.string().min(1),
+  description: z.string().min(1),
+  /** References NutritionPlan.fridge[].id within the same response. */
+  usesFridgeItemIds: z.array(z.string().min(1)),
+  boosts: z.array(NutrientKeySchema),
+  prepMinutes: z.number().int().positive(),
+  tags: z.array(z.string().min(1)),
+})
+export type MealRecommendation = z.infer<typeof MealRecommendationSchema>
+
+export const NutritionPlanSchema = z.object({
+  date: DateStringSchema,
+  needs: z.array(NutrientNeedSchema),
+  fridge: z.array(FridgeItemSchema),
+  meals: z.array(MealRecommendationSchema),
+  /** Ties recommendations back to today's energy factors. */
+  rationale: z.string().min(1),
+})
+export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
 // ── API error ───────────────────────────────────────────────────────────────
 

@@ -6,95 +6,71 @@ import type {
   EnergyResult,
   Task,
 } from './schemas'
-import type { CoachRequest } from './api'
-
 /**
  * Canonical demo fixtures (Issue #6). Entirely fictional — no real health
  * data. All modules (App UI, API seed data, AI prompt examples) use these
  * same values so the demo looks identical before and after integration.
  *
- * Factor impacts are demo values relative to a neutral 50 baseline:
- * 50 + 15 + 7 + 5 + 10 − 6 − 3 = 78.
+ * fixtureEnergyResult is genuine EnergyEngine output for fixtureCheckIn:
+ * reportedEnergy 4/5 → score 80, impact +20 against the neutral 60 baseline.
+ * packages/domain/src/fixtures.test.ts locks this file to the real engine.
  */
 
 export const FIXTURE_DATE = '2026-07-21'
 
 export const fixtureCheckIn: CheckInInput = {
   date: FIXTURE_DATE,
-  sleepHours: 7.5,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 4,
-  energyNow: 4,
-  caffeine: 'afternoon',
-  notes: 'Big assignment due Friday.',
+  reportedEnergy: 4,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
 
 export const fixtureEnergyResult: EnergyResult = {
   date: FIXTURE_DATE,
-  score: 78,
+  score: 80,
   band: 'high',
-  headline: 'Solid morning ahead — protect 9:00–12:00 for deep work.',
+  headline: 'Strong day ahead — protect 10:00–12:00 for demanding work.',
   factors: [
     {
+      key: 'reported_energy',
+      label: 'Feeling good (4/5)',
+      role: 'reported_energy',
+      impact: 20,
+      explanation: 'You reported your energy as 4/5 — that lifts today’s baseline by 20.',
+    },
+    {
       key: 'sleep_duration',
-      label: '7.5h sleep',
-      impact: 15,
-      explanation: 'Close to your 8h target — your biggest energy source today.',
+      label: '7–8h sleep',
+      role: 'possible_context',
+      explanation: 'Around a solid night — a likely support for today.',
     },
     {
-      key: 'sleep_quality',
-      label: 'Good sleep quality',
-      impact: 7,
-      explanation: 'You rated sleep 4/5, which lifts your morning peak.',
+      key: 'last_meal',
+      label: 'Ate 1–3h ago',
+      role: 'possible_context',
+      explanation: 'Recent enough that fuel probably isn’t dragging you.',
     },
     {
-      key: 'mood',
-      label: 'Positive mood',
-      impact: 5,
-      explanation: 'Mood 4/5 usually adds steady energy across the day.',
-    },
-    {
-      key: 'self_report',
-      label: 'Feeling energetic',
-      impact: 10,
-      explanation: 'You already feel 4/5 right now, which raises the whole curve.',
-    },
-    {
-      key: 'stress',
-      label: 'Elevated stress',
-      impact: -6,
-      explanation: 'Stress 4/5 tends to deepen your afternoon dip.',
-    },
-    {
-      key: 'caffeine',
-      label: 'Afternoon coffee',
-      impact: -3,
-      explanation: 'Caffeine after 2pm can push tonight’s sleep later.',
+      key: 'hydration',
+      label: '1–1.5L water',
+      role: 'possible_context',
+      explanation: 'Making progress — keep sipping through the day.',
     },
   ],
   curve: [
-    { hour: 6, level: 38 },
-    { hour: 7, level: 52 },
-    { hour: 8, level: 66 },
-    { hour: 9, level: 82 },
-    { hour: 10, level: 88 },
-    { hour: 11, level: 84 },
-    { hour: 12, level: 72 },
-    { hour: 13, level: 58 },
-    { hour: 14, level: 46 },
-    { hour: 15, level: 42 },
-    { hour: 16, level: 52 },
-    { hour: 17, level: 63 },
-    { hour: 18, level: 67 },
-    { hour: 19, level: 60 },
-    { hour: 20, level: 52 },
-    { hour: 21, level: 42 },
-    { hour: 22, level: 32 },
+    { hour: 7, level: 49 },
+    { hour: 9, level: 85 },
+    { hour: 11, level: 91 },
+    { hour: 13, level: 78 },
+    { hour: 15, level: 63 },
+    { hour: 17, level: 73 },
+    { hour: 19, level: 70 },
+    { hour: 21, level: 55 },
   ],
-  peakWindow: { startHour: 9, endHour: 12 },
+  peakWindow: { startHour: 10, endHour: 12 },
   dipWindow: { startHour: 14, endHour: 16 },
-  computedAt: `${FIXTURE_DATE}T08:05:00+10:00`,
+  computedAt: `${FIXTURE_DATE}T00:00:00.000Z`,
 }
 
 export const fixtureTasks: Task[] = [
@@ -160,7 +136,7 @@ export const fixtureDayPlan: DayPlan = {
       title: 'COMP2521 assignment — graph section',
       taskId: 'task-1',
       energyLevel: 'high',
-      rationale: 'Your hardest task lands in today’s 9–12 peak.',
+      rationale: 'Your hardest task lands in today’s 9–11:30 peak.',
     },
     {
       id: 'block-3',
@@ -207,7 +183,7 @@ export const fixtureDayPlan: DayPlan = {
       type: 'recovery',
       title: 'Recovery break — no screens',
       energyLevel: 'low',
-      rationale: 'Stress is 4/5 today; a real break blunts the dip.',
+      rationale: 'Use the dip window for a low-pressure reset.',
     },
     {
       id: 'block-8',
@@ -221,32 +197,27 @@ export const fixtureDayPlan: DayPlan = {
     },
   ],
   coachNote:
-    'Today is front-loaded on purpose: your two hardest tasks sit inside the 9:00–12:00 peak, and the 2–4pm dip only carries admin and recovery.',
+    'Today is front-loaded on purpose: your two hardest tasks sit near the late-morning peak, and the afternoon dip only carries admin and recovery.',
   generatedAt: `${FIXTURE_DATE}T08:05:10+10:00`,
-}
-
-export const fixtureCoachRequest: CoachRequest = {
-  message: 'I always crash after lunch — what should I change today?',
-  date: FIXTURE_DATE,
 }
 
 export const fixtureCoachReply: CoachReply = {
   message:
-    'Based on today’s check-in, your morning is your strongest window. The plan protects 9:00–12:00 for the assignment and keeps the afternoon light because stress is elevated.',
+    'Based on today’s check-in, you reported good energy. Sleep, a recent meal, and steady hydration are useful context, so the plan protects your late-morning window and keeps the afternoon flexible.',
   suggestions: [
     {
       id: 'sug-1',
-      title: 'Skip the afternoon coffee',
+      title: 'Keep water close this afternoon',
       detail:
-        'Caffeine after 2pm is costing you roughly 3 points and pushes sleep later. Try a 10-minute walk at 3pm instead.',
-      basedOn: ['caffeine', 'sleep_duration'],
+        'You logged 1–1.5L so far. Consider having water with your next break as a general, low-risk support.',
+      basedOn: ['hydration'],
     },
     {
       id: 'sug-2',
       title: 'Keep the 14:30 recovery break',
       detail:
-        'With stress at 4/5, the no-screen break is what keeps your 5pm rebound available for the gym.',
-      basedOn: ['stress', 'block-7'],
+        'The curve still has an afternoon dip, so a short no-screen break is a practical way to keep the rest of the plan lighter.',
+      basedOn: ['block-7'],
     },
   ],
   disclaimer:
@@ -255,5 +226,5 @@ export const fixtureCoachReply: CoachReply = {
 
 export const fixtureApiError: ApiError = {
   code: 'VALIDATION_ERROR',
-  message: 'mood must be an integer between 1 and 5.',
+  message: 'reportedEnergy must be an integer between 1 and 5.',
 }

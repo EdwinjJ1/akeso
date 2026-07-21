@@ -12,21 +12,18 @@ import { createApp } from './app'
 import { createMemoryRepos } from './repos/memory'
 
 /**
- * @akeso/contracts' apiContract route map is TARGET-STATE (Issue #6, 3
- * endpoints) — the real API exposes 9 /v1/* routes with different paths.
- * These tests don't hit apiContract's route map; they check the one thing
- * that IS reconciled today: that real /v1/* response bodies parse against
- * the contract's *data* schemas. That's the part "frozen" actually protects.
+ * @akeso/contracts' apiContract route map mirrors the implemented /v1 API
+ * 1:1 (see docs/API_CONTRACT.md). These tests prove the conformance holds at
+ * runtime: real /v1 response bodies must parse against the contract's
+ * response schemas, so a route drifting from the frozen contract fails here.
  */
 
 const validCheckIn: CheckInInput = {
   date: '2026-07-21',
-  sleepHours: 7.5,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 4,
-  energyNow: 3,
-  caffeine: 'afternoon',
+  reportedEnergy: 3,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
 
 let app: ReturnType<typeof createApp>
@@ -80,7 +77,7 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
   test('400 VALIDATION_ERROR body conforms to the ApiError envelope shape', async () => {
     const response = await request(app)
       .post('/v1/checkins')
-      .send({ ...validCheckIn, mood: 9 })
+      .send({ ...validCheckIn, reportedEnergy: 9 })
       .expect(400)
 
     const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)

@@ -20,11 +20,12 @@ const describeZodError = (err: ZodErrorLike) =>
     .join('; ')
 
 /**
- * `instanceof ZodError` only catches errors thrown by @akeso/domain's zod v4
- * copy. @akeso/contracts pins zod v3, a separate physical install (npm
- * nests it per-workspace) — its ZodError fails `instanceof` against the v4
- * class. Any route that validates against a contracts schema would otherwise
- * turn a 400 into an unhandled 500. Fall back to duck-typing by name.
+ * All runtime validators live in @akeso/contracts and @akeso/domain
+ * re-exports its ZodError, so `instanceof` matches everything this codebase
+ * throws today. The duck-typing fallback is defence-in-depth: npm nests a
+ * separate zod copy per workspace package (Expo's CLI pins zod v3), so any
+ * future package validating with its own zod install would throw a ZodError
+ * of a different class — that must still map to 400, not an unhandled 500.
  */
 const isZodError = (err: unknown): err is ZodErrorLike =>
   err instanceof ZodError ||

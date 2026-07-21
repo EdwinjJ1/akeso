@@ -6,7 +6,7 @@ import type { FridgeItem, NutritionPlan, UserProfile } from './types'
  * health data. The API team seeds the demo database with these same values
  * so the app looks identical before and after integration.
  *
- * The canonical shared fixtures (check-in, energy score 78, tasks, plan,
+ * The canonical shared fixtures (check-in, energy result, tasks, plan,
  * coach) live in `@akeso/contracts` and are re-exported here; only fixtures
  * for domain-specific types are defined locally.
  */
@@ -57,7 +57,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 6,
       target: 12,
       unit: 'mg',
-      note: 'Low iron is a common driver of afternoon dips.',
+      note: 'Iron-rich meals can be one useful way to support steady eating.',
     },
     {
       key: 'complex_carbs',
@@ -65,7 +65,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 95,
       target: 180,
       unit: 'g',
-      note: 'Slow carbs at lunch flatten the 2–4pm crash.',
+      note: 'Slow carbs at lunch may support steadier afternoon fuel.',
     },
     {
       key: 'hydration',
@@ -73,7 +73,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 1.1,
       target: 2.5,
       unit: 'L',
-      note: 'Even mild dehydration reads as fatigue.',
+      note: 'Lower fluid intake may be associated with feeling tired.',
     },
   ],
   fridge: fixtureFridge,
@@ -94,24 +94,24 @@ export const fixtureNutritionPlan: NutritionPlan = {
       slot: 'lunch',
       title: 'Salmon, rice & spinach bowl',
       description:
-        'Salmon + brown rice + spinach + capsicum. Iron and omega-3 aimed straight at your 2–4pm dip.',
+        'Salmon + brown rice + spinach + capsicum. A balanced lunch option for steady afternoon fuel.',
       usesFridgeItemIds: ['fridge-3', 'fridge-7', 'fridge-2', 'fridge-8'],
       boosts: ['iron', 'omega3', 'protein'],
       prepMinutes: 20,
-      tags: ['anti-dip', 'high-iron'],
+      tags: ['balanced lunch', 'high-iron'],
     },
     {
       id: 'meal-3',
       slot: 'snack',
       title: '3pm spinach & egg wrap',
       description:
-        'Instead of the afternoon coffee — protein and iron without the sleep cost.',
+        'A simple protein snack for the dip window if you want something more substantial than water.',
       usesFridgeItemIds: ['fridge-1', 'fridge-2'],
       boosts: ['protein', 'iron'],
       prepMinutes: 10,
-      tags: ['coffee swap', 'dip window'],
+      tags: ['easy snack', 'dip window'],
     },
   ],
   rationale:
-    'Your check-in shows elevated stress and an afternoon coffee habit. Today’s meals push iron and protein into lunch and replace the 3pm coffee, which is the cheapest way to soften your 2–4pm dip.',
+    'Your check-in shows good reported energy, a recent meal, and moderate hydration so far. Today’s meals keep fuel steady and pair the afternoon dip with a simple water or snack option.',
 }

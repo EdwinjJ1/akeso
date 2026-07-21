@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest'
 import {
   apiContract,
   CheckInResponseSchema,
-  CoachRequestSchema,
-  CoachResponseSchema,
-  PlanQuerySchema,
-  PlanResponseSchema,
+  DateParamsSchema,
+  GetCoachResponseSchema,
+  GetEnergyResponseSchema,
+  GetNutritionResponseSchema,
+  GetPlanResponseSchema,
+  GetProfileResponseSchema,
+  PutProfileRequestSchema,
+  PutProfileResponseSchema,
+  RegeneratePlanBodySchema,
+  RegeneratePlanResponseSchema,
+  TasksQuerySchema,
 } from './api'
 import {
   fixtureApiError,
   fixtureCheckIn,
   fixtureCoachReply,
-  fixtureCoachRequest,
   fixtureDayPlan,
   fixtureEnergyResult,
   fixtureTasks,
@@ -23,17 +29,77 @@ import {
   EnergyResultSchema,
   TaskSchema,
 } from './schemas'
+import type { EnergyFactor } from './schemas'
+
+const isReportedFactor = (
+  factor: EnergyFactor
+): factor is Extract<EnergyFactor, { role: 'reported_energy' }> =>
+  factor.role === 'reported_energy'
+
+const isContextFactor = (
+  factor: EnergyFactor
+): factor is Extract<EnergyFactor, { role: 'possible_context' }> =>
+  factor.role === 'possible_context'
 
 describe('fixtures satisfy the frozen schemas', () => {
   it('CheckInInput', () => {
     expect(CheckInInputSchema.parse(fixtureCheckIn)).toEqual(fixtureCheckIn)
   })
 
-  it('EnergyResult with score 78', () => {
+  it('EnergyResult with score 80', () => {
     const parsed = EnergyResultSchema.parse(fixtureEnergyResult)
-    expect(parsed.score).toBe(78)
-    expect(parsed.factors).toHaveLength(6)
+    expect(parsed.score).toBe(80)
+    expect(parsed.factors).toHaveLength(4)
     expect(parsed.curve.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('only the reported_energy factor carries an impact', () => {
+    for (const factor of fixtureEnergyResult.factors) {
+      if (factor.role === 'reported_energy') {
+        expect(factor.impact).toBeTypeOf('number')
+      } else {
+        expect(factor.role).toBe('possible_context')
+        expect('impact' in factor).toBe(false)
+      }
+    }
+  })
+
+  it('rejects factor attribution that disagrees with the role', () => {
+    const reportedFactor = fixtureEnergyResult.factors.find(isReportedFactor)
+    const contextFactor = fixtureEnergyResult.factors.find(isContextFactor)
+    expect(reportedFactor).toBeDefined()
+    expect(contextFactor).toBeDefined()
+    if (!reportedFactor || !contextFactor) throw new Error('Fixture factors are incomplete')
+
+    const restFactors = fixtureEnergyResult.factors.filter(
+      (factor) => factor !== reportedFactor && factor !== contextFactor
+    )
+    const { impact: _impact, ...reportedWithoutImpact } = reportedFactor
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [reportedWithoutImpact, contextFactor, ...restFactors],
+      }).success
+    ).toBe(false)
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [reportedFactor, { ...contextFactor, impact: -10 }, ...restFactors],
+      }).success
+    ).toBe(false)
+
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [
+          { ...reportedFactor, key: 'sleep_duration' },
+          contextFactor,
+          ...restFactors,
+        ],
+      }).success
+    ).toBe(false)
   })
 
   it('every Task', () => {
@@ -82,79 +148,140 @@ describe('fixtures are internally consistent', () => {
   })
 })
 
-describe('API contract: POST /checkin, GET /plan, POST /coach', () => {
-  it('covers the three demo endpoints', () => {
-    expect(apiContract.checkIn.method).toBe('POST')
-    expect(apiContract.checkIn.path).toBe('/checkin')
-    expect(apiContract.getPlan.method).toBe('GET')
-    expect(apiContract.getPlan.path).toBe('/plan')
-    expect(apiContract.coach.method).toBe('POST')
-    expect(apiContract.coach.path).toBe('/coach')
+describe('API contract: route map matches the implemented /v1 API', () => {
+  it('covers all nine implemented endpoints', () => {
+    expect(
+      Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
+    ).toEqual([
+      'GET /v1/profile',
+      'PUT /v1/profile',
+      'POST /v1/checkins',
+      'GET /v1/energy/:date',
+      'GET /v1/tasks',
+      'GET /v1/plan/:date',
+      'POST /v1/plan/:date/regenerate',
+      'GET /v1/nutrition/:date',
+      'GET /v1/coach/:date',
+    ])
   })
 
-  it('POST /checkin: fixture request and success envelope validate', () => {
-    expect(() => apiContract.checkIn.request.parse(fixtureCheckIn)).not.toThrow()
+  it('POST /v1/checkins: fixture request and success envelope validate', () => {
+    expect(() =>
+      apiContract.submitCheckIn.request.parse(fixtureCheckIn)
+    ).not.toThrow()
     const envelope = { success: true, data: fixtureEnergyResult }
     expect(CheckInResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
-  it('GET /plan: query and success envelope validate', () => {
-    expect(PlanQuerySchema.parse({ date: '2026-07-21' })).toEqual({
-      date: '2026-07-21',
-    })
-    expect(PlanQuerySchema.parse({})).toEqual({})
-    const envelope = { success: true, data: fixtureDayPlan }
-    expect(PlanResponseSchema.parse(envelope)).toEqual(envelope)
+  it('PUT /v1/profile: profile round-trips through request and response', () => {
+    const profile = {
+      displayName: 'Alex',
+      goal: 'academic',
+      typicalWake: '07:30',
+      typicalSleep: '23:30',
+      dietaryPreference: 'none',
+    }
+    expect(PutProfileRequestSchema.parse(profile)).toEqual(profile)
+    const envelope = { success: true, data: profile }
+    expect(PutProfileResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
-  it('POST /coach: fixture request and success envelope validate', () => {
-    expect(CoachRequestSchema.parse(fixtureCoachRequest)).toEqual(
-      fixtureCoachRequest
-    )
-    const envelope = { success: true, data: fixtureCoachReply }
-    expect(CoachResponseSchema.parse(envelope)).toEqual(envelope)
+  it('date-scoped routes accept only real calendar dates', () => {
+    expect(DateParamsSchema.safeParse({ date: '2026-07-21' }).success).toBe(true)
+    expect(DateParamsSchema.safeParse({ date: '2026-13-45' }).success).toBe(false)
+    expect(TasksQuerySchema.safeParse({ date: '2026-07-21' }).success).toBe(true)
+    expect(TasksQuerySchema.safeParse({}).success).toBe(false)
+  })
+
+  it('nullable GETs allow data: null (HTTP 200) before any check-in', () => {
+    const nullEnvelope = { success: true, data: null }
+    expect(GetProfileResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+    expect(GetEnergyResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+    expect(GetPlanResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+    expect(GetNutritionResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+  })
+
+  it('GET /v1/plan/:date and /v1/coach/:date success envelopes validate', () => {
+    const planEnvelope = { success: true, data: fixtureDayPlan }
+    expect(GetPlanResponseSchema.parse(planEnvelope)).toEqual(planEnvelope)
+    const coachEnvelope = { success: true, data: fixtureCoachReply }
+    expect(GetCoachResponseSchema.parse(coachEnvelope)).toEqual(coachEnvelope)
+  })
+
+  it('POST /v1/plan/:date/regenerate: optional instruction, plan+coach bundle', () => {
+    expect(RegeneratePlanBodySchema.safeParse({}).success).toBe(true)
+    expect(
+      RegeneratePlanBodySchema.safeParse({ instruction: 'more recovery' }).success
+    ).toBe(true)
+    expect(
+      RegeneratePlanBodySchema.safeParse({ instruction: 'x'.repeat(281) }).success
+    ).toBe(false)
+    const envelope = {
+      success: true,
+      data: { plan: fixtureDayPlan, coach: fixtureCoachReply },
+    }
+    expect(RegeneratePlanResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
   it('error envelope validates on every endpoint', () => {
     const envelope = { success: false, error: fixtureApiError }
-    expect(CheckInResponseSchema.parse(envelope)).toEqual(envelope)
-    expect(PlanResponseSchema.parse(envelope)).toEqual(envelope)
-    expect(CoachResponseSchema.parse(envelope)).toEqual(envelope)
+    for (const endpoint of Object.values(apiContract)) {
+      expect(endpoint.response.parse(envelope)).toEqual(envelope)
+    }
   })
 })
 
 describe('numeric ranges are enforced at runtime', () => {
-  it('rejects mood outside 1–5', () => {
+  it('rejects reportedEnergy outside 1–5', () => {
     expect(
-      CheckInInputSchema.safeParse({ ...fixtureCheckIn, mood: 6 }).success
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, reportedEnergy: 6 })
+        .success
     ).toBe(false)
     expect(
-      CheckInInputSchema.safeParse({ ...fixtureCheckIn, mood: 0 }).success
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, reportedEnergy: 0 })
+        .success
     ).toBe(false)
   })
 
-  it('rejects notes longer than 280 chars (matches server enforcement)', () => {
+  it('rejects lastMealDescription longer than 280 chars (matches server enforcement)', () => {
     expect(
       CheckInInputSchema.safeParse({
         ...fixtureCheckIn,
-        notes: 'x'.repeat(281),
+        lastMealDescription: 'x'.repeat(281),
       }).success
     ).toBe(false)
     expect(
       CheckInInputSchema.safeParse({
         ...fixtureCheckIn,
-        notes: 'x'.repeat(280),
+        lastMealDescription: 'x'.repeat(280),
       }).success
     ).toBe(true)
   })
 
-  it('rejects sleepHours off the 0.5 grid or above 14', () => {
+  it('rejects unknown context buckets', () => {
     expect(
-      CheckInInputSchema.safeParse({ ...fixtureCheckIn, sleepHours: 7.25 })
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, sleepDuration: '9h' })
         .success
     ).toBe(false)
     expect(
-      CheckInInputSchema.safeParse({ ...fixtureCheckIn, sleepHours: 15 })
+      CheckInInputSchema.safeParse({
+        ...fixtureCheckIn,
+        lastMealTiming: 'yesterday',
+      }).success
+    ).toBe(false)
+    expect(
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, hydration: 'lots' })
+        .success
+    ).toBe(false)
+  })
+
+  it('rejects leftover legacy fields instead of silently dropping them', () => {
+    expect(
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, sleepHours: 7.5 })
+        .success
+    ).toBe(false)
+    expect(
+      CheckInInputSchema.safeParse({ ...fixtureCheckIn, caffeine: 'morning' })
         .success
     ).toBe(false)
   })
