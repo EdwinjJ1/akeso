@@ -5,6 +5,17 @@ import { fixtureDayPlan } from '@akeso/domain'
 
 import { PlanBlockUpdateSheet } from './plan-block-update-sheet'
 
+const chooseTime = async (
+  fieldLabel: 'Start time' | 'End time',
+  value: string
+) => {
+  const [hour, minute] = value.split(':')
+  await fireEvent.press(screen.getByLabelText(fieldLabel))
+  await fireEvent.press(screen.getByRole('button', { name: `Hour ${hour}` }))
+  await fireEvent.press(screen.getByRole('button', { name: `Minute ${minute}` }))
+  await fireEvent.press(screen.getByRole('button', { name: `Use ${value}` }))
+}
+
 describe('PlanBlockUpdateSheet', () => {
   const block = fixtureDayPlan.blocks[0]
 
@@ -22,7 +33,7 @@ describe('PlanBlockUpdateSheet', () => {
     )
 
     await fireEvent.changeText(screen.getByLabelText('Title'), 'Updated breakfast')
-    await fireEvent.changeText(screen.getByLabelText('Start time'), '08:15')
+    await chooseTime('Start time', '08:15')
     await fireEvent.press(screen.getByRole('checkbox', { name: 'Completed' }))
     await fireEvent.press(screen.getByRole('button', { name: 'Save changes' }))
 
@@ -77,17 +88,38 @@ describe('PlanBlockUpdateSheet', () => {
       />
     )
 
-    await fireEvent.changeText(
-      screen.getByLabelText('Start time'),
-      fixtureDayPlan.blocks[1].start
-    )
-    await fireEvent.changeText(
-      screen.getByLabelText('End time'),
-      fixtureDayPlan.blocks[1].end
-    )
+    await chooseTime('Start time', fixtureDayPlan.blocks[1].start)
+    await chooseTime('End time', fixtureDayPlan.blocks[1].end)
     await fireEvent.press(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(await screen.findByText(/overlaps another suggestion/i)).toBeOnTheScreen()
     expect(onSave).not.toHaveBeenCalled()
+  })
+
+  test('cancels a time selection without changing the draft', async () => {
+    const onSave = jest.fn().mockResolvedValue(undefined)
+    await render(
+      <PlanBlockUpdateSheet
+        visible
+        block={block}
+        blocks={fixtureDayPlan.blocks}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />
+    )
+
+    await fireEvent.press(screen.getByLabelText('Start time'))
+    await fireEvent.press(screen.getByRole('button', { name: 'Hour 09' }))
+    await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }))
+    await fireEvent.press(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        title: block.title,
+        start: block.start,
+        end: block.end,
+        status: block.status,
+      })
+    )
   })
 })

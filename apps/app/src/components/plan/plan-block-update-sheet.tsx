@@ -15,8 +15,11 @@ import {
   View,
 } from 'react-native'
 
+import { TimeGridPicker } from '@/components/plan/time-grid-picker'
 import { Button } from '@/components/ui/buttons'
 import { colors, radius, sp, type } from '@/theme/tokens'
+
+type TimeField = 'start' | 'end'
 
 interface PlanBlockUpdateSheetProps {
   visible: boolean
@@ -44,6 +47,7 @@ export function PlanBlockUpdateSheet({
   const [completed, setCompleted] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTimeField, setActiveTimeField] = useState<TimeField | null>(null)
 
   useEffect(() => {
     if (!block || !visible) return
@@ -53,6 +57,7 @@ export function PlanBlockUpdateSheet({
     setCompleted(block.status === 'completed')
     setSaving(false)
     setError(null)
+    setActiveTimeField(null)
   }, [block, visible])
 
   if (!block) return null
@@ -110,81 +115,106 @@ export function PlanBlockUpdateSheet({
         />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={type.label}>UPDATE SUGGESTION</Text>
-          <Text style={styles.heading}>Make this plan yours</Text>
-
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            accessibilityLabel="Title"
-            value={title}
-            onChangeText={setTitle}
-            editable={!saving}
-            maxLength={120}
-            style={styles.input}
-          />
-
-          <View style={styles.timeRow}>
-            <View style={styles.timeField}>
-              <Text style={styles.label}>Start</Text>
-              <TextInput
-                accessibilityLabel="Start time"
-                value={start}
-                onChangeText={setStart}
-                editable={!saving}
-                placeholder="09:00"
-                maxLength={5}
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.timeField}>
-              <Text style={styles.label}>End</Text>
-              <TextInput
-                accessibilityLabel="End time"
-                value={end}
-                onChangeText={setEnd}
-                editable={!saving}
-                placeholder="10:30"
-                maxLength={5}
-                style={styles.input}
-              />
-            </View>
-          </View>
-
-          <Pressable
-            onPress={() => setCompleted((value) => !value)}
-            disabled={saving}
-            accessibilityRole="checkbox"
-            accessibilityLabel="Completed"
-            accessibilityState={{ checked: completed, disabled: saving }}
-            style={styles.checkRow}
-          >
-            <View style={[styles.checkbox, completed && styles.checkboxChecked]}>
-              <Text style={styles.checkmark}>{completed ? '✓' : ''}</Text>
-            </View>
-            <View>
-              <Text style={styles.checkTitle}>Completed</Text>
-              <Text style={styles.checkHint}>Keep it in the timeline as a record.</Text>
-            </View>
-          </Pressable>
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <View style={styles.actions}>
-            <Button
-              label="Cancel"
-              onPress={onClose}
-              disabled={saving}
-              variant="ghost"
+          {activeTimeField ? (
+            <TimeGridPicker
+              label={activeTimeField === 'start' ? 'Start' : 'End'}
+              value={activeTimeField === 'start' ? start : end}
+              onCancel={() => setActiveTimeField(null)}
+              onConfirm={(value) => {
+                if (activeTimeField === 'start') setStart(value)
+                else setEnd(value)
+                setActiveTimeField(null)
+              }}
             />
-            <View style={styles.saveAction}>
-              <Button
-                label={error?.startsWith('Couldn’t save') ? 'Retry' : 'Save changes'}
-                onPress={submit}
-                loading={saving}
-                variant="cta"
+          ) : (
+            <>
+              <Text style={type.label}>UPDATE SUGGESTION</Text>
+              <Text style={styles.heading}>Make this plan yours</Text>
+
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                accessibilityLabel="Title"
+                value={title}
+                onChangeText={setTitle}
+                editable={!saving}
+                maxLength={120}
+                style={styles.input}
               />
-            </View>
-          </View>
+
+              <View style={styles.timeRow}>
+                <View style={styles.timeField}>
+                  <Text style={styles.label}>Start</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Start time"
+                    accessibilityState={{ disabled: saving }}
+                    onPress={() => setActiveTimeField('start')}
+                    disabled={saving}
+                    style={({ pressed }) => [
+                      styles.timeButton,
+                      pressed && styles.timeButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.timeValue}>{start}</Text>
+                    <Text style={styles.timeHint}>Choose</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.timeField}>
+                  <Text style={styles.label}>End</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="End time"
+                    accessibilityState={{ disabled: saving }}
+                    onPress={() => setActiveTimeField('end')}
+                    disabled={saving}
+                    style={({ pressed }) => [
+                      styles.timeButton,
+                      pressed && styles.timeButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.timeValue}>{end}</Text>
+                    <Text style={styles.timeHint}>Choose</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => setCompleted((value) => !value)}
+                disabled={saving}
+                accessibilityRole="checkbox"
+                accessibilityLabel="Completed"
+                accessibilityState={{ checked: completed, disabled: saving }}
+                style={styles.checkRow}
+              >
+                <View style={[styles.checkbox, completed && styles.checkboxChecked]}>
+                  <Text style={styles.checkmark}>{completed ? '✓' : ''}</Text>
+                </View>
+                <View>
+                  <Text style={styles.checkTitle}>Completed</Text>
+                  <Text style={styles.checkHint}>Keep it in the timeline as a record.</Text>
+                </View>
+              </Pressable>
+
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+
+              <View style={styles.actions}>
+                <Button
+                  label="Cancel"
+                  onPress={onClose}
+                  disabled={saving}
+                  variant="ghost"
+                />
+                <View style={styles.saveAction}>
+                  <Button
+                    label={error?.startsWith('Couldn’t save') ? 'Retry' : 'Save changes'}
+                    onPress={submit}
+                    loading={saving}
+                    variant="cta"
+                  />
+                </View>
+              </View>
+            </>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -200,6 +230,7 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 560,
+    maxHeight: '92%',
     alignSelf: 'center',
     backgroundColor: colors.bg,
     borderTopLeftRadius: 30,
@@ -243,6 +274,21 @@ const styles = StyleSheet.create({
     gap: sp(3),
   },
   timeField: { flex: 1 },
+  timeButton: {
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: sp(3),
+    marginBottom: sp(3),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timeButtonPressed: { backgroundColor: colors.primarySoft },
+  timeValue: { color: colors.text, fontSize: 17, fontWeight: '800' },
+  timeHint: { color: colors.primaryDark, fontSize: 12, fontWeight: '800' },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
