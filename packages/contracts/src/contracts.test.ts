@@ -8,8 +8,13 @@ import {
   GetNutritionResponseSchema,
   GetPlanResponseSchema,
   GetProfileResponseSchema,
+  GetReminderResponseSchema,
+  PutFridgeItemBodySchema,
+  PutFridgeItemResponseSchema,
   PutProfileRequestSchema,
   PutProfileResponseSchema,
+  PutReminderRequestSchema,
+  PutReminderResponseSchema,
   RegeneratePlanBodySchema,
   RegeneratePlanResponseSchema,
   TasksQuerySchema,
@@ -149,7 +154,7 @@ describe('fixtures are internally consistent', () => {
 })
 
 describe('API contract: route map matches the implemented /v1 API', () => {
-  it('covers all nine implemented endpoints', () => {
+  it('covers all fourteen implemented endpoints', () => {
     expect(
       Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
     ).toEqual([
@@ -162,6 +167,11 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'POST /v1/plan/:date/regenerate',
       'GET /v1/nutrition/:date',
       'GET /v1/coach/:date',
+      'GET /v1/fridge',
+      'PUT /v1/fridge/:id',
+      'DELETE /v1/fridge/:id',
+      'GET /v1/reminders',
+      'PUT /v1/reminders',
     ])
   })
 
@@ -199,6 +209,26 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(GetEnergyResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
     expect(GetPlanResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
     expect(GetNutritionResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+    expect(GetReminderResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+  })
+
+  it('PUT /v1/fridge/:id: body omits id (it comes from the path) and round-trips', () => {
+    const body = { name: 'Milk', category: 'dairy' }
+    expect(PutFridgeItemBodySchema.parse(body)).toEqual(body)
+    // A stray `id` in the body is stripped, not authoritative — the path wins.
+    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(body)
+    const envelope = { success: true, data: { id: 'milk', ...body } }
+    expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
+  it('PUT /v1/reminders: preference round-trips and rejects a malformed time', () => {
+    const pref = { enabled: true, checkInTime: '08:00' }
+    expect(PutReminderRequestSchema.parse(pref)).toEqual(pref)
+    expect(
+      PutReminderRequestSchema.safeParse({ ...pref, checkInTime: '8am' }).success
+    ).toBe(false)
+    const envelope = { success: true, data: pref }
+    expect(PutReminderResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
   it('GET /v1/plan/:date and /v1/coach/:date success envelopes validate', () => {

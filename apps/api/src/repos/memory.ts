@@ -3,6 +3,8 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  FridgeItem,
+  ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -45,6 +47,8 @@ export function createMemoryRepos(): Repos {
   const checkins = createBoundedMap<string, CheckInInput>(limit)
   const energyResults = createBoundedMap<string, EnergyResult>(limit)
   const plans = createBoundedMap<string, DayPlan>(limit)
+  const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
+  const reminders = createBoundedMap<string, ReminderPreference>(limit)
 
   return {
     profile: {
@@ -86,6 +90,31 @@ export function createMemoryRepos(): Repos {
       async upsert(userId, plan) {
         plans.set(dateKey(userId, plan.date), plan)
         return plan
+      },
+    },
+
+    fridge: {
+      async list(userId) {
+        return Array.from((fridgeByUser.get(userId) ?? new Map()).values())
+      },
+      async upsert(userId, item) {
+        const items = fridgeByUser.get(userId) ?? new Map<string, FridgeItem>()
+        items.set(item.id, item)
+        fridgeByUser.set(userId, items)
+        return item
+      },
+      async remove(userId, id) {
+        fridgeByUser.get(userId)?.delete(id)
+      },
+    },
+
+    reminders: {
+      async get(userId) {
+        return reminders.get(userId) ?? null
+      },
+      async upsert(userId, pref) {
+        reminders.set(userId, pref)
+        return pref
       },
     },
   }

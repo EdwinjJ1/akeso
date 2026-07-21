@@ -10,7 +10,9 @@ import {
   type CoachReply,
   type DayPlan,
   type EnergyResult,
+  type FridgeItem,
   type NutritionPlan,
+  type ReminderPreference,
   type Task,
   type UserProfile,
 } from '@akeso/domain'
@@ -30,6 +32,8 @@ const nutritionEngine = new NutritionEngine()
 export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
   private energy: EnergyResult | null = null
+  private fridge = new Map<string, FridgeItem>()
+  private reminder: ReminderPreference | null = null
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(LATENCY_MS / 3)
@@ -60,7 +64,7 @@ export class FixtureService implements AkesoService {
 
   async getTodayPlan(date: string): Promise<DayPlan | null> {
     await wait(LATENCY_MS)
-    return this.energy ? { ...fixtureDayPlan, date } : null
+    return this.energy && this.energy.date === date ? { ...fixtureDayPlan, date } : null
   }
 
   async regeneratePlan(
@@ -88,5 +92,32 @@ export class FixtureService implements AkesoService {
   async getCoachReply(_date: string): Promise<CoachReply> {
     await wait(LATENCY_MS)
     return fixtureCoachReply
+  }
+
+  async getFridgeItems(): Promise<FridgeItem[]> {
+    await wait(LATENCY_MS / 3)
+    return Array.from(this.fridge.values())
+  }
+
+  async saveFridgeItem(item: FridgeItem): Promise<FridgeItem> {
+    await wait(LATENCY_MS / 3)
+    this.fridge.set(item.id, item)
+    return item
+  }
+
+  async deleteFridgeItem(id: string): Promise<void> {
+    await wait(LATENCY_MS / 3)
+    this.fridge.delete(id)
+  }
+
+  async getReminderPreference(): Promise<ReminderPreference | null> {
+    await wait(LATENCY_MS / 3)
+    return this.reminder
+  }
+
+  async saveReminderPreference(pref: ReminderPreference): Promise<ReminderPreference> {
+    await wait(LATENCY_MS / 3)
+    this.reminder = pref
+    return pref
   }
 }
