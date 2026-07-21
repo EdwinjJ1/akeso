@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test --experimental-test-coverage dist/energy-engine.test.js"
+    "test": "vitest run --root ../.. packages/domain"
   },
   "dependencies": {
     "@akeso/contracts": "*"
