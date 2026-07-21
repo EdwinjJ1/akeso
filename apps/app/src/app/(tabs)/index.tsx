@@ -107,14 +107,14 @@ export default function Dashboard() {
               </View>
               <View style={styles.windowTags}>
                 <Tag
-                  label={`Peak ${formatHour(todayEnergy.peakWindow.startHour)}-${formatHour(
+                  label={`Peak ${formatHour(todayEnergy.peakWindow.startHour)}–${formatHour(
                     todayEnergy.peakWindow.endHour
                   )}`}
                   color={colors.text}
                   background={colors.lime}
                 />
                 <Tag
-                  label={`Reset ${formatHour(todayEnergy.dipWindow.startHour)}-${formatHour(
+                  label={`Reset ${formatHour(todayEnergy.dipWindow.startHour)}–${formatHour(
                     todayEnergy.dipWindow.endHour
                   )}`}
                   color={colors.text}

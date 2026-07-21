@@ -1,5 +1,4 @@
 import type {
-  CheckInInput,
   Hydration,
   LastMealTiming,
   Scale1to5,
@@ -10,6 +9,17 @@ import { router } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
+import {
+  STEP_COUNT,
+  buildCheckInInput,
+  isStepAnswered,
+  isTodaysCheckIn,
+  nextStep,
+  prevStep,
+  progressRatio,
+  shouldShowContinue,
+  type CheckInAnswers,
+} from './checkin.logic'
 import { Button } from '@/components/ui/buttons'
 import { ChipRow, Tag, type ChipOption } from '@/components/ui/chips'
 import { Mascot } from '@/components/mascot'
@@ -25,18 +35,18 @@ const ENERGY_OPTIONS = scaleOptions(['Drained', 'Low', 'OK', 'Good', 'Charged'])
 
 const SLEEP_OPTIONS: ChipOption<SleepDuration>[] = [
   { value: 'under_5h', label: 'Under 5h' },
-  { value: '5_6h', label: '5-6h' },
-  { value: '6_7h', label: '6-7h' },
-  { value: '7_8h', label: '7-8h' },
-  { value: '8_9h', label: '8-9h' },
+  { value: '5_6h', label: '5–6h' },
+  { value: '6_7h', label: '6–7h' },
+  { value: '7_8h', label: '7–8h' },
+  { value: '8_9h', label: '8–9h' },
   { value: 'over_9h', label: 'Over 9h' },
   { value: 'not_sure', label: 'Not sure' },
 ]
 
 const MEAL_OPTIONS: ChipOption<LastMealTiming>[] = [
   { value: 'within_1h', label: 'Within 1h' },
-  { value: '1_3h', label: '1-3h ago' },
-  { value: '3_5h', label: '3-5h ago' },
+  { value: '1_3h', label: '1–3h ago' },
+  { value: '3_5h', label: '3–5h ago' },
   { value: 'over_5h', label: 'Over 5h ago' },
   { value: 'not_today', label: 'Not yet today' },
   { value: 'not_sure', label: 'Not sure' },
@@ -44,9 +54,9 @@ const MEAL_OPTIONS: ChipOption<LastMealTiming>[] = [
 
 const HYDRATION_OPTIONS: ChipOption<Hydration>[] = [
   { value: 'under_0_5l', label: 'Under 0.5L' },
-  { value: '0_5_1l', label: '0.5-1L' },
-  { value: '1_1_5l', label: '1-1.5L' },
-  { value: '1_5_2l', label: '1.5-2L' },
+  { value: '0_5_1l', label: '0.5–1L' },
+  { value: '1_1_5l', label: '1–1.5L' },
+  { value: '1_5_2l', label: '1.5–2L' },
   { value: 'over_2l', label: 'Over 2L' },
   { value: 'not_sure', label: 'Not sure' },
 ]
@@ -58,8 +68,6 @@ const STEP_META = [
   { marker: '04 - WATER', question: 'How much water so far today?' },
 ] as const
 
-const STEP_COUNT = STEP_META.length
-
 /** One-question-per-step daily check-in. Chip taps advance automatically so
  * the whole thing takes about 20 seconds, except the optional meal note. */
 export default function CheckIn() {
@@ -68,48 +76,36 @@ export default function CheckIn() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // A check-in left over from a previous day (app open across midnight) is
+  // treated as fresh: it neither pre-fills answers nor flips the header copy.
+  const prefill = isTodaysCheckIn(latestCheckIn, todayISO()) ? latestCheckIn : null
+
   const [reportedEnergy, setReportedEnergy] = useState<Scale1to5 | null>(
-    latestCheckIn?.reportedEnergy ?? null
+    prefill?.reportedEnergy ?? null
   )
   const [sleepDuration, setSleepDuration] = useState<SleepDuration | null>(
-    latestCheckIn?.sleepDuration ?? null
+    prefill?.sleepDuration ?? null
   )
   const [lastMealTiming, setLastMealTiming] = useState<LastMealTiming | null>(
-    latestCheckIn?.lastMealTiming ?? null
+    prefill?.lastMealTiming ?? null
   )
   const [lastMealDescription, setLastMealDescription] = useState(
-    latestCheckIn?.lastMealDescription ?? ''
+    prefill?.lastMealDescription ?? ''
   )
   const [hydration, setHydration] = useState<Hydration | null>(
-    latestCheckIn?.hydration ?? null
+    prefill?.hydration ?? null
   )
 
-  const isUpdate = latestCheckIn !== null
-  const answeredCount = [reportedEnergy, sleepDuration, lastMealTiming, hydration].filter(
-    (value) => value !== null
-  ).length
-
-  const buildCheckInInput = (): CheckInInput | null => {
-    if (
-      reportedEnergy === null ||
-      sleepDuration === null ||
-      lastMealTiming === null ||
-      hydration === null
-    ) {
-      return null
-    }
-
-    return {
-      date: todayISO(),
-      reportedEnergy,
-      sleepDuration,
-      lastMealTiming,
-      lastMealDescription: lastMealDescription.trim() || undefined,
-      hydration,
-    }
+  const answers: CheckInAnswers = {
+    reportedEnergy,
+    sleepDuration,
+    lastMealTiming,
+    lastMealDescription,
+    hydration,
   }
 
-  const complete = buildCheckInInput() !== null
+  const isUpdate = prefill !== null
+  const complete = buildCheckInInput(answers, todayISO()) !== null
   const isLastStep = step === STEP_COUNT - 1
 
   const closeCheckIn = () => {
@@ -119,13 +115,13 @@ export default function CheckIn() {
 
   const goNext = () => {
     setError(null)
-    setStep((current) => Math.min(current + 1, STEP_COUNT - 1))
+    setStep((current) => nextStep(current))
   }
 
   const goBack = () => {
     setError(null)
     if (step === 0) closeCheckIn()
-    else setStep((current) => current - 1)
+    else setStep((current) => prevStep(current))
   }
 
   const onEnergy = (value: Scale1to5) => {
@@ -139,7 +135,7 @@ export default function CheckIn() {
   }
 
   const submit = async () => {
-    const input = buildCheckInInput()
+    const input = buildCheckInInput(answers, todayISO())
     if (!input) return
     setSubmitting(true)
     setError(null)
@@ -148,21 +144,14 @@ export default function CheckIn() {
       closeCheckIn()
     } catch (submitError) {
       console.error('Check-in failed:', submitError)
-      setError('Something went wrong - please try again.')
+      setError('Something went wrong — please try again.')
       setSubmitting(false)
     }
   }
 
   const current = STEP_META[step]
-  const currentStepAnswered =
-    step === 0
-      ? reportedEnergy !== null
-      : step === 1
-        ? sleepDuration !== null
-        : step === 2
-          ? lastMealTiming !== null
-          : hydration !== null
-  const showContinue = !isLastStep && (step === 2 || (isUpdate && currentStepAnswered))
+  const currentStepAnswered = isStepAnswered(step, answers)
+  const showContinue = shouldShowContinue(step, answers)
 
   return (
     <Screen>
@@ -202,7 +191,7 @@ export default function CheckIn() {
         </View>
         <View style={styles.progressTrack}>
           <View
-            style={[styles.progressFill, { width: `${(answeredCount / STEP_COUNT) * 100}%` }]}
+            style={[styles.progressFill, { width: `${progressRatio(step, answers) * 100}%` }]}
           />
         </View>
       </View>

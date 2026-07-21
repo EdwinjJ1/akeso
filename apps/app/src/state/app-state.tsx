@@ -18,6 +18,7 @@ import {
 
 import { getService } from '@/services'
 import { todayISO } from '@/utils/dates'
+import { runSubmitCheckIn } from './checkin-flow'
 
 interface AppState {
   profile: UserProfile | null
@@ -95,38 +96,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [service])
 
   const submitCheckIn = useCallback(
-    async (input: CheckInInput) => {
-      const submittedInput = { ...input }
-      const energy = await service.submitCheckIn(input)
-      setState((prev) => ({
-        ...prev,
-        energy,
-        latestCheckIn: submittedInput,
-        plan: null,
-        nutrition: null,
-        coach: null,
-        loading: false,
-        error: null,
-      }))
-
-      try {
-        const [plan, nutrition, coach] = await Promise.all([
-          service.getTodayPlan(input.date),
-          service.getNutritionPlan(input.date),
-          service.getCoachReply(input.date),
-        ])
-        setState((prev) => ({ ...prev, plan, nutrition, coach }))
-      } catch (error) {
-        console.error('Post-check-in refresh failed:', error)
-        setState((prev) => ({
-          ...prev,
-          error:
-            'Your check-in was saved, but today\'s guidance could not load. Retry from the dashboard.',
-        }))
-      }
-
-      return energy
-    },
+    (input: CheckInInput) =>
+      runSubmitCheckIn(service, input, (patch) =>
+        setState((prev) => ({ ...prev, ...patch }))
+      ),
     [service]
   )
 
