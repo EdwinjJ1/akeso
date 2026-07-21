@@ -34,7 +34,7 @@ export const fixtureEnergyResult: EnergyResult = {
   date: FIXTURE_DATE,
   score: 78,
   band: 'high',
-  headline: 'Solid morning ahead — protect 9:00–11:30 for deep work.',
+  headline: 'Solid morning ahead — protect 9:00–12:00 for deep work.',
   factors: [
     {
       key: 'sleep_duration',
@@ -160,7 +160,7 @@ export const fixtureDayPlan: DayPlan = {
       title: 'COMP2521 assignment — graph section',
       taskId: 'task-1',
       energyLevel: 'high',
-      rationale: 'Your hardest task lands in today’s 9–11:30 peak.',
+      rationale: 'Your hardest task lands in today’s 9–12 peak.',
     },
     {
       id: 'block-3',
@@ -221,7 +221,7 @@ export const fixtureDayPlan: DayPlan = {
     },
   ],
   coachNote:
-    'Today is front-loaded on purpose: your two hardest tasks sit inside the 9:00–11:30 peak, and the 2–4pm dip only carries admin and recovery.',
+    'Today is front-loaded on purpose: your two hardest tasks sit inside the 9:00–12:00 peak, and the 2–4pm dip only carries admin and recovery.',
   generatedAt: `${FIXTURE_DATE}T08:05:10+10:00`,
 }
 
@@ -232,7 +232,7 @@ export const fixtureCoachRequest: CoachRequest = {
 
 export const fixtureCoachReply: CoachReply = {
   message:
-    'Based on today’s check-in, your morning is your strongest window. The plan protects 9:00–11:30 for the assignment and keeps the afternoon light because stress is elevated.',
+    'Based on today’s check-in, your morning is your strongest window. The plan protects 9:00–12:00 for the assignment and keeps the afternoon light because stress is elevated.',
   suggestions: [
     {
       id: 'sug-1',

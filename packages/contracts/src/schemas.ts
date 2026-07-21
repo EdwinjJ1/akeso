@@ -64,8 +64,8 @@ export type CheckInInput = z.infer<typeof CheckInInputSchema>
 
 // ── Energy ──────────────────────────────────────────────────────────────────
 
-/** 0–100. Computed by the deterministic EnergyEngine only. */
-export const EnergyScoreSchema = z.number().min(0).max(100)
+/** 0–100 integer. Computed by the deterministic EnergyEngine only. */
+export const EnergyScoreSchema = z.number().int().min(0).max(100)
 export type EnergyScore = z.infer<typeof EnergyScoreSchema>
 
 export const EnergyBandSchema = z.enum(['low', 'moderate', 'high'])
@@ -84,8 +84,8 @@ export type EnergyFactorKey = z.infer<typeof EnergyFactorKeySchema>
 export const EnergyFactorSchema = z.object({
   key: EnergyFactorKeySchema,
   label: z.string().min(1),
-  /** Signed points this factor contributed to the score. */
-  impact: z.number().min(-50).max(50),
+  /** Signed integer points this factor contributed to the score. */
+  impact: z.number().int().min(-50).max(50),
   explanation: z.string().min(1),
 })
 export type EnergyFactor = z.infer<typeof EnergyFactorSchema>
@@ -151,18 +151,22 @@ export const PlanBlockTypeSchema = z.enum([
 ])
 export type PlanBlockType = z.infer<typeof PlanBlockTypeSchema>
 
-export const PlanBlockSchema = z.object({
-  id: z.string().min(1),
-  start: TimeStringSchema,
-  end: TimeStringSchema,
-  type: PlanBlockTypeSchema,
-  title: z.string().min(1),
-  taskId: z.string().min(1).optional(),
-  /** Predicted energy band during this block. */
-  energyLevel: EnergyBandSchema,
-  /** Why the planner put it here — always evidence-based. */
-  rationale: z.string().min(1),
-})
+export const PlanBlockSchema = z
+  .object({
+    id: z.string().min(1),
+    start: TimeStringSchema,
+    end: TimeStringSchema,
+    type: PlanBlockTypeSchema,
+    title: z.string().min(1),
+    taskId: z.string().min(1).optional(),
+    /** Predicted energy band during this block. */
+    energyLevel: EnergyBandSchema,
+    /** Why the planner put it here — always evidence-based. */
+    rationale: z.string().min(1),
+  })
+  // Zero-padded HH:mm compares correctly as a string. Blocks stay within one
+  // local day — overnight blocks are out of scope for the demo.
+  .refine((b) => b.end > b.start, { message: 'end must be after start' })
 export type PlanBlock = z.infer<typeof PlanBlockSchema>
 
 export const DayPlanSchema = z.object({
@@ -187,6 +191,7 @@ export type CoachSuggestion = z.infer<typeof CoachSuggestionSchema>
 /** AI structured output — MUST be parsed with this schema before use. */
 export const CoachReplySchema = z.object({
   message: z.string().min(1),
+  /** Deliberately allowed to be empty — the coach may have nothing actionable. */
   suggestions: z.array(CoachSuggestionSchema),
   adjustedPlan: DayPlanSchema.optional(),
   /** Non-clinical disclaimer — must always be shown with coach output. */

@@ -155,6 +155,20 @@ describe('numeric ranges are enforced at runtime', () => {
     ).toBe(false)
   })
 
+  it('rejects fractional scores and factor impacts', () => {
+    expect(
+      EnergyResultSchema.safeParse({ ...fixtureEnergyResult, score: 78.5 })
+        .success
+    ).toBe(false)
+    const [firstFactor, ...restFactors] = fixtureEnergyResult.factors
+    expect(
+      EnergyResultSchema.safeParse({
+        ...fixtureEnergyResult,
+        factors: [{ ...firstFactor, impact: 14.5 }, ...restFactors],
+      }).success
+    ).toBe(false)
+  })
+
   it('rejects malformed plan block times', () => {
     const [first, ...rest] = fixtureDayPlan.blocks
     const broken = {
@@ -162,6 +176,20 @@ describe('numeric ranges are enforced at runtime', () => {
       blocks: [{ ...first, start: '9:00' }, ...rest],
     }
     expect(DayPlanSchema.safeParse(broken).success).toBe(false)
+  })
+
+  it('rejects a plan block that does not end after it starts', () => {
+    const [first, ...rest] = fixtureDayPlan.blocks
+    const inverted = {
+      ...fixtureDayPlan,
+      blocks: [{ ...first, start: '10:00', end: '09:00' }, ...rest],
+    }
+    expect(DayPlanSchema.safeParse(inverted).success).toBe(false)
+    const zeroLength = {
+      ...fixtureDayPlan,
+      blocks: [{ ...first, start: '08:00', end: '08:00' }, ...rest],
+    }
+    expect(DayPlanSchema.safeParse(zeroLength).success).toBe(false)
   })
 
   it('rejects an inverted peak window', () => {
