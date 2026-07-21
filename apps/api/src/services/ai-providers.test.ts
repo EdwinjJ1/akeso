@@ -201,9 +201,12 @@ describe('Gemini production provider', () => {
           }),
         ],
       })
-      expect(
-        collectObjectKeys(body.generationConfig.responseJsonSchema)
-      ).not.toEqual(expect.arrayContaining(['const', 'minLength', 'maxLength']))
+      const schemaKeys = collectObjectKeys(
+        body.generationConfig.responseJsonSchema
+      )
+      expect(schemaKeys).not.toContain('const')
+      expect(schemaKeys).not.toContain('minLength')
+      expect(schemaKeys).not.toContain('maxLength')
       expect(
         body.generationConfig.responseJsonSchema.oneOf[0].properties
       ).not.toHaveProperty('reason')
