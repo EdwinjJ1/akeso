@@ -45,6 +45,7 @@ const fakeAiServices: AiServices = {
               title: `Use ${fridge[0].name}`,
               description: 'Uses a confirmed fridge ingredient.',
               usesFridgeItemIds: [fridge[0].id],
+              allergenTags: fridge[0].allergenTags,
               boosts: [],
               prepMinutes: 10,
               tags: ['confirmed fridge'],
@@ -182,6 +183,10 @@ describe('profile', () => {
       typicalWake: '07:30',
       typicalSleep: '23:30',
       dietaryPreference: 'none',
+      dietarySafety: {
+        allergens: [],
+        avoidIngredients: [],
+      },
     }
     await request(app).put('/v1/profile').send(profile).expect(200)
     const response = await request(app).get('/v1/profile').expect(200)
@@ -197,6 +202,10 @@ describe('profile', () => {
         typicalWake: '7:30am',
         typicalSleep: '23:30',
         dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: [],
+          avoidIngredients: [],
+        },
       })
       .expect(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
@@ -216,7 +225,9 @@ describe('fridge', () => {
       .expect(200)
 
     const response = await request(app).get('/v1/fridge').expect(200)
-    expect(response.body.data).toEqual([{ id: 'milk', name: 'Milk', category: 'dairy' }])
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
+    ])
   })
 
   test('PUT with the same id twice overwrites rather than duplicating', async () => {
@@ -230,7 +241,9 @@ describe('fridge', () => {
       .expect(200)
 
     const response = await request(app).get('/v1/fridge').expect(200)
-    expect(response.body.data).toEqual([{ id: 'milk', name: 'Oat milk', category: 'dairy' }])
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Oat milk', category: 'dairy', allergenTags: [] },
+    ])
   })
 
   test('renaming an item into an existing name merges without leaving an orphan', async () => {
@@ -251,7 +264,9 @@ describe('fridge', () => {
       .expect(200)
 
     const response = await request(app).get('/v1/fridge').expect(200)
-    expect(response.body.data).toEqual([{ id: 'milk', name: 'Milk', category: 'dairy' }])
+    expect(response.body.data).toEqual([
+      { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
+    ])
   })
 
   test('PUT rejects an invalid category with 400 VALIDATION_ERROR', async () => {
@@ -273,7 +288,7 @@ describe('fridge', () => {
       .expect(200)
     const response = await request(app).get('/v1/fridge-items').expect(200)
     expect(response.body.data).toEqual([
-      { id: 'apple', name: 'Green apple', category: 'fruit' },
+      { id: 'apple', name: 'Green apple', category: 'fruit', allergenTags: [] },
     ])
   })
 
@@ -340,7 +355,7 @@ describe('fridge', () => {
       .expect(200)
 
     expect(response.body.data).toEqual([
-      { id: 'tomato', name: 'Tomato', category: 'vegetable' },
+      { id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] },
     ])
     const inventory = await request(app).get('/v1/fridge').expect(200)
     expect(inventory.body.data).toHaveLength(1)
@@ -401,9 +416,10 @@ describe('nutrition and coach', () => {
       .post('/v1/nutrition/2026-08-01/regenerate')
       .expect(200)
     expect(response.body.data.fridge).toEqual([
-      { id: 'tomato', name: 'Tomato', category: 'vegetable' },
+      { id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] },
     ])
     expect(response.body.data.meals[0].usesFridgeItemIds).toEqual(['tomato'])
+    expect(response.body.data.meals[0].allergenTags).toEqual([])
   })
 
   test('cached AI plan is invalidated when confirmed inventory changes', async () => {
@@ -443,6 +459,34 @@ describe('nutrition and coach', () => {
       .post('/v1/nutrition/2026-08-01/regenerate')
       .expect(429)
     expect(response.body.error.code).toBe('RATE_LIMITED')
+  })
+
+  test('GET /v1/nutrition/:date filters meals matching the saved safety profile', async () => {
+    await request(app)
+      .put('/v1/profile')
+      .send({
+        displayName: 'Alex',
+        goal: 'academic',
+        typicalWake: '07:30',
+        typicalSleep: '23:30',
+        dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: ['milk'],
+          avoidIngredients: [],
+        },
+      })
+      .expect(200)
+    await request(app)
+      .post('/v1/fridge-items/batch')
+      .send({
+        items: [
+          { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: ['milk'] },
+        ],
+      })
+      .expect(200)
+
+    const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
+    expect(response.body.data.meals).toEqual([])
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {

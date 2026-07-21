@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const originalFetch = global.fetch
 const originalKey = process.env.MIMO_API_KEY
 
-const confirmedInventory = [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }]
+const confirmedInventory = [
+  { id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] },
+]
 
 const hallucinatedResponsePayload = {
   choices: [

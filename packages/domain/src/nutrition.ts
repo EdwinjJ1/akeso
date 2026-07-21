@@ -76,6 +76,9 @@ export function buildInventoryNutritionFallback({
   const prepMinutes = energyBand === 'low' ? 10 : 20
   const meals = chunksOfThree(usableItems).map((items, index) => {
     const names = items.map((item) => item.name)
+    const allergenTags = [
+      ...new Set(items.flatMap((item) => item.allergenTags)),
+    ]
     const boosts = [
       ...new Set(
         items.flatMap((item) => categoryNutrients[item.category] ?? [])
@@ -88,6 +91,7 @@ export function buildInventoryNutritionFallback({
       title: names.join(' + '),
       description: `A simple option using only your confirmed ingredients: ${names.join(', ')}.`,
       usesFridgeItemIds: items.map((item) => item.id),
+      allergenTags,
       boosts,
       prepMinutes,
       tags: [energyBand === 'low' ? 'low effort' : 'from confirmed fridge'],

@@ -1,8 +1,9 @@
 import {
+  buildInventoryNutritionFallback,
   fixtureCoachReply,
   fixtureDayPlan,
   fixtureTasks,
-  buildInventoryNutritionFallback,
+  filterNutritionPlanForDietarySafety,
   EnergyEngine,
   type AkesoService,
   type CheckInInput,
@@ -84,20 +85,25 @@ export class FixtureService implements AkesoService {
     }
   }
 
-  async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
-    await wait(LATENCY_MS)
-    return this.regenerateNutrition(date)
-  }
-
-  async regenerateNutrition(date: string): Promise<NutritionPlan> {
-    await wait(LATENCY_MS)
-    return buildInventoryNutritionFallback({
+  private buildNutrition(date: string): NutritionPlan {
+    const plan = buildInventoryNutritionFallback({
       date,
       fridge: Array.from(this.fridge.values()),
       energyBand: this.energy?.band ?? 'moderate',
       dietaryPreference: this.profile?.dietaryPreference ?? 'none',
       needs: [],
     })
+    return filterNutritionPlanForDietarySafety(plan, this.profile?.dietarySafety)
+  }
+
+  async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
+    await wait(LATENCY_MS)
+    return this.buildNutrition(date)
+  }
+
+  async regenerateNutrition(date: string): Promise<NutritionPlan> {
+    await wait(LATENCY_MS)
+    return this.buildNutrition(date)
   }
 
   async getCoachReply(_date: string): Promise<CoachReply> {
