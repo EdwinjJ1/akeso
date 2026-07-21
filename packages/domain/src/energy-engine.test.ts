@@ -1,4 +1,5 @@
 import { EnergyEngine, ENERGY_ENGINE_CONFIG } from './energy-engine.js'
+import { fixtureCheckIn, fixtureEnergyResult } from './fixtures.js'
 import type { CheckInInput } from './types.js'
 
 const engine = new EnergyEngine()
@@ -62,6 +63,14 @@ for (const key of ['sleep_duration', 'last_meal', 'hydration'] as const) {
 
 const repeated = engine.evaluate(canonicalCheckIn)
 assertEqual(JSON.stringify(repeated), JSON.stringify(canonical), 'Deterministic result')
+
+// The shared demo fixture must be genuine engine output: if fixture copy or
+// values drift from what the engine actually produces, this fails.
+assertEqual(
+  JSON.stringify(engine.evaluate(fixtureCheckIn)),
+  JSON.stringify(fixtureEnergyResult),
+  'fixtureEnergyResult mirrors engine.evaluate(fixtureCheckIn)'
+)
 
 // reportedEnergy maps 1..5 → 20/40/60/80/100 and nothing else moves the score.
 const scoreByReport: Record<1 | 2 | 3 | 4 | 5, number> = {

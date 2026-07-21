@@ -1,4 +1,5 @@
 import type {
+  CheckInInput,
   CoachReply,
   DayPlan,
   EnergyResult,
@@ -6,7 +7,7 @@ import type {
   NutritionPlan,
   Task,
   UserProfile,
-} from './types'
+} from './types.js'
 
 /**
  * Demo fixture data. Entirely fictional (see TEAM_CONTRACT §4.4) — no real
@@ -22,6 +23,19 @@ export const fixtureProfile: UserProfile = {
   typicalWake: '07:30',
   typicalSleep: '23:30',
   dietaryPreference: 'none',
+}
+
+/**
+ * The check-in that produces fixtureEnergyResult. energy-engine.test.ts
+ * asserts `engine.evaluate(fixtureCheckIn)` deep-equals fixtureEnergyResult,
+ * so the fixture below can never drift from real engine output.
+ */
+export const fixtureCheckIn: CheckInInput = {
+  date: FIXTURE_DATE,
+  reportedEnergy: 4,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
 
 export const fixtureEnergyResult: EnergyResult = {
@@ -47,11 +61,11 @@ export const fixtureEnergyResult: EnergyResult = {
       key: 'last_meal',
       label: 'Ate 1–3h ago',
       role: 'possible_context',
-      explanation: 'Recent enough that fuel probably is not dragging you.',
+      explanation: 'Recent enough that fuel probably isn’t dragging you.',
     },
     {
       key: 'hydration',
-      label: '1–1.5L water so far',
+      label: '1–1.5L water',
       role: 'possible_context',
       explanation: 'Making progress — keep sipping through the day.',
     },

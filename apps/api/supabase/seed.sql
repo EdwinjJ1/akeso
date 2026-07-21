@@ -31,8 +31,8 @@ values (
   '[
     {"key":"reported_energy","label":"Feeling good (4/5)","role":"reported_energy","impact":20,"explanation":"You reported your energy as 4/5 — that lifts today’s baseline by 20."},
     {"key":"sleep_duration","label":"7–8h sleep","role":"possible_context","explanation":"Around a solid night — a likely support for today."},
-    {"key":"last_meal","label":"Ate 1–3h ago","role":"possible_context","explanation":"Recent enough that fuel probably is not dragging you."},
-    {"key":"hydration","label":"1–1.5L water so far","role":"possible_context","explanation":"Making progress — keep sipping through the day."}
+    {"key":"last_meal","label":"Ate 1–3h ago","role":"possible_context","explanation":"Recent enough that fuel probably isn’t dragging you."},
+    {"key":"hydration","label":"1–1.5L water","role":"possible_context","explanation":"Making progress — keep sipping through the day."}
   ]'::jsonb,
   '[
     {"hour":7,"level":49}, {"hour":9,"level":85}, {"hour":11,"level":91}, {"hour":13,"level":78},
