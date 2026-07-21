@@ -197,8 +197,8 @@ export function FridgeRecognition() {
           Take or upload a photo. AI suggests what is present; you stay in control of every saved item.
         </Text>
         <View style={styles.actionRow}>
-          <ActionButton icon="camera" label="Camera" onPress={openCamera} />
-          <ActionButton icon="images" label="Upload photo" onPress={openLibrary} />
+          <ActionButton icon="camera" label="Camera" onPress={openCamera} flex={2} />
+          <ActionButton icon="images" label="Upload photo" onPress={openLibrary} flex={3} />
         </View>
         {previewUri ? <Image source={{ uri: previewUri }} style={styles.preview} /> : null}
         {working ? (
@@ -320,14 +320,16 @@ function ActionButton({
   icon,
   label,
   onPress,
+  flex,
 }: {
   icon: 'camera' | 'images'
   label: string
   onPress: () => void
+  flex: number
 }) {
   return (
     <Pressable
-      style={styles.actionButton}
+      style={[styles.actionButton, { flex }]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -436,7 +438,6 @@ const styles = StyleSheet.create({
   intro: { ...type.body, marginTop: sp(2), color: colors.text },
   actionRow: { flexDirection: 'row', gap: sp(2), marginTop: sp(4) },
   actionButton: {
-    flex: 1,
     minHeight: 48,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
