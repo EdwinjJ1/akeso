@@ -10,12 +10,10 @@ import {
 
 const validCheckIn = {
   date: '2026-07-21',
-  sleepHours: 7.5,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 4,
-  energyNow: 3,
-  caffeine: 'afternoon',
+  reportedEnergy: 3,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
 
 describe('checkInInputSchema', () => {
@@ -23,10 +21,10 @@ describe('checkInInputSchema', () => {
     expect(checkInInputSchema.safeParse(validCheckIn).success).toBe(true)
   })
 
-  test('accepts an optional notes field', () => {
+  test('accepts an optional lastMealDescription field', () => {
     const result = checkInInputSchema.safeParse({
       ...validCheckIn,
-      notes: 'Big deadline today',
+      lastMealDescription: 'Leftover salmon rice bowl',
     })
     expect(result.success).toBe(true)
   })
@@ -39,23 +37,42 @@ describe('checkInInputSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  test('rejects sleepHours outside 0.5-hour steps', () => {
+  test('rejects an out-of-range reportedEnergy value', () => {
     const result = checkInInputSchema.safeParse({
       ...validCheckIn,
-      sleepHours: 7.3,
+      reportedEnergy: 6,
     })
     expect(result.success).toBe(false)
   })
 
-  test('rejects an out-of-range scale value', () => {
-    const result = checkInInputSchema.safeParse({ ...validCheckIn, mood: 6 })
+  test('rejects an unknown sleepDuration bucket', () => {
+    const result = checkInInputSchema.safeParse({
+      ...validCheckIn,
+      sleepDuration: '9h',
+    })
     expect(result.success).toBe(false)
   })
 
-  test('rejects an unknown caffeine value', () => {
+  test('rejects an unknown lastMealTiming bucket', () => {
     const result = checkInInputSchema.safeParse({
       ...validCheckIn,
-      caffeine: 'espresso',
+      lastMealTiming: 'yesterday',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects an unknown hydration bucket', () => {
+    const result = checkInInputSchema.safeParse({
+      ...validCheckIn,
+      hydration: 'lots',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects a leftover legacy field instead of silently dropping it', () => {
+    const result = checkInInputSchema.safeParse({
+      ...validCheckIn,
+      sleepHours: 7.5,
     })
     expect(result.success).toBe(false)
   })

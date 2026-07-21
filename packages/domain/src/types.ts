@@ -10,21 +10,44 @@ export type Scale1to5 = 1 | 2 | 3 | 4 | 5
 
 // ── Check-in ────────────────────────────────────────────────────────────────
 
-export type CaffeineIntake = 'none' | 'morning' | 'afternoon' | 'evening'
+/** Bucketed hours of sleep last night. */
+export type SleepDuration =
+  | 'under_5h'
+  | '5_6h'
+  | '6_7h'
+  | '7_8h'
+  | '8_9h'
+  | 'over_9h'
+  | 'not_sure'
+
+/** How long ago the last meal was. */
+export type LastMealTiming =
+  | 'within_1h'
+  | '1_3h'
+  | '3_5h'
+  | 'over_5h'
+  | 'not_today'
+  | 'not_sure'
+
+/** Rough water intake so far today, in litre bands. */
+export type Hydration =
+  | 'under_0_5l'
+  | '0_5_1l'
+  | '1_1_5l'
+  | '1_5_2l'
+  | 'over_2l'
+  | 'not_sure'
 
 export interface CheckInInput {
   /** Local date, YYYY-MM-DD */
   date: string
-  /** Hours slept last night, 0–14 in 0.5 steps */
-  sleepHours: number
-  sleepQuality: Scale1to5
-  mood: Scale1to5
-  /** 5 = very stressed */
-  stress: Scale1to5
-  /** Self-reported energy right now */
-  energyNow: Scale1to5
-  caffeine: CaffeineIntake
-  notes?: string
+  /** Self-reported energy right now; 1..5 maps to 20/40/60/80/100. */
+  reportedEnergy: Scale1to5
+  sleepDuration: SleepDuration
+  lastMealTiming: LastMealTiming
+  /** Optional free-text description of the last meal. */
+  lastMealDescription?: string
+  hydration: Hydration
 }
 
 // ── Energy ──────────────────────────────────────────────────────────────────
@@ -32,18 +55,28 @@ export interface CheckInInput {
 export type EnergyBand = 'low' | 'moderate' | 'high'
 
 export type EnergyFactorKey =
+  | 'reported_energy'
   | 'sleep_duration'
-  | 'sleep_quality'
-  | 'stress'
-  | 'mood'
-  | 'caffeine'
-  | 'self_report'
+  | 'last_meal'
+  | 'hydration'
+
+/**
+ * Whether a factor actually drove the score (`reported_energy`) or is only
+ * shown as possible context. Sleep, last meal and hydration are context: they
+ * are never forced into a point attribution.
+ */
+export type EnergyFactorRole = 'reported_energy' | 'possible_context'
 
 export interface EnergyFactor {
   key: EnergyFactorKey
   label: string
-  /** Signed points this factor contributed to the score */
-  impact: number
+  role: EnergyFactorRole
+  /**
+   * Signed points this factor contributed to the score. Only set for the
+   * `reported_energy` factor; `possible_context` factors are informational
+   * and deliberately carry no attribution.
+   */
+  impact?: number
   explanation: string
 }
 

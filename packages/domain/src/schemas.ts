@@ -48,29 +48,47 @@ export const scale1to5Schema = z.union([
   z.literal(5),
 ])
 
-export const caffeineIntakeSchema = z.enum([
-  'none',
-  'morning',
-  'afternoon',
-  'evening',
+export const sleepDurationSchema = z.enum([
+  'under_5h',
+  '5_6h',
+  '6_7h',
+  '7_8h',
+  '8_9h',
+  'over_9h',
+  'not_sure',
 ])
 
-export const checkInInputSchema = z.object({
-  date: localDateSchema,
-  sleepHours: z
-    .number()
-    .min(0)
-    .max(14)
-    .refine((hours) => Number.isInteger(hours * 2), {
-      message: 'sleepHours must be in 0.5-hour steps',
-    }),
-  sleepQuality: scale1to5Schema,
-  mood: scale1to5Schema,
-  stress: scale1to5Schema,
-  energyNow: scale1to5Schema,
-  caffeine: caffeineIntakeSchema,
-  notes: z.string().max(280).optional(),
-})
+export const lastMealTimingSchema = z.enum([
+  'within_1h',
+  '1_3h',
+  '3_5h',
+  'over_5h',
+  'not_today',
+  'not_sure',
+])
+
+export const hydrationSchema = z.enum([
+  'under_0_5l',
+  '0_5_1l',
+  '1_1_5l',
+  '1_5_2l',
+  'over_2l',
+  'not_sure',
+])
+
+export const checkInInputSchema = z
+  .object({
+    date: localDateSchema,
+    reportedEnergy: scale1to5Schema,
+    sleepDuration: sleepDurationSchema,
+    lastMealTiming: lastMealTimingSchema,
+    lastMealDescription: z.string().max(280).optional(),
+    hydration: hydrationSchema,
+  })
+  // Reject unknown keys rather than silently dropping them, so a stale UI
+  // still sending legacy fields (sleepHours, caffeine, …) fails loudly during
+  // the contract migration instead of posting a half-empty check-in.
+  .strict()
 
 export const userGoalSchema = z.enum(['academic', 'work', 'fitness', 'balance'])
 
