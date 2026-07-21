@@ -2,6 +2,7 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  PlanBlock,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -27,6 +28,7 @@ export interface TaskRepo {
 export interface PlanRepo {
   get(userId: string, date: string): Promise<DayPlan | null>
   upsert(userId: string, plan: DayPlan): Promise<DayPlan>
+  updateBlock(userId: string, date: string, block: PlanBlock): Promise<void>
 }
 
 export interface Repos {

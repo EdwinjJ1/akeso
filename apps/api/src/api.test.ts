@@ -1,11 +1,12 @@
 import { EnergyEngine } from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
 import request from 'supertest'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { createApp } from './app'
 import { env } from './env'
 import { createMemoryRepos } from './repos/memory'
+import type { Repos } from './repos/types'
 
 const validCheckIn: CheckInInput = {
   date: '2026-07-21',
@@ -16,10 +17,12 @@ const validCheckIn: CheckInInput = {
 }
 
 let app: ReturnType<typeof createApp>
+let repos: Repos
 
 beforeEach(() => {
   // Fresh in-memory repos per test so state never leaks across cases.
-  app = createApp(createMemoryRepos())
+  repos = createMemoryRepos()
+  app = createApp(repos)
 })
 
 describe('POST /v1/checkins', () => {
@@ -108,6 +111,38 @@ describe('GET /v1/plan/:date', () => {
 })
 
 describe('PATCH /v1/plan/:date/blocks/:blockId', () => {
+  test('persists one block without rewriting the entire day', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const originalPlan = await request(app)
+      .get('/v1/plan/2026-07-21')
+      .expect(200)
+    const original = originalPlan.body.data.blocks[0]
+    const wholePlanUpsert = vi.spyOn(repos.plans, 'upsert')
+    const updateBlock = vi.spyOn(repos.plans, 'updateBlock')
+
+    await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${original.id}`)
+      .send({
+        title: 'Atomic block update',
+        start: original.start,
+        end: original.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    expect(updateBlock).toHaveBeenCalledWith(
+      expect.any(String),
+      '2026-07-21',
+      expect.objectContaining({
+        id: original.id,
+        title: 'Atomic block update',
+        status: 'completed',
+        source: 'user',
+      })
+    )
+    expect(wholePlanUpsert).not.toHaveBeenCalled()
+  })
+
   test('persists editable fields while leaving energy and rationale unchanged', async () => {
     await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
     const energyBefore = await request(app)
