@@ -6,11 +6,13 @@ import {
   DateStringSchema,
   DayPlanSchema,
   EnergyResultSchema,
+  FridgeItemSchema,
   NutritionPlanSchema,
+  ReminderPreferenceSchema,
   TaskSchema,
   UserProfileSchema,
   type ApiError,
-} from './schemas'
+} from './schemas.js'
 
 /**
  * HTTP contract between App and API (Issue #6 — FROZEN once agreed).
@@ -91,6 +93,29 @@ export const GetNutritionResponseSchema = apiResponseSchema(
 
 export const GetCoachResponseSchema = apiResponseSchema(CoachReplySchema)
 
+// ── GET /v1/fridge · PUT /v1/fridge/:id · DELETE /v1/fridge/:id ─────────────
+
+export const FridgeItemParamsSchema = z.object({ id: z.string().min(1) })
+export type FridgeItemParams = z.infer<typeof FridgeItemParamsSchema>
+
+export const GetFridgeResponseSchema = apiResponseSchema(z.array(FridgeItemSchema))
+
+/** `id` comes from the path, not the body — a PUT is always "upsert this id". */
+export const PutFridgeItemBodySchema = FridgeItemSchema.omit({ id: true })
+export type PutFridgeItemBody = z.infer<typeof PutFridgeItemBodySchema>
+export const PutFridgeItemResponseSchema = apiResponseSchema(FridgeItemSchema)
+
+export const DeleteFridgeItemResponseSchema = apiResponseSchema(z.null())
+
+// ── GET /v1/reminders · PUT /v1/reminders ───────────────────────────────────
+
+/** `data: null` until the user has set a preference. */
+export const GetReminderResponseSchema = apiResponseSchema(
+  ReminderPreferenceSchema.nullable()
+)
+export const PutReminderRequestSchema = ReminderPreferenceSchema
+export const PutReminderResponseSchema = apiResponseSchema(ReminderPreferenceSchema)
+
 // ── Route map ───────────────────────────────────────────────────────────────
 
 /**
@@ -154,5 +179,34 @@ export const apiContract = {
     path: '/v1/coach/:date',
     params: DateParamsSchema,
     response: GetCoachResponseSchema,
+  },
+  getFridgeItems: {
+    method: 'GET',
+    path: '/v1/fridge',
+    response: GetFridgeResponseSchema,
+  },
+  saveFridgeItem: {
+    method: 'PUT',
+    path: '/v1/fridge/:id',
+    params: FridgeItemParamsSchema,
+    request: PutFridgeItemBodySchema,
+    response: PutFridgeItemResponseSchema,
+  },
+  deleteFridgeItem: {
+    method: 'DELETE',
+    path: '/v1/fridge/:id',
+    params: FridgeItemParamsSchema,
+    response: DeleteFridgeItemResponseSchema,
+  },
+  getReminderPreference: {
+    method: 'GET',
+    path: '/v1/reminders',
+    response: GetReminderResponseSchema,
+  },
+  saveReminderPreference: {
+    method: 'PUT',
+    path: '/v1/reminders',
+    request: PutReminderRequestSchema,
+    response: PutReminderResponseSchema,
   },
 } as const

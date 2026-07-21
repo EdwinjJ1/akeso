@@ -5,7 +5,7 @@ import type {
   DayPlan,
   EnergyResult,
   Task,
-} from './schemas'
+} from './schemas.js'
 /**
  * Canonical demo fixtures (Issue #6). Entirely fictional — no real health
  * data. All modules (App UI, API seed data, AI prompt examples) use these
