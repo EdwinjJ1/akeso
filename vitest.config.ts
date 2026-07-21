@@ -22,6 +22,7 @@ export default defineConfig({
       'apps/app/src/state/checkin.logic.test.ts',
       'apps/app/src/state/checkin-flow.test.ts',
       'apps/app/src/state/fridge-flow.test.ts',
+      'apps/app/src/state/dashboard-state.test.ts',
       'packages/domain/src/energy-engine.test.ts',
       'scripts/vision-eval/**/*.test.ts',
     ],

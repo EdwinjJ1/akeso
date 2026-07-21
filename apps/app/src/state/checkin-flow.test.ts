@@ -79,7 +79,16 @@ test('lands the score first, then fills guidance in a second patch', async () =>
 
   // Phase 2: guidance fills in.
   expect(patches).toHaveLength(2)
-  expect(patches[1]).toEqual({ plan, nutrition, coach })
+  expect(patches[1]).toEqual({
+    plan,
+    nutrition,
+    coach,
+    ancillaryDate: input.date,
+    planLoading: false,
+    planError: null,
+    coachLoading: false,
+    coachError: null,
+  })
 })
 
 test('the score patch never touches loading, so it cannot clobber a refresh', async () => {
@@ -96,7 +105,7 @@ test('stores a copy of the submitted input, not the caller mutable object', asyn
   expect(patches[0].latestCheckIn).toEqual(input)
 })
 
-test('keeps the score when guidance fails and reports a recoverable error', async () => {
+test('keeps the score when guidance fails and reports module errors', async () => {
   const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
   const service = makeService({
     getTodayPlan: vi.fn(async () => {
@@ -109,7 +118,9 @@ test('keeps the score when guidance fails and reports a recoverable error', asyn
   expect(result).toBe(energy) // the check-in itself still succeeds
   expect(patches[0]).toMatchObject({ energy }) // score already applied
   await flushPromises()
-  expect(patches[1].error).toMatch(/check-in was saved/i)
+  expect(patches[1].planError).toMatch(/check-in was saved/i)
+  expect(patches[1].coachError).toMatch(/check-in was saved/i)
+  expect(patches[1]).not.toHaveProperty('error')
   expect(patches[1]).not.toHaveProperty('plan')
   consoleError.mockRestore()
 })

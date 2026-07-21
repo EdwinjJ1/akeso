@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -34,6 +35,11 @@ interface AppState {
   coach: CoachReply | null
   loading: boolean
   error: string | null
+  ancillaryDate: string | null
+  planLoading: boolean
+  planError: string | null
+  coachLoading: boolean
+  coachError: string | null
 }
 
 interface AppActions {
@@ -59,6 +65,11 @@ const initialState: AppState = {
   coach: null,
   loading: false,
   error: null,
+  ancillaryDate: null,
+  planLoading: false,
+  planError: null,
+  coachLoading: false,
+  coachError: null,
 }
 
 const AppStateContext = createContext<(AppState & AppActions) | null>(null)
@@ -66,6 +77,7 @@ const AppStateContext = createContext<(AppState & AppActions) | null>(null)
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState)
   const service = getService()
+  const refreshRequestId = useRef(0)
 
   const completeOnboarding = useCallback(
     async (profile: UserProfile) => {
@@ -76,49 +88,125 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshToday = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }))
+    const date = todayISO()
+    const requestId = ++refreshRequestId.current
+    setState((prev) => {
+      const canKeepDateScopedData = prev.ancillaryDate === date
+      return {
+        ...prev,
+        loading: true,
+        error: null,
+        planLoading: true,
+        planError: null,
+        coachLoading: true,
+        coachError: null,
+        tasks: canKeepDateScopedData ? prev.tasks : [],
+        plan: canKeepDateScopedData ? prev.plan : null,
+        nutrition: canKeepDateScopedData ? prev.nutrition : null,
+        coach: canKeepDateScopedData ? prev.coach : null,
+      }
+    })
+
+    // Start every request together, but publish Energy as soon as it settles.
+    // Slow ancillary modules must not hold the Energy-first hero hostage.
+    const energyRequest = service.getTodayEnergy(date)
+    const ancillaryRequest = Promise.allSettled([
+      service.getTasks(date),
+      service.getTodayPlan(date),
+      service.getNutritionPlan(date),
+      service.getCoachReply(date),
+      service.getFridgeItems(),
+    ])
+
     try {
-      const date = todayISO()
-      const [energy, tasks, plan, nutrition, coach, fridge] = await Promise.all([
-        service.getTodayEnergy(date),
-        service.getTasks(date),
-        service.getTodayPlan(date),
-        service.getNutritionPlan(date),
-        service.getCoachReply(date),
-        service.getFridgeItems(),
-      ])
+      const energy = await energyRequest
+      if (refreshRequestId.current !== requestId) return
       setState((prev) => ({
         ...prev,
         energy,
-        tasks,
-        plan,
-        nutrition,
-        coach,
-        fridge,
         loading: false,
+        error: null,
       }))
-    } catch (error) {
-      console.error('refreshToday failed:', error)
+    } catch (cause) {
+      if (refreshRequestId.current !== requestId) return
+      console.error('refreshToday: energy load failed:', cause)
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: 'Could not load today’s data. Pull to retry.',
+        error:
+          prev.energy?.date === date
+            ? "Could not refresh today's energy. Showing your last result."
+            : "Could not load today's data. Tap Retry to try again.",
       }))
     }
+
+    const [tasksResult, planResult, nutritionResult, coachResult, fridgeResult] =
+      await ancillaryRequest
+    if (refreshRequestId.current !== requestId) return
+
+    setState((prev) => ({
+      ...prev,
+      ancillaryDate: date,
+      tasks:
+        tasksResult.status === 'fulfilled'
+          ? tasksResult.value
+          : prev.ancillaryDate === date
+            ? prev.tasks
+            : [],
+      plan:
+        planResult.status === 'fulfilled'
+          ? planResult.value
+          : prev.ancillaryDate === date
+            ? prev.plan
+            : null,
+      nutrition:
+        nutritionResult.status === 'fulfilled'
+          ? nutritionResult.value
+          : prev.ancillaryDate === date
+            ? prev.nutrition
+            : null,
+      coach:
+        coachResult.status === 'fulfilled'
+          ? coachResult.value
+          : prev.ancillaryDate === date
+            ? prev.coach
+            : null,
+      fridge: fridgeResult.status === 'fulfilled' ? fridgeResult.value : prev.fridge,
+      planLoading: false,
+      planError:
+        planResult.status === 'rejected'
+          ? "Could not load today's plan."
+          : planResult.value
+            ? null
+            : "Today's plan is not ready yet.",
+      coachLoading: false,
+      coachError:
+        coachResult.status === 'rejected' ? "Could not load today's coaching note." : null,
+    }))
   }, [service])
 
   const submitCheckIn = useCallback(
-    (input: CheckInInput) =>
-      runSubmitCheckIn(service, input, (patch) =>
+    (input: CheckInInput) => {
+      refreshRequestId.current += 1
+      return runSubmitCheckIn(service, input, (patch) =>
         setState((prev) => ({ ...prev, ...patch }))
-      ),
+      )
+    },
     [service]
   )
 
   const regeneratePlan = useCallback(
     async (instruction?: string) => {
-      const { plan, coach } = await service.regeneratePlan(todayISO(), instruction)
-      setState((prev) => ({ ...prev, plan, coach }))
+      const date = todayISO()
+      const { plan, coach } = await service.regeneratePlan(date, instruction)
+      setState((prev) => ({
+        ...prev,
+        plan,
+        coach,
+        ancillaryDate: date,
+        planError: null,
+        coachError: null,
+      }))
     },
     [service]
   )
