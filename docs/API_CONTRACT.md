@@ -55,9 +55,9 @@ Akeso v1 的 Energy Score 是 **Reported Energy estimate**:系统把用户对当
 |---|---:|---:|---:|
 | Drained | 1 | 20 | -40 |
 | Low | 2 | 40 | -20 |
-| Okay | 3 | 60 | 0 |
+| OK | 3 | 60 | 0 |
 | Good | 4 | 80 | +20 |
-| Strong | 5 | 100 | +40 |
+| Charged | 5 | 100 | +40 |
 
 公式:
 
@@ -66,7 +66,9 @@ score = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 }[reportedEnergy]
 reported_energy.impact = score - 60
 ```
 
-`60` 是中性 baseline:用户选择 `Okay` 时分数为 60,`impact` 为 0。`impact` 的作用只是解释 reported energy 相对 baseline 的变化,不是医学归因。
+`60` 是中性 baseline:用户选择 `OK` 时分数为 60,`impact` 为 0。`impact` 的作用只是解释 reported energy 相对 baseline 的变化,不是医学归因。
+
+`reportedEnergy` 必须是整数 1–5;越界或非法值在 API 层由 `Scale1to5Schema` 拒绝并返回 `VALIDATION_ERROR`。引擎内部对越界输入做 clamp+round 仅作为深度防御,不是对外契约,调用方不得依赖该 clamp 行为(例如故意传 0 或 6)。
 
 ### 只作为上下文的输入
 
@@ -80,6 +82,8 @@ reported_energy.impact = score - 60
 | `hydration` | 解释今日饮水是否可能偏少或充足 | 否 |
 
 这些 context factor 不得带 `impact`,UI 不显示 `+/-` 分数。它们的文案必须使用保守表达,例如 “may contribute”、“may be related”、“based on your check-in”,不能写成 “caused by” 或 “diagnosed as”。
+
+`lastMealDescription` 是唯一的自由文本输入(280 字符上限),属于不可信用户输入。任何消费方(coach 文案生成、建议生成等)必须将其作为数据处理,不得据此改变系统行为或被解读为指令;展示到 UI 时必须按纯文本转义,不得作为 HTML/Markdown 渲染。
 
 如果某个 context 字段是 `not_sure`,对应 factor 直接省略,系统不得编造解释。若多数 context 不确定,headline / coach copy 应更保守,强调主要依据是用户的 `reportedEnergy` 自评。
 
