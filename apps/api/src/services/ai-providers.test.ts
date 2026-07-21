@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { HttpError } from '../http-error'
-import { createAiServices, getSelectedVisionIdentity } from './ai'
+import {
+  createAiServices,
+  getSelectedVisionIdentity,
+  NUTRITION_PROMPT_VERSION,
+} from './ai'
 import type { AiServices } from './types'
 
 type TestVisionConfig = {
@@ -70,6 +74,10 @@ afterEach(() => {
 })
 
 describe('AI provider selection', () => {
+  test('versions the text-free grounded nutrition blueprint contract', () => {
+    expect(NUTRITION_PROMPT_VERSION).toBe(3)
+  })
+
   test('identifies the selected Gemini model for cache partitioning', () => {
     expect(getSelectedVisionIdentity(config())).toEqual({
       provider: 'gemini',
@@ -154,8 +162,39 @@ describe('Gemini production provider', () => {
       })
       expect(body.generationConfig).toMatchObject({
         responseMimeType: 'application/json',
-        responseJsonSchema: expect.any(Object),
       })
+      expect(body.generationConfig.responseJsonSchema).toEqual({
+        oneOf: [
+          expect.objectContaining({
+            additionalProperties: false,
+            required: ['status', 'ingredients'],
+            properties: expect.objectContaining({
+              status: { const: 'ok' },
+            }),
+          }),
+          expect.objectContaining({
+            additionalProperties: false,
+            required: ['status', 'ingredients', 'reason'],
+            properties: expect.objectContaining({
+              status: { const: 'empty' },
+              reason: {
+                type: 'string',
+                enum: ['no_food_detected', 'unrecognizable_image'],
+              },
+            }),
+          }),
+          expect.objectContaining({
+            additionalProperties: false,
+            required: ['status', 'ingredients', 'reason'],
+            properties: expect.objectContaining({
+              status: { const: 'refused' },
+            }),
+          }),
+        ],
+      })
+      expect(
+        body.generationConfig.responseJsonSchema.oneOf[0].properties
+      ).not.toHaveProperty('reason')
       return geminiResponse(JSON.stringify(validRecognition))
     })
 
@@ -298,23 +337,18 @@ describe('Gemini production provider', () => {
       energy: null,
       profile: null,
     }
-    const plan = {
+    const blueprint = {
       date: input.date,
       needs: [],
-      fridge: input.fridge,
       meals: [
         {
-          id: 'meal-1',
           slot: 'snack',
-          title: 'Sliced tomato',
-          description: 'Slice and serve the tomato.',
-          usesFridgeItemIds: ['tomato'],
+          itemIds: ['tomato'],
+          actions: [{ method: 'slice', itemIds: ['tomato'] }],
           boosts: [],
           prepMinutes: 5,
-          tags: ['low effort'],
         },
       ],
-      rationale: 'Uses the only confirmed fridge item.',
     }
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       const body = JSON.parse(String(init?.body))
@@ -323,12 +357,52 @@ describe('Gemini production provider', () => {
         responseMimeType: 'application/json',
         responseJsonSchema: expect.any(Object),
       })
-      return geminiResponse(JSON.stringify(plan))
+      const mealSchema =
+        body.generationConfig.responseJsonSchema.properties.meals.items
+      expect(mealSchema.required).toEqual([
+        'slot',
+        'itemIds',
+        'actions',
+        'boosts',
+        'prepMinutes',
+      ])
+      expect(mealSchema.properties.actions.items.properties.method.enum).toEqual([
+        'serve',
+        'slice',
+        'chop',
+        'mix',
+        'combine',
+        'heat',
+        'cook',
+        'toast',
+        'blend',
+      ])
+      expect(mealSchema.properties).not.toHaveProperty('title')
+      expect(mealSchema.properties).not.toHaveProperty('description')
+      return geminiResponse(JSON.stringify(blueprint))
     })
 
     await expect(
       createServices(config(), fetchMock).generateNutrition(input)
-    ).resolves.toEqual(plan)
+    ).resolves.toEqual({
+      date: input.date,
+      needs: [],
+      fridge: input.fridge,
+      meals: [
+        {
+          id: 'meal-1',
+          slot: 'snack',
+          title: 'Sliced Tomato',
+          description: 'Slice Tomato.',
+          usesFridgeItemIds: ['tomato'],
+          boosts: [],
+          prepMinutes: 5,
+          tags: ['slice', 'confirmed inventory'],
+        },
+      ],
+      rationale:
+        'Recommendations use only confirmed fridge items and reflect today’s moderate energy.',
+    })
   })
 
   test('falls back when Gemini replaces confirmed inventory with invented food', async () => {
@@ -338,26 +412,21 @@ describe('Gemini production provider', () => {
       energy: null,
       profile: null,
     }
-    const inventedPlan = {
+    const inventedBlueprint = {
       date: input.date,
       needs: [],
-      fridge: [{ id: 'salmon', name: 'Salmon', category: 'protein' }],
       meals: [
         {
-          id: 'meal-1',
           slot: 'dinner',
-          title: 'Salmon dinner',
-          description: 'Serve salmon.',
-          usesFridgeItemIds: ['salmon'],
+          itemIds: ['salmon'],
+          actions: [{ method: 'cook', itemIds: ['salmon'] }],
           boosts: ['protein'],
           prepMinutes: 15,
-          tags: ['invented'],
         },
       ],
-      rationale: 'Uses invented food.',
     }
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      geminiResponse(JSON.stringify(inventedPlan))
+      geminiResponse(JSON.stringify(inventedBlueprint))
     )
 
     const result = await createServices(config(), fetchMock).generateNutrition(input)
@@ -366,5 +435,140 @@ describe('Gemini production provider', () => {
     expect(result.meals.flatMap((meal) => meal.usesFridgeItemIds)).toEqual([
       'tomato',
     ])
+  })
+
+  test('grounds every user-visible field when provider prose invents unavailable food', async () => {
+    const input = {
+      date: '2026-07-22',
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      energy: null,
+      profile: {
+        displayName: 'Alex',
+        goal: 'balance' as const,
+        typicalWake: '07:00',
+        typicalSleep: '23:00',
+        dietaryPreference: 'vegetarian' as const,
+      },
+    }
+    const blueprintWithUntrustedProse = {
+      date: input.date,
+      needs: ['protein'],
+      meals: [
+        {
+          id: 'salmon-meal',
+          slot: 'dinner',
+          itemIds: ['tomato'],
+          actions: [{ method: 'slice', itemIds: ['tomato'] }],
+          boosts: ['protein'],
+          prepMinutes: 15,
+          // Deliberately outside the private blueprint contract. Even if a
+          // provider emits them, these strings must never reach the client.
+          title: 'Tomato with salmon',
+          description: 'Serve the tomato with salmon.',
+          tags: ['salmon dinner'],
+        },
+      ],
+      rationale: 'Salmon makes this vegetarian plan complete.',
+    }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprintWithUntrustedProse))
+    )
+
+    const result = await createServices(config(), fetchMock).generateNutrition(input)
+    const userVisibleText = JSON.stringify({
+      needs: result.needs,
+      meals: result.meals,
+      rationale: result.rationale,
+    }).toLowerCase()
+
+    expect(userVisibleText).not.toContain('salmon')
+    expect(userVisibleText).toContain('tomato')
+    expect(result.meals[0]).toMatchObject({
+      id: 'meal-1',
+      slot: 'dinner',
+      usesFridgeItemIds: ['tomato'],
+      prepMinutes: 15,
+    })
+  })
+
+  test('conservatively excludes categories incompatible with dietary preference', async () => {
+    const input = {
+      date: '2026-07-22',
+      fridge: [
+        { id: 'tomato', name: 'Tomato', category: 'vegetable' as const },
+        { id: 'cheese', name: 'Cheese', category: 'dairy' as const },
+      ],
+      energy: null,
+      profile: {
+        displayName: 'Alex',
+        goal: 'balance' as const,
+        typicalWake: '07:00',
+        typicalSleep: '23:00',
+        dietaryPreference: 'vegan' as const,
+      },
+    }
+    const blueprint = {
+      date: input.date,
+      needs: [],
+      meals: [
+        {
+          slot: 'lunch',
+          itemIds: ['tomato'],
+          actions: [{ method: 'serve', itemIds: ['tomato'] }],
+          boosts: [],
+          prepMinutes: 10,
+        },
+        {
+          slot: 'snack',
+          itemIds: ['cheese'],
+          actions: [{ method: 'serve', itemIds: ['cheese'] }],
+          boosts: ['protein'],
+          prepMinutes: 5,
+        },
+      ],
+    }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint))
+    )
+
+    const result = await createServices(config(), fetchMock).generateNutrition(input)
+
+    expect(result.meals.map((meal) => meal.id)).toEqual(['meal-1'])
+    expect(JSON.stringify(result.meals).toLowerCase()).not.toContain('cheese')
+  })
+
+  test('renders different grounded advice from different safe action blueprints', async () => {
+    const input = {
+      date: '2026-07-22',
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      energy: null,
+      profile: null,
+    }
+    const blueprint = (method: 'slice' | 'heat') => ({
+      date: input.date,
+      needs: [],
+      meals: [
+        {
+          slot: 'snack',
+          itemIds: ['tomato'],
+          actions: [{ method, itemIds: ['tomato'] }],
+          boosts: [],
+          prepMinutes: 5,
+        },
+      ],
+    })
+    const sliceFetch = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint('slice')))
+    )
+    const heatFetch = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint('heat')))
+    )
+
+    const sliced = await createServices(config(), sliceFetch).generateNutrition(input)
+    const heated = await createServices(config(), heatFetch).generateNutrition(input)
+
+    expect(sliced.meals[0].description).toBe('Slice Tomato.')
+    expect(heated.meals[0].description).toBe('Warm Tomato.')
+    expect(heated.meals[0].description).not.toBe(sliced.meals[0].description)
   })
 })

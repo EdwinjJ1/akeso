@@ -414,6 +414,46 @@ describe('nutrition and coach', () => {
     ])
   })
 
+  test('partitions the nutrition cache by selected provider and model', async () => {
+    const originalVision = { ...env.vision }
+    try {
+      await request(app)
+        .post('/v1/fridge-items/batch')
+        .send({ items: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }] })
+        .expect(200)
+
+      Object.assign(env.vision, {
+        provider: 'gemini',
+        geminiModel: 'gemini-cache-model-a',
+      })
+      await request(app)
+        .post('/v1/nutrition/2026-08-01/regenerate')
+        .expect(200)
+      const geminiModelACached = await request(app)
+        .get('/v1/nutrition/2026-08-01')
+        .expect(200)
+      expect(geminiModelACached.body.data.meals[0].title).toBe('Use Tomato')
+
+      env.vision.geminiModel = 'gemini-cache-model-b'
+      const modelMiss = await request(app)
+        .get('/v1/nutrition/2026-08-01')
+        .expect(200)
+      expect(modelMiss.body.data.meals[0].title).toBe('Tomato')
+
+      await request(app)
+        .post('/v1/nutrition/2026-08-01/regenerate')
+        .expect(200)
+      env.vision.provider = 'mimo'
+      env.vision.mimoModel = 'mimo-cache-model-a'
+      const providerMiss = await request(app)
+        .get('/v1/nutrition/2026-08-01')
+        .expect(200)
+      expect(providerMiss.body.data.meals[0].title).toBe('Tomato')
+    } finally {
+      Object.assign(env.vision, originalVision)
+    }
+  })
+
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
     const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
     expect(response.body.data.disclaimer).toBeTruthy()

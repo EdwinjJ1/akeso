@@ -8,7 +8,7 @@ import { HttpError } from '../http-error'
 import type { NutritionGenerationInput } from './types'
 
 export const REQUEST_TIMEOUT_MS = 15_000
-export const NUTRITION_PROMPT_VERSION = 2
+export const NUTRITION_PROMPT_VERSION = 3
 
 export const AI_UNAVAILABLE_MESSAGE =
   'Fridge recognition is unavailable; use manual ingredient entry.'
@@ -32,127 +32,156 @@ For status "ok", every ingredient must include exactly name, category, confidenc
 export const nutritionPrompt = (input: NutritionGenerationInput) => `Create a practical, non-medical nutrition plan for ${input.date} from the exact JSON context below.
 
 Rules:
-- Use only fridge items supplied in context. Every usesFridgeItemIds value must exactly match one supplied id.
-- Do not mention, suggest, compare with, or give examples of any unavailable food anywhere in needs, meal titles, descriptions, tags, or rationale.
+- Use only fridge items supplied in context. Every itemIds value must exactly match one supplied id.
 - Never add an ingredient, quantity, weight, grams, expiry date, supplement, or medical claim.
-- Respect dietaryPreference. If inventory is empty, return no meals and clearly ask the user to add ingredients.
+- Respect dietaryPreference. If inventory is empty, return no meals.
 - Low energy meals must take at most 15 minutes; all others at most 30.
-- needs are qualitative priorities inferred for this day, not measured intake: use current 0, target 1, unit "priority". Use only keys protein, complex_carbs, iron, vitamin_c, omega3, hydration, fiber.
-- Return exactly this flat JSON shape and no other keys:
+- needs are qualitative priority keys inferred for this day, not measured intake.
+- Return a text-free blueprint using only confirmed item IDs and safe cooking methods. Return exactly this shape and no other keys:
 {
   "date": "${input.date}",
-  "needs": [{"key":"protein","label":"short priority label","current":0,"target":1,"unit":"priority","note":"why it matters today"}],
-  "fridge": ${JSON.stringify(input.fridge)},
-  "meals": [{"id":"meal-1","slot":"breakfast","title":"meal name","description":"brief preparation using only listed items","usesFridgeItemIds":["an exact supplied id"],"boosts":["protein"],"prepMinutes":10,"tags":["short tag"]}],
-  "rationale": "how confirmed inventory, energy and preference shaped this"
+  "needs": ["protein"],
+  "meals": [{"slot":"breakfast","itemIds":["an exact supplied id"],"actions":[{"method":"slice","itemIds":["an exact supplied id"]}],"boosts":["protein"],"prepMinutes":10}]
 }
-- needs MUST be an array, never an object keyed by nutrient. meals MUST be an array of flat meal objects, never objects keyed by breakfast/lunch/dinner.
-- Every meal object MUST contain exactly id, slot, title, description, usesFridgeItemIds, boosts, prepMinutes, tags. slot is one of breakfast, lunch, dinner, snack.
+- needs may contain only protein, complex_carbs, iron, vitamin_c, omega3, hydration, fiber.
+- Every itemIds value must exactly match a supplied fridge id. Every action itemIds value must also occur in its meal itemIds.
+- action method must be one of serve, slice, chop, mix, combine, heat, cook, toast, blend.
+- Every meal object MUST contain exactly slot, itemIds, actions, boosts, prepMinutes. slot is one of breakfast, lunch, dinner, snack.
 - If no qualitative nutrient priority is justified, use an empty needs array. If no feasible meal exists, use an empty meals array.
 - One confirmed ingredient can still be a simple snack or serving suggestion; do not demand additional foods when that ingredient is safely usable on its own.
-- Echo the context fridge array exactly; do not rename or recategorize it.
+- Do not output food names, meal titles, descriptions, tags, rationale, or any other free text. The server renders text only from confirmed item IDs.
 
 Context: ${JSON.stringify(input)}`
 
 export const ingredientRecognitionJsonSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['status', 'ingredients'],
-  properties: {
-    status: { type: 'string', enum: ['ok', 'empty', 'refused'] },
-    ingredients: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['name', 'category', 'confidence', 'uncertaintyReason'],
-        properties: {
-          name: { type: 'string' },
-          category: {
-            type: 'string',
-            enum: ['protein', 'vegetable', 'fruit', 'dairy', 'grain', 'other'],
-          },
-          confidence: { type: 'number', minimum: 0, maximum: 1 },
-          uncertaintyReason: {
-            anyOf: [{ type: 'string' }, { type: 'null' }],
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'ingredients'],
+      properties: {
+        status: { const: 'ok' },
+        ingredients: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name', 'category', 'confidence', 'uncertaintyReason'],
+            properties: {
+              name: { type: 'string', minLength: 1, maxLength: 100 },
+              category: {
+                type: 'string',
+                enum: [
+                  'protein',
+                  'vegetable',
+                  'fruit',
+                  'dairy',
+                  'grain',
+                  'other',
+                ],
+              },
+              confidence: { type: 'number', minimum: 0, maximum: 1 },
+              uncertaintyReason: {
+                anyOf: [
+                  { type: 'string', minLength: 1, maxLength: 280 },
+                  { type: 'null' },
+                ],
+              },
+            },
           },
         },
       },
     },
-    reason: { type: 'string' },
-  },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'ingredients', 'reason'],
+      properties: {
+        status: { const: 'empty' },
+        ingredients: { type: 'array', maxItems: 0 },
+        reason: {
+          type: 'string',
+          enum: ['no_food_detected', 'unrecognizable_image'],
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'ingredients', 'reason'],
+      properties: {
+        status: { const: 'refused' },
+        ingredients: { type: 'array', maxItems: 0 },
+        reason: { type: 'string', minLength: 1, maxLength: 280 },
+      },
+    },
+  ],
 } as const
 
-export const nutritionPlanJsonSchema = {
+export const nutritionBlueprintJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['date', 'needs', 'fridge', 'meals', 'rationale'],
+  required: ['date', 'needs', 'meals'],
   properties: {
     date: { type: 'string' },
     needs: {
       type: 'array',
       items: {
-        type: 'object',
-        required: ['key', 'label', 'current', 'target', 'unit'],
-        properties: {
-          key: {
-            type: 'string',
-            enum: [
-              'protein',
-              'complex_carbs',
-              'iron',
-              'vitamin_c',
-              'omega3',
-              'hydration',
-              'fiber',
-            ],
-          },
-          label: { type: 'string' },
-          current: { type: 'number' },
-          target: { type: 'number' },
-          unit: { type: 'string' },
-          note: { type: 'string' },
-        },
-      },
-    },
-    fridge: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['id', 'name', 'category'],
-        properties: {
-          id: { type: 'string' },
-          name: { type: 'string' },
-          category: {
-            type: 'string',
-            enum: ['protein', 'vegetable', 'fruit', 'dairy', 'grain', 'other'],
-          },
-        },
+        type: 'string',
+        enum: [
+          'protein',
+          'complex_carbs',
+          'iron',
+          'vitamin_c',
+          'omega3',
+          'hydration',
+          'fiber',
+        ],
       },
     },
     meals: {
       type: 'array',
       items: {
         type: 'object',
-        required: [
-          'id',
-          'slot',
-          'title',
-          'description',
-          'usesFridgeItemIds',
-          'boosts',
-          'prepMinutes',
-          'tags',
-        ],
+        additionalProperties: false,
+        required: ['slot', 'itemIds', 'actions', 'boosts', 'prepMinutes'],
         properties: {
-          id: { type: 'string' },
           slot: {
             type: 'string',
             enum: ['breakfast', 'lunch', 'dinner', 'snack'],
           },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          usesFridgeItemIds: { type: 'array', items: { type: 'string' } },
+          itemIds: { type: 'array', minItems: 1, items: { type: 'string' } },
+          actions: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['method', 'itemIds'],
+              properties: {
+                method: {
+                  type: 'string',
+                  enum: [
+                    'serve',
+                    'slice',
+                    'chop',
+                    'mix',
+                    'combine',
+                    'heat',
+                    'cook',
+                    'toast',
+                    'blend',
+                  ],
+                },
+                itemIds: {
+                  type: 'array',
+                  minItems: 1,
+                  items: { type: 'string' },
+                },
+              },
+            },
+          },
           boosts: {
             type: 'array',
             items: {
@@ -169,11 +198,9 @@ export const nutritionPlanJsonSchema = {
             },
           },
           prepMinutes: { type: 'integer' },
-          tags: { type: 'array', items: { type: 'string' } },
         },
       },
     },
-    rationale: { type: 'string' },
   },
 } as const
 
@@ -259,21 +286,224 @@ export function fallbackNutrition(input: NutritionGenerationInput): NutritionPla
   })
 }
 
+const nutrientKeys = [
+  'protein',
+  'complex_carbs',
+  'iron',
+  'vitamin_c',
+  'omega3',
+  'hydration',
+  'fiber',
+] as const
+type NutrientKey = (typeof nutrientKeys)[number]
+
+const mealSlots = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+type MealSlot = (typeof mealSlots)[number]
+
+const cookingMethods = [
+  'serve',
+  'slice',
+  'chop',
+  'mix',
+  'combine',
+  'heat',
+  'cook',
+  'toast',
+  'blend',
+] as const
+type CookingMethod = (typeof cookingMethods)[number]
+
+interface NutritionBlueprint {
+  date: string
+  needs: NutrientKey[]
+  meals: Array<{
+    slot: MealSlot
+    itemIds: string[]
+    actions: Array<{ method: CookingMethod; itemIds: string[] }>
+    boosts: NutrientKey[]
+    prepMinutes: number
+  }>
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string')
+
+function parseNutritionBlueprint(value: unknown): NutritionBlueprint | undefined {
+  if (!isRecord(value) || typeof value.date !== 'string') return undefined
+  if (!isStringArray(value.needs)) return undefined
+  if (!value.needs.every((key) => nutrientKeys.includes(key as NutrientKey))) {
+    return undefined
+  }
+  if (!Array.isArray(value.meals)) return undefined
+
+  const meals: NutritionBlueprint['meals'] = []
+  for (const rawMeal of value.meals) {
+    if (!isRecord(rawMeal)) return undefined
+    if (
+      typeof rawMeal.slot !== 'string' ||
+      !mealSlots.includes(rawMeal.slot as MealSlot) ||
+      !isStringArray(rawMeal.itemIds) ||
+      rawMeal.itemIds.length === 0 ||
+      !isStringArray(rawMeal.boosts) ||
+      !rawMeal.boosts.every((key) => nutrientKeys.includes(key as NutrientKey)) ||
+      !Number.isInteger(rawMeal.prepMinutes) ||
+      Number(rawMeal.prepMinutes) <= 0 ||
+      !Array.isArray(rawMeal.actions) ||
+      rawMeal.actions.length === 0
+    ) {
+      return undefined
+    }
+
+    const actions: NutritionBlueprint['meals'][number]['actions'] = []
+    for (const rawAction of rawMeal.actions) {
+      if (
+        !isRecord(rawAction) ||
+        typeof rawAction.method !== 'string' ||
+        !cookingMethods.includes(rawAction.method as CookingMethod) ||
+        !isStringArray(rawAction.itemIds) ||
+        rawAction.itemIds.length === 0
+      ) {
+        return undefined
+      }
+      actions.push({
+        method: rawAction.method as CookingMethod,
+        itemIds: rawAction.itemIds,
+      })
+    }
+
+    meals.push({
+      slot: rawMeal.slot as MealSlot,
+      itemIds: rawMeal.itemIds,
+      actions,
+      boosts: rawMeal.boosts as NutrientKey[],
+      prepMinutes: Number(rawMeal.prepMinutes),
+    })
+  }
+
+  return {
+    date: value.date,
+    needs: value.needs as NutrientKey[],
+    meals,
+  }
+}
+
+const nutrientLabels: Record<NutrientKey, string> = {
+  protein: 'Protein priority',
+  complex_carbs: 'Complex carbohydrate priority',
+  iron: 'Iron priority',
+  vitamin_c: 'Vitamin C priority',
+  omega3: 'Omega-3 priority',
+  hydration: 'Hydration priority',
+  fiber: 'Fiber priority',
+}
+
+const actionPresentation: Record<
+  CookingMethod,
+  { titlePrefix: string; verb: string }
+> = {
+  serve: { titlePrefix: '', verb: 'Serve' },
+  slice: { titlePrefix: 'Sliced', verb: 'Slice' },
+  chop: { titlePrefix: 'Chopped', verb: 'Chop' },
+  mix: { titlePrefix: 'Mixed', verb: 'Mix' },
+  combine: { titlePrefix: 'Combined', verb: 'Combine' },
+  heat: { titlePrefix: 'Warmed', verb: 'Warm' },
+  cook: { titlePrefix: 'Cooked', verb: 'Cook' },
+  toast: { titlePrefix: 'Toasted', verb: 'Toast' },
+  blend: { titlePrefix: 'Blended', verb: 'Blend' },
+}
+
 export function validateNutritionPlanOutput(
   input: NutritionGenerationInput,
   value: unknown
 ): NutritionPlan | undefined {
-  const parsed = nutritionPlanSchema.safeParse(value)
-  if (!parsed.success) return undefined
+  const blueprint = parseNutritionBlueprint(value)
+  if (!blueprint || blueprint.date !== input.date) return undefined
 
-  const plan = parsed.data
   const maxPrepMinutes = input.energy?.band === 'low' ? 15 : 30
-  if (
-    plan.date !== input.date ||
-    JSON.stringify(plan.fridge) !== JSON.stringify(input.fridge) ||
-    plan.meals.some((meal) => meal.prepMinutes > maxPrepMinutes)
-  ) {
+  if (blueprint.meals.some((meal) => meal.prepMinutes > maxPrepMinutes)) {
     return undefined
   }
-  return plan
+
+  const preference = input.profile?.dietaryPreference ?? 'none'
+  const itemById = new Map(input.fridge.map((item) => [item.id, item]))
+  const allowedForPreference = (category: (typeof input.fridge)[number]['category']) => {
+    if (preference === 'vegan') {
+      return category !== 'protein' && category !== 'dairy'
+    }
+    if (preference === 'vegetarian' || preference === 'halal') {
+      return category !== 'protein'
+    }
+    if (preference === 'gluten_free') return category !== 'grain'
+    return true
+  }
+
+  const groundedNeeds = [...new Set(blueprint.needs)].map((key) => ({
+    key,
+    label: nutrientLabels[key],
+    current: 0,
+    target: 1,
+    unit: 'priority',
+    note: `Qualitative ${nutrientLabels[key].toLowerCase()} for today.`,
+  }))
+
+  /*
+   * Provider prose cannot be reliably checked for arbitrary food names. Keep
+   * the useful structured choices, but derive every displayed string from
+   * confirmed inventory and fixed vocabulary. Dietary enforcement is
+   * deliberately conservative because FridgeItem only has broad categories:
+   * it cannot distinguish plant/animal protein, gluten-free grains, halal
+   * protein, or ambiguous "other" items.
+   */
+  const groundedMeals = []
+  for (const [mealIndex, meal] of blueprint.meals.entries()) {
+    const items = meal.itemIds.map((id) => itemById.get(id))
+    if (items.some((item) => item === undefined)) return undefined
+    const confirmedItems = items.filter((item) => item !== undefined)
+    const mealIdSet = new Set(meal.itemIds)
+    if (
+      meal.actions.some((action) =>
+        action.itemIds.some((id) => !mealIdSet.has(id) || !itemById.has(id))
+      )
+    ) {
+      return undefined
+    }
+    if (confirmedItems.some((item) => !allowedForPreference(item.category))) {
+      continue
+    }
+
+    const names = confirmedItems.map((item) => item.name)
+    const primary = actionPresentation[meal.actions[0].method]
+    const description = meal.actions
+      .map((action) => {
+        const actionNames = action.itemIds.map((id) => itemById.get(id)!.name)
+        return `${actionPresentation[action.method].verb} ${actionNames.join(' + ')}.`
+      })
+      .join(' ')
+    groundedMeals.push({
+      id: `meal-${mealIndex + 1}`,
+      slot: meal.slot,
+      title: `${primary.titlePrefix ? `${primary.titlePrefix} ` : ''}${names.join(' + ')}`,
+      description,
+      usesFridgeItemIds: meal.itemIds,
+      boosts: meal.boosts,
+      prepMinutes: meal.prepMinutes,
+      tags: [...new Set([...meal.actions.map((action) => action.method), 'confirmed inventory'])],
+    })
+  }
+
+  const preferenceLabel = preference.replace('_', ' ')
+  const grounded = nutritionPlanSchema.safeParse({
+    date: input.date,
+    needs: groundedNeeds,
+    fridge: input.fridge,
+    meals: groundedMeals,
+    rationale:
+      preference === 'none'
+        ? `Recommendations use only confirmed fridge items and reflect today’s ${input.energy?.band ?? 'moderate'} energy.`
+        : `Recommendations use only confirmed fridge items and conservatively apply the ${preferenceLabel} preference for today’s ${input.energy?.band ?? 'moderate'} energy.`,
+  })
+  return grounded.success ? grounded.data : undefined
 }

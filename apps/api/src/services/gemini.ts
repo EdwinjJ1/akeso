@@ -8,7 +8,7 @@ import { HttpError } from '../http-error'
 import {
   fallbackNutrition,
   ingredientRecognitionJsonSchema,
-  nutritionPlanJsonSchema,
+  nutritionBlueprintJsonSchema,
   nutritionPrompt,
   parseJson,
   postJsonWithOneRetry,
@@ -106,7 +106,7 @@ export function createGeminiAiServices(
         ],
         generationConfig: {
           responseMimeType: 'application/json',
-          responseJsonSchema: nutritionPlanJsonSchema,
+          responseJsonSchema: nutritionBlueprintJsonSchema,
           temperature: 0,
         },
       })

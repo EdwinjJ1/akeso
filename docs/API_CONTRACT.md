@@ -53,6 +53,13 @@
 - `POST /v1/fridge/recognitions` 只返回候选,绝不自动写库存;候选默认未确认,客户端只把用户最终勾选的项目发送到 batch 接口;
 - 图片只在内存中处理,限制 5 MiB,校验 JPEG/PNG/WebP 文件签名,不写 Supabase、磁盘或日志;
 - `GET /v1/nutrition/:date` 读取真实 profile、energy 和确认库存,返回匹配缓存或即时确定性 fallback;`regenerate` 才调用 AI。AI 与 fallback 都必须通过 `NutritionPlanSchema`,且餐食只能引用响应内真实库存 ID;
+
+AI nutrition providers return a private, text-free blueprint made from confirmed
+inventory IDs and a closed cooking-action enum. The API renders the public
+`NutritionPlan` from those IDs, so provider-supplied food prose cannot reach the
+client. Dietary filtering is deliberately conservative because `FridgeItem`
+stores only a broad category: it cannot distinguish plant from animal protein,
+gluten-free grains, halal-compliant protein, or the contents of `other` items.
 - `GET /v1/reminders` 在未设置时返回 `data: null`(HTTP 200);`ReminderPreference` 尚无消费方 UI,是提前持久化的数据层;
 - 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`INVALID_IMAGE`、`AI_UNAVAILABLE`、`AI_TIMEOUT`、`MALFORMED_AI_OUTPUT`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
 
