@@ -11,6 +11,7 @@ import type {
   Scale1to5,
   SleepDuration,
 } from './types.js'
+import { localDateSchema } from './schemas.js'
 
 /**
  * The score-only portion of an EnergyResult.  Keeping this as a derived type
@@ -65,7 +66,6 @@ export const ENERGY_ENGINE_CONFIG: EnergyEngineConfig = {
 
 const SCORE_MIN = 0
 const SCORE_MAX = 100
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const FALLBACK_DATE = '1970-01-01'
 
 interface ContextCopy {
@@ -167,10 +167,12 @@ const normalizedScale = (value: number): Scale1to5 =>
 
 /**
  * Sanitized once here, so the result's `date` and `computedAt` can never
- * disagree about which day was scored.
+ * disagree about which day was scored. Reuses the shared calendar-date
+ * schema from @akeso/contracts so an impossible date like 2026-13-45 is
+ * rejected here too, not just format-checked.
  */
 const normalizedDate = (date: string) =>
-  DATE_PATTERN.test(date) ? date : FALLBACK_DATE
+  localDateSchema.safeParse(date).success ? date : FALLBACK_DATE
 
 const energyBandFor = (score: number): EnergyBand => {
   if (score >= 70) return 'high'
