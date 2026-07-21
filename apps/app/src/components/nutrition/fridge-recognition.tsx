@@ -11,7 +11,12 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import type { FridgeCategory, FridgeItem } from '@akeso/domain'
+import type {
+  FridgeCategory,
+  FridgeImageUpload,
+  FridgeItem,
+  IngredientRecognitionResult,
+} from '@akeso/domain'
 
 import { Card } from '@/components/ui/card'
 import {
@@ -23,6 +28,10 @@ import {
   toggleCandidate,
   type FridgeCandidate,
 } from '@/state/fridge-flow'
+import {
+  resizeForRecognition,
+  runRecognitionAttempt,
+} from '@/state/fridge-image'
 import { useAppState } from '@/state/app-state'
 import { colors, radius, sp, type } from '@/theme/tokens'
 
@@ -51,20 +60,42 @@ export function FridgeRecognition() {
   const [manualCategory, setManualCategory] =
     useState<FridgeCategory>('vegetable')
   const [previewUri, setPreviewUri] = useState<string | null>(null)
+  const [retryImage, setRetryImage] = useState<FridgeImageUpload | null>(null)
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+
+  const applyRecognitionResult = (result: IngredientRecognitionResult) => {
+    setCandidates(candidatesFromRecognition(result))
+    if (result.status === 'empty') {
+      setMessage(
+        result.reason === 'unrecognizable_image'
+          ? 'This photo is too unclear. Try another photo or add ingredients manually.'
+          : 'No food was detected. You can still add ingredients manually.'
+      )
+    } else if (result.status === 'refused') {
+      setMessage('This image could not be processed. Manual entry is still available.')
+    } else {
+      setMessage('Review every candidate — nothing is saved until you confirm it.')
+    }
+  }
+
+  const recognizeProcessedImage = async (image: FridgeImageUpload) => {
+    const attempt = await runRecognitionAttempt(image, recognizeFridgeImage)
+    if (!attempt.ok) {
+      setRetryImage(attempt.image)
+      setMessage(attempt.error)
+      return
+    }
+    setRetryImage(null)
+    applyRecognitionResult(attempt.result)
+  }
 
   const recognizeAsset = async (asset: ImagePicker.ImagePickerAsset) => {
     setWorking(true)
     setMessage(null)
+    setRetryImage(null)
     try {
-      const longest = Math.max(asset.width, asset.height)
-      const resize =
-        longest > 1600
-          ? asset.width >= asset.height
-            ? { width: 1600 }
-            : { height: 1600 }
-          : null
+      const resize = resizeForRecognition(asset.width, asset.height)
       const processed = await ImageManipulator.manipulateAsync(
         asset.uri,
         resize ? [{ resize }] : [],
@@ -74,25 +105,24 @@ export function FridgeRecognition() {
         }
       )
       setPreviewUri(processed.uri)
-      const result = await recognizeFridgeImage({
+      await recognizeProcessedImage({
         uri: processed.uri,
         filename: `fridge-${Date.now()}.jpg`,
         mimeType: 'image/jpeg',
       })
-      setCandidates(candidatesFromRecognition(result))
-      if (result.status === 'empty') {
-        setMessage(
-          result.reason === 'unrecognizable_image'
-            ? 'This photo is too unclear. Try another photo or add ingredients manually.'
-            : 'No food was detected. You can still add ingredients manually.'
-        )
-      } else if (result.status === 'refused') {
-        setMessage('This image could not be processed. Manual entry is still available.')
-      } else {
-        setMessage('Review every candidate — nothing is saved until you confirm it.')
-      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Recognition failed.')
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const retryRecognition = async () => {
+    if (!retryImage) return
+    setWorking(true)
+    setMessage(null)
+    try {
+      await recognizeProcessedImage(retryImage)
     } finally {
       setWorking(false)
     }
@@ -178,6 +208,17 @@ export function FridgeRecognition() {
           </View>
         ) : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
+        {retryImage && !working ? (
+          <Pressable
+            style={styles.retryButton}
+            onPress={retryRecognition}
+            accessibilityRole="button"
+            accessibilityLabel="Retry image recognition"
+          >
+            <Ionicons name="refresh" size={19} color={colors.text} />
+            <Text style={styles.actionLabel}>Retry recognition</Text>
+          </Pressable>
+        ) : null}
       </Card>
 
       <Card>
@@ -411,6 +452,18 @@ const styles = StyleSheet.create({
   progress: { flexDirection: 'row', gap: sp(2), alignItems: 'center', marginTop: sp(3) },
   progressText: { fontWeight: '700', color: colors.text },
   message: { ...type.small, color: colors.text, marginTop: sp(3) },
+  retryButton: {
+    minHeight: 44,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sp(2),
+    marginTop: sp(3),
+  },
   hint: { ...type.small, marginTop: sp(1) },
   empty: { ...type.small, marginVertical: sp(4) },
   itemRow: {

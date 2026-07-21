@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import type { FridgeImageUpload } from '@akeso/domain'
 
 import {
   addManualCandidate,
@@ -8,6 +9,10 @@ import {
   toConfirmedFridgeItems,
   toggleCandidate,
 } from './fridge-flow'
+import {
+  resizeForRecognition,
+  runRecognitionAttempt,
+} from './fridge-image'
 
 describe('fridge recognition confirmation flow', () => {
   const result = {
@@ -70,5 +75,37 @@ describe('fridge recognition confirmation flow', () => {
       category: 'fruit',
     })
     expect(toConfirmedFridgeItems(candidates)[0].id.length).toBeGreaterThan(0)
+  })
+
+  test('limits the longest recognition image edge to 1024 pixels', () => {
+    expect(resizeForRecognition(4032, 3024)).toEqual({ width: 1024 })
+    expect(resizeForRecognition(1200, 2400)).toEqual({ height: 1024 })
+    expect(resizeForRecognition(800, 600)).toBeNull()
+  })
+
+  test('retains the processed image after a timeout so it can be retried', async () => {
+    const processedImage = {
+      uri: 'file:///processed-fridge.jpg',
+      filename: 'fridge.jpg',
+      mimeType: 'image/jpeg' as const,
+    }
+    const attempts: unknown[] = []
+    const recognize = async (image: FridgeImageUpload) => {
+      attempts.push(image)
+      if (attempts.length === 1) throw new Error('AI request timed out.')
+      return result
+    }
+
+    const first = await runRecognitionAttempt(processedImage, recognize)
+    expect(first).toEqual({
+      ok: false,
+      image: processedImage,
+      error: 'AI request timed out.',
+    })
+    if (first.ok) throw new Error('Expected the first attempt to fail')
+
+    const second = await runRecognitionAttempt(first.image, recognize)
+    expect(second).toEqual({ ok: true, image: processedImage, result })
+    expect(attempts).toEqual([processedImage, processedImage])
   })
 })
