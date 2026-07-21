@@ -53,8 +53,10 @@ export function createPlanRouter(
 
       try {
         const updated = applyPlanBlockUpdate(existing, blockId, input)
-        const saved = await repos.plans.upsert(req.userId, updated)
-        ok(res, saved)
+        const updatedBlock = updated.blocks.find((block) => block.id === blockId)
+        if (!updatedBlock) throw new PlanBlockNotFoundError(blockId)
+        await repos.plans.updateBlock(req.userId, date, updatedBlock)
+        ok(res, updated)
       } catch (error) {
         if (error instanceof PlanBlockNotFoundError) {
           throw notFound(error.message)
