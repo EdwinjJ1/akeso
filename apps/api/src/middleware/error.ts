@@ -9,10 +9,29 @@ export function notFoundHandler(req: Request, res: Response): void {
   fail(res, 404, 'NOT_FOUND', `No route for ${req.method} ${req.path}`)
 }
 
-const describeZodError = (err: ZodError) =>
+/** Structural shape shared by zod v3's and v4's ZodError — see isZodError below. */
+interface ZodErrorLike {
+  issues: { path: (string | number)[]; message: string }[]
+}
+
+const describeZodError = (err: ZodErrorLike) =>
   err.issues
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join('; ')
+
+/**
+ * All runtime validators live in @akeso/contracts and @akeso/domain
+ * re-exports its ZodError, so `instanceof` matches everything this codebase
+ * throws today. The duck-typing fallback is defence-in-depth: npm nests a
+ * separate zod copy per workspace package (Expo's CLI pins zod v3), so any
+ * future package validating with its own zod install would throw a ZodError
+ * of a different class — that must still map to 400, not an unhandled 500.
+ */
+const isZodError = (err: unknown): err is ZodErrorLike =>
+  err instanceof ZodError ||
+  (err instanceof Error &&
+    err.name === 'ZodError' &&
+    Array.isArray((err as unknown as ZodErrorLike).issues))
 
 /** Mounted last. Never forwards stack traces or error internals to the client. */
 export function errorHandler(
@@ -31,7 +50,7 @@ export function errorHandler(
     return
   }
 
-  if (err instanceof ZodError) {
+  if (isZodError(err)) {
     fail(res, 400, 'VALIDATION_ERROR', describeZodError(err))
     return
   }

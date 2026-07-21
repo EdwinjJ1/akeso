@@ -5,31 +5,35 @@ import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine.js'
 import type { CheckInInput, EnergyFactor } from './types.js'
 
 const engine = new EnergyEngine()
+const { baseline } = ENERGY_ENGINE_CONFIG
 
 const canonicalCheckIn: CheckInInput = {
   date: '2026-07-21',
-  sleepHours: 8,
-  sleepQuality: 4,
-  mood: 4,
-  stress: 3,
-  energyNow: 4,
-  caffeine: 'morning',
+  reportedEnergy: 4,
+  sleepDuration: '7_8h',
+  lastMealTiming: '1_3h',
+  hydration: '1_1_5l',
 }
-
-const factorTotal = (factors: readonly EnergyFactor[]) =>
-  factors.reduce((total, factor) => total + factor.impact, 0)
 
 const scoreWith = (overrides: Partial<CheckInInput>) =>
   engine.score({ ...canonicalCheckIn, ...overrides })
 
-// Demo evidence: this fixed, ordinary check-in always gives the same score.
-test('canonical check-in scores 78 with a deterministic timestamp', () => {
+// Only the single scoring factor carries an impact; context factors do not.
+const reportedImpactTotal = (factors: readonly EnergyFactor[]) =>
+  factors.reduce(
+    (total, factor) =>
+      total + (factor.role === 'reported_energy' ? factor.impact : 0),
+    0
+  )
+
+test('canonical check-in scores 80 with a deterministic timestamp', () => {
   const canonical = engine.evaluate(canonicalCheckIn)
-  assert.equal(canonical.score, 78)
+  assert.equal(canonical.score, 80)
+  assert.equal(canonical.band, 'high')
   assert.equal(canonical.computedAt, '2026-07-21T00:00:00.000Z')
   assert.equal(
     canonical.score,
-    ENERGY_ENGINE_CONFIG.baseScore + factorTotal(canonical.factors)
+    baseline + reportedImpactTotal(canonical.factors)
   )
 })
 
@@ -40,82 +44,75 @@ test('identical input produces an identical result', () => {
   )
 })
 
-test('normal sleep outscores sleep deprivation', () => {
-  const normalSleep = scoreWith({ caffeine: 'none' })
-  const sleepDeprived = scoreWith({ sleepHours: 3.5 })
-  assert.ok(normalSleep.score > sleepDeprived.score)
-  const duration = sleepDeprived.factors.find(
-    (factor) => factor.key === 'sleep_duration'
+test('reported_energy is always present and reconciles with the score', () => {
+  const canonical = engine.evaluate(canonicalCheckIn)
+  const reported = canonical.factors.find(
+    (factor) => factor.key === 'reported_energy'
   )
-  assert.ok(duration && duration.impact < 0)
+  assert.ok(reported)
+  assert.ok(reported.role === 'reported_energy')
+  assert.equal(reported.impact, 80 - baseline)
 })
 
-test('high stress and low mood turn their factors negative', () => {
-  const stress = scoreWith({ stress: 5 }).factors.find(
-    (factor) => factor.key === 'stress'
-  )
-  assert.ok(stress && stress.impact < 0)
-  const mood = scoreWith({ mood: 1 }).factors.find(
-    (factor) => factor.key === 'mood'
-  )
-  assert.ok(mood && mood.impact < 0)
+test('sleep, meal and hydration are possible context with no impact', () => {
+  const canonical = engine.evaluate(canonicalCheckIn)
+  for (const key of ['sleep_duration', 'last_meal', 'hydration'] as const) {
+    const factor = canonical.factors.find((f) => f.key === key)
+    assert.ok(factor, `${key} factor is present for a known value`)
+    assert.equal(factor.role, 'possible_context')
+    assert.ok(!('impact' in factor))
+  }
 })
 
-test('band thresholds flip at exactly 40 and 70', () => {
-  const at40 = scoreWith({
-    sleepHours: 6,
-    sleepQuality: 1,
-    mood: 2,
-    energyNow: 3,
-    caffeine: 'afternoon',
-  })
-  assert.equal(at40.score, 40)
-  assert.equal(at40.band, 'moderate')
-
-  const at39 = scoreWith({
-    sleepHours: 5,
-    sleepQuality: 3,
-    stress: 4,
-    mood: 2,
-    energyNow: 3,
-  })
-  assert.equal(at39.score, 39)
-  assert.equal(at39.band, 'low')
-
-  const at69 = scoreWith({ mood: 3, energyNow: 3, caffeine: 'none' })
-  assert.equal(at69.score, 69)
-  assert.equal(at69.band, 'moderate')
-
-  const at71 = scoreWith({ mood: 3, energyNow: 3 })
-  assert.equal(at71.score, 71)
-  assert.equal(at71.band, 'high')
-})
-
-test('boundary inputs stay inside the contract ranges', () => {
-  const lowBoundary = engine.evaluate({
-    ...canonicalCheckIn,
-    sleepHours: 0,
-    sleepQuality: 1,
-    mood: 1,
-    stress: 5,
-    energyNow: 1,
-    caffeine: 'evening',
-  })
-  const highBoundary = engine.evaluate({
-    ...canonicalCheckIn,
-    sleepHours: 14,
-    sleepQuality: 5,
-    mood: 5,
-    stress: 1,
-    energyNow: 5,
-  })
-
-  for (const result of [lowBoundary, highBoundary]) {
-    assert.ok(result.score >= 0 && result.score <= 100)
+test('reportedEnergy maps 1..5 straight onto the score', () => {
+  const scoreByReport = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 } as const
+  for (const level of [1, 2, 3, 4, 5] as const) {
     assert.equal(
-      result.score,
-      ENERGY_ENGINE_CONFIG.baseScore + factorTotal(result.factors)
+      scoreWith({ reportedEnergy: level }).score,
+      scoreByReport[level]
     )
+  }
+})
+
+test('context inputs never move the score', () => {
+  assert.equal(
+    scoreWith({ sleepDuration: 'under_5h', hydration: 'under_0_5l' }).score,
+    scoreWith({}).score
+  )
+})
+
+test('"not sure" omits the factor rather than fabricating a reason', () => {
+  const unsure = scoreWith({ hydration: 'not_sure' })
+  assert.equal(
+    unsure.factors.find((factor) => factor.key === 'hydration'),
+    undefined
+  )
+  assert.ok(unsure.factors.find((factor) => factor.key === 'reported_energy'))
+})
+
+test('boundary self-reports stay inside the contract ranges', () => {
+  const lowUnknown = engine.evaluate({
+    date: '2026-07-21',
+    reportedEnergy: 1,
+    sleepDuration: 'not_sure',
+    lastMealTiming: 'not_sure',
+    hydration: 'not_sure',
+  })
+  assert.equal(lowUnknown.score, 20)
+  assert.equal(lowUnknown.band, 'low')
+  assert.equal(lowUnknown.factors.length, 1)
+
+  const highBoundary = engine.evaluate({
+    date: '2026-07-21',
+    reportedEnergy: 5,
+    sleepDuration: 'over_9h',
+    lastMealTiming: 'within_1h',
+    hydration: 'over_2l',
+  })
+  assert.equal(highBoundary.score, 100)
+
+  for (const result of [lowUnknown, highBoundary]) {
+    assert.ok(result.score >= 0 && result.score <= 100)
     assert.ok(result.curve.length >= 4)
     assert.ok(result.curve.some((point) => point.hour < 12))
     assert.ok(
@@ -128,13 +125,30 @@ test('boundary inputs stay inside the contract ranges', () => {
   }
 })
 
+test('the headline lives on evaluate() alone and quotes the peak window', () => {
+  const score = engine.score(canonicalCheckIn)
+  assert.ok(!('headline' in score))
+  const result = engine.evaluate(canonicalCheckIn)
+  assert.equal(
+    result.headline,
+    'Strong day ahead — protect 10:00–12:00 for demanding work.'
+  )
+})
+
+test('mostly-unknown context switches to the hedged headline', () => {
+  const result = engine.evaluate({
+    ...canonicalCheckIn,
+    sleepDuration: 'not_sure',
+    lastMealTiming: 'not_sure',
+  })
+  assert.ok(result.headline.startsWith('Going mostly on how you feel today'))
+})
+
 test('malformed input is sanitized once, consistently', () => {
   const messy = engine.evaluate({
     ...canonicalCheckIn,
     date: 'not-a-date',
-    sleepHours: Number.NaN,
-    sleepQuality: 9 as CheckInInput['sleepQuality'],
-    caffeine: 'espresso' as CheckInInput['caffeine'],
+    reportedEnergy: Number.NaN as CheckInInput['reportedEnergy'],
   })
   assert.equal(messy.date, '1970-01-01')
   assert.equal(messy.computedAt, '1970-01-01T00:00:00.000Z')
@@ -142,22 +156,9 @@ test('malformed input is sanitized once, consistently', () => {
   const explicitEquivalent = engine.evaluate({
     ...canonicalCheckIn,
     date: '1970-01-01',
-    sleepHours: 0,
-    sleepQuality: 5,
-    caffeine: 'none',
+    reportedEnergy: 1,
   })
   assert.deepEqual(messy, explicitEquivalent)
-})
-
-test('sleep tiers are independent of config ordering', () => {
-  const shuffled = new EnergyEngine({
-    ...ENERGY_ENGINE_CONFIG,
-    sleepDuration: [...ENERGY_ENGINE_CONFIG.sleepDuration].reverse(),
-  })
-  assert.deepEqual(
-    shuffled.evaluate(canonicalCheckIn),
-    engine.evaluate(canonicalCheckIn)
-  )
 })
 
 test('a curve with no afternoon points still yields a dip window', () => {

@@ -10,7 +10,7 @@
     "test": "tsc -p tsconfig.test.json && node --test --experimental-test-coverage dist/energy-engine.test.js"
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "@akeso/contracts": "*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

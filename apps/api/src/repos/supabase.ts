@@ -119,13 +119,11 @@ export function createSupabaseRepos(): Repos {
             {
               user_id: userId,
               date: input.date,
-              sleep_hours: input.sleepHours,
-              sleep_quality: input.sleepQuality,
-              mood: input.mood,
-              stress: input.stress,
-              energy_now: input.energyNow,
-              caffeine: input.caffeine,
-              notes: input.notes ?? null,
+              reported_energy: input.reportedEnergy,
+              sleep_duration: input.sleepDuration,
+              last_meal_timing: input.lastMealTiming,
+              last_meal_description: input.lastMealDescription ?? null,
+              hydration: input.hydration,
             },
             { onConflict: 'user_id,date' }
           ),
