@@ -21,6 +21,7 @@ export default defineConfig({
       'apps/app/src/app/checkin.logic.test.ts',
       'apps/app/src/state/checkin-flow.test.ts',
       'packages/domain/src/energy-engine.test.ts',
+      'packages/domain/src/reminders.test.ts',
     ],
     // apps/api/src/env.ts refuses to start without either DEMO_MODE=true or
     // real Supabase credentials — tests always run in demo mode.

@@ -221,11 +221,14 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
-  it('PUT /v1/reminders: preference round-trips and rejects a malformed time', () => {
-    const pref = { enabled: true, checkInTime: '08:00' }
+  it('PUT /v1/reminders: preference round-trips and rejects a malformed time or timezone', () => {
+    const pref = { enabled: true, checkInTime: '08:00', timezone: 'Australia/Sydney' }
     expect(PutReminderRequestSchema.parse(pref)).toEqual(pref)
     expect(
       PutReminderRequestSchema.safeParse({ ...pref, checkInTime: '8am' }).success
+    ).toBe(false)
+    expect(
+      PutReminderRequestSchema.safeParse({ ...pref, timezone: 'Not/AZone' }).success
     ).toBe(false)
     const envelope = { success: true, data: pref }
     expect(PutReminderResponseSchema.parse(envelope)).toEqual(envelope)

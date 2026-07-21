@@ -8,6 +8,7 @@ import { EnergyCurve } from '@/components/energy/energy-curve'
 import { FactorRow } from '@/components/energy/factor-row'
 import { CheckInPrompt } from '@/components/home/checkin-prompt'
 import { NutritionSnapshot } from '@/components/home/nutrition-snapshot'
+import { ReminderCard } from '@/components/home/reminder-card'
 import { Mascot, type MascotState } from '@/components/mascot'
 import { Card } from '@/components/ui/card'
 import { Tag } from '@/components/ui/chips'
@@ -47,6 +48,10 @@ export default function Dashboard() {
             </Text>
           </View>
         </View>
+      </Reveal>
+
+      <Reveal delay={30}>
+        <ReminderCard />
       </Reveal>
 
       {loading && !todayEnergy ? (

@@ -63,6 +63,22 @@ export type TimeString = z.infer<typeof TimeStringSchema>
 export const IsoDateTimeSchema = z.string().datetime({ offset: true })
 export type IsoDateTime = z.infer<typeof IsoDateTimeSchema>
 
+function isValidTimeZone(value: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** IANA timezone identifier, e.g. "Australia/Sydney". */
+export const TimeZoneSchema = z
+  .string()
+  .min(1)
+  .refine(isValidTimeZone, { message: 'expected a valid IANA timezone identifier' })
+export type TimeZone = z.infer<typeof TimeZoneSchema>
+
 // ── Check-in ────────────────────────────────────────────────────────────────
 
 /** Bucketed hours of sleep last night. */
@@ -368,14 +384,18 @@ export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
 // ── Reminders ───────────────────────────────────────────────────────────────
 
-/**
- * No UI reads or writes this yet — persisted ahead of the feature so the
- * data layer doesn't block whichever module builds the reminder screen.
- */
 export const ReminderPreferenceSchema = z.object({
   enabled: z.boolean(),
   /** Local time, HH:mm, 24h — when to send the daily check-in reminder. */
   checkInTime: TimeStringSchema,
+  /**
+   * IANA timezone the reminder time is interpreted in, e.g. "Australia/Sydney".
+   * Phase 1 (on-device notifications) doesn't need this — the device's own
+   * clock handles DST — but a future server-side push scheduler will need to
+   * know which timezone `checkInTime` was set in, so it's captured now rather
+   * than requiring a data migration later.
+   */
+  timezone: TimeZoneSchema,
 })
 export type ReminderPreference = z.infer<typeof ReminderPreferenceSchema>
 

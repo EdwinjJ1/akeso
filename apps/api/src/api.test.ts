@@ -224,7 +224,7 @@ describe('reminders', () => {
   })
 
   test('PUT validates and persists, GET reflects it', async () => {
-    const pref = { enabled: true, checkInTime: '08:00' }
+    const pref = { enabled: true, checkInTime: '08:00', timezone: 'Australia/Sydney' }
     await request(app).put('/v1/reminders').send(pref).expect(200)
     const response = await request(app).get('/v1/reminders').expect(200)
     expect(response.body.data).toEqual(pref)
@@ -233,7 +233,15 @@ describe('reminders', () => {
   test('PUT rejects a malformed time string', async () => {
     const response = await request(app)
       .put('/v1/reminders')
-      .send({ enabled: true, checkInTime: '8am' })
+      .send({ enabled: true, checkInTime: '8am', timezone: 'Australia/Sydney' })
+      .expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  test('PUT rejects an unknown timezone', async () => {
+    const response = await request(app)
+      .put('/v1/reminders')
+      .send({ enabled: true, checkInTime: '08:00', timezone: 'Not/AZone' })
       .expect(400)
     expect(response.body.error.code).toBe('VALIDATION_ERROR')
   })
