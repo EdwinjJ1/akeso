@@ -386,6 +386,40 @@ describe('Gemini production provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  test.each(['mimo', 'gemini'] as const)(
+    'maps a stalled %s response body abort to AI_TIMEOUT without retrying',
+    async (provider) => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+        const signal = init?.signal
+        const response = new Response(null, { status: 200 })
+        Object.defineProperty(response, 'json', {
+          value: async () =>
+            await new Promise<never>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => {
+                const error = new Error('body consumption aborted')
+                error.name = 'AbortError'
+                reject(error)
+              })
+            }),
+        })
+        return response
+      })
+
+      const promise = createServices(
+        config({ provider }),
+        fetchMock
+      ).recognizeIngredients(image)
+      const assertion = expect(promise).rejects.toMatchObject({
+        status: 504,
+        code: 'AI_TIMEOUT',
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await assertion
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    }
+  )
+
   test('normalizes malformed structured output', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       geminiResponse('{"status":"ok","ingredients":[]}')

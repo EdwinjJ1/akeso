@@ -236,23 +236,21 @@ export async function postJsonWithOneRetry(
         signal: controller.signal,
       })
       if (response.ok) {
+        let payload: unknown
         try {
-          const payload: unknown = await response.json()
-          if (
-            typeof payload !== 'object' ||
-            payload === null ||
-            Array.isArray(payload)
-          ) {
-            throw new HttpError(
-              502,
-              'MALFORMED_AI_OUTPUT',
-              'AI returned invalid JSON.'
-            )
-          }
-          return payload as Record<string, unknown>
-        } catch {
+          payload = await response.json()
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') throw error
           throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned invalid JSON.')
         }
+        if (
+          typeof payload !== 'object' ||
+          payload === null ||
+          Array.isArray(payload)
+        ) {
+          throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned invalid JSON.')
+        }
+        return payload as Record<string, unknown>
       }
       if (attempt === 0 && retryable(response.status)) continue
       throw new ProviderHttpError(response.status)
