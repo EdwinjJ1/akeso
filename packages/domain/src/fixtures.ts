@@ -26,58 +26,49 @@ export const fixtureProfile: UserProfile = {
 
 export const fixtureEnergyResult: EnergyResult = {
   date: FIXTURE_DATE,
-  score: 72,
+  score: 80,
   band: 'high',
-  headline: 'Solid morning ahead — protect 9:00–11:30 for deep work.',
+  headline: 'Strong day ahead — protect 10:00–12:00 for demanding work.',
   factors: [
     {
       key: 'reported_energy',
       label: 'Feeling good (4/5)',
       role: 'reported_energy',
-      impact: 12,
-      explanation: 'You reported your energy as 4 out of 5 — that sets today’s baseline.',
+      impact: 20,
+      explanation: 'You reported your energy as 4/5 — that lifts today’s baseline by 20.',
     },
     {
       key: 'sleep_duration',
       label: '7–8h sleep',
       role: 'possible_context',
-      explanation: 'Around your target range — a likely support for today’s energy.',
+      explanation: 'Around a solid night — a likely support for today.',
     },
     {
       key: 'last_meal',
       label: 'Ate 1–3h ago',
       role: 'possible_context',
-      explanation: 'Recent enough that fuel probably isn’t dragging you right now.',
+      explanation: 'Recent enough that fuel probably is not dragging you.',
     },
     {
       key: 'hydration',
       label: '1–1.5L water so far',
       role: 'possible_context',
-      explanation: 'On the lighter side — topping up water may help the afternoon.',
+      explanation: 'Making progress — keep sipping through the day.',
     },
   ],
   curve: [
-    { hour: 6, level: 35 },
-    { hour: 7, level: 48 },
-    { hour: 8, level: 62 },
-    { hour: 9, level: 78 },
-    { hour: 10, level: 84 },
-    { hour: 11, level: 80 },
-    { hour: 12, level: 68 },
-    { hour: 13, level: 55 },
-    { hour: 14, level: 44 },
-    { hour: 15, level: 40 },
-    { hour: 16, level: 50 },
-    { hour: 17, level: 60 },
-    { hour: 18, level: 64 },
-    { hour: 19, level: 58 },
-    { hour: 20, level: 50 },
-    { hour: 21, level: 40 },
-    { hour: 22, level: 30 },
+    { hour: 7, level: 49 },
+    { hour: 9, level: 85 },
+    { hour: 11, level: 91 },
+    { hour: 13, level: 78 },
+    { hour: 15, level: 63 },
+    { hour: 17, level: 73 },
+    { hour: 19, level: 70 },
+    { hour: 21, level: 55 },
   ],
-  peakWindow: { startHour: 9, endHour: 12 },
+  peakWindow: { startHour: 10, endHour: 12 },
   dipWindow: { startHour: 14, endHour: 16 },
-  computedAt: `${FIXTURE_DATE}T08:05:00+10:00`,
+  computedAt: `${FIXTURE_DATE}T00:00:00.000Z`,
 }
 
 export const fixtureTasks: Task[] = [
@@ -190,7 +181,7 @@ export const fixtureDayPlan: DayPlan = {
       type: 'recovery',
       title: 'Recovery break — no screens',
       energyLevel: 'low',
-      rationale: 'Stress is 4/5 today; a real break blunts the dip.',
+      rationale: 'Use the dip window for a low-pressure reset.',
     },
     {
       id: 'block-8',
@@ -204,27 +195,27 @@ export const fixtureDayPlan: DayPlan = {
     },
   ],
   coachNote:
-    'Today is front-loaded on purpose: your two hardest tasks sit inside the 9:00–11:30 peak, and the 2–4pm dip only carries admin and recovery.',
+    'Today is front-loaded on purpose: your two hardest tasks sit near the late-morning peak, and the afternoon dip only carries admin and recovery.',
   generatedAt: `${FIXTURE_DATE}T08:05:10+10:00`,
 }
 
 export const fixtureCoachReply: CoachReply = {
   message:
-    'Based on today’s check-in, your morning is your strongest window. The plan protects 9:00–11:30 for the assignment and keeps the afternoon light because stress is elevated.',
+    'Based on today’s check-in, you reported good energy. Sleep, a recent meal, and steady hydration are useful context, so the plan protects your late-morning window and keeps the afternoon flexible.',
   suggestions: [
     {
       id: 'sug-1',
-      title: 'Skip the afternoon coffee',
+      title: 'Keep water close this afternoon',
       detail:
-        'Caffeine after 2pm is costing you roughly 3 points and pushes sleep later. Try a 10-minute walk at 3pm instead.',
-      basedOn: ['caffeine', 'sleep_duration'],
+        'You logged 1–1.5L so far. Consider having water with your next break as a general, low-risk support.',
+      basedOn: ['hydration'],
     },
     {
       id: 'sug-2',
       title: 'Keep the 14:30 recovery break',
       detail:
-        'With stress at 4/5, the no-screen break is what keeps your 5pm rebound available for the gym.',
-      basedOn: ['stress', 'block-7'],
+        'The curve still has an afternoon dip, so a short no-screen break is a practical way to keep the rest of the plan lighter.',
+      basedOn: ['block-7'],
     },
   ],
   disclaimer:
@@ -259,7 +250,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 6,
       target: 12,
       unit: 'mg',
-      note: 'Low iron is a common driver of afternoon dips.',
+      note: 'Iron-rich meals can be one useful way to support steady eating.',
     },
     {
       key: 'complex_carbs',
@@ -267,7 +258,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 95,
       target: 180,
       unit: 'g',
-      note: 'Slow carbs at lunch flatten the 2–4pm crash.',
+      note: 'Slow carbs at lunch may support steadier afternoon fuel.',
     },
     {
       key: 'hydration',
@@ -275,7 +266,7 @@ export const fixtureNutritionPlan: NutritionPlan = {
       current: 1.1,
       target: 2.5,
       unit: 'L',
-      note: 'Even mild dehydration reads as fatigue.',
+      note: 'Lower fluid intake may be associated with feeling tired.',
     },
   ],
   fridge: fixtureFridge,
@@ -296,24 +287,24 @@ export const fixtureNutritionPlan: NutritionPlan = {
       slot: 'lunch',
       title: 'Salmon, rice & spinach bowl',
       description:
-        'Salmon + brown rice + spinach + capsicum. Iron and omega-3 aimed straight at your 2–4pm dip.',
+        'Salmon + brown rice + spinach + capsicum. A balanced lunch option for steady afternoon fuel.',
       usesFridgeItemIds: ['fridge-3', 'fridge-7', 'fridge-2', 'fridge-8'],
       boosts: ['iron', 'omega3', 'protein'],
       prepMinutes: 20,
-      tags: ['anti-dip', 'high-iron'],
+      tags: ['balanced lunch', 'high-iron'],
     },
     {
       id: 'meal-3',
       slot: 'snack',
       title: '3pm spinach & egg wrap',
       description:
-        'Instead of the afternoon coffee — protein and iron without the sleep cost.',
+        'A simple protein snack for the dip window if you want something more substantial than water.',
       usesFridgeItemIds: ['fridge-1', 'fridge-2'],
       boosts: ['protein', 'iron'],
       prepMinutes: 10,
-      tags: ['coffee swap', 'dip window'],
+      tags: ['easy snack', 'dip window'],
     },
   ],
   rationale:
-    'Your check-in shows elevated stress and an afternoon coffee habit. Today’s meals push iron and protein into lunch and replace the 3pm coffee, which is the cheapest way to soften your 2–4pm dip.',
+    'Your check-in shows good reported energy, a recent meal, and moderate hydration so far. Today’s meals keep fuel steady and pair the afternoon dip with a simple water or snack option.',
 }
