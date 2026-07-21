@@ -27,6 +27,12 @@ Rules:
 - If policy prevents processing, return status "refused" and no ingredients.
 - Return exactly one JSON object and no markdown or surrounding prose.
 
+The output must match exactly one of these shapes. Never omit ingredients and never invent another status:
+{"status":"ok","ingredients":[{"name":"tomato","category":"vegetable","confidence":0.95,"uncertaintyReason":null}]}
+{"status":"empty","ingredients":[],"reason":"no_food_detected"}
+{"status":"empty","ingredients":[],"reason":"unrecognizable_image"}
+{"status":"refused","ingredients":[],"reason":"brief policy reason"}
+
 For status "ok", every ingredient must include exactly name, category, confidence, and uncertaintyReason. Allowed categories are protein, vegetable, fruit, dairy, grain, and other.`
 
 export const nutritionPrompt = (input: NutritionGenerationInput) => `Create a practical, non-medical nutrition plan for ${input.date} from the exact JSON context below.
@@ -270,6 +276,20 @@ export function parseJson(text: string): unknown {
   } catch {
     throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned malformed output.')
   }
+}
+
+export function normalizeRecognitionResult(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return value
+  }
+  const record = value as Record<string, unknown>
+  if (
+    (record.status === 'empty' || record.status === 'refused') &&
+    !Object.hasOwn(record, 'ingredients')
+  ) {
+    return { ...record, ingredients: [] }
+  }
+  return value
 }
 
 export function unavailableError(): HttpError {

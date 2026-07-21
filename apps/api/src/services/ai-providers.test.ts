@@ -113,8 +113,21 @@ describe('AI provider selection', () => {
   })
 
   test('keeps MiMo selectable without contacting Gemini', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
+      const prompt = JSON.parse(String(init?.body)).messages[0].content[0].text
+      expect(prompt).toContain(
+        '{"status":"ok","ingredients":[{"name":"tomato","category":"vegetable","confidence":0.95,"uncertaintyReason":null}]}'
+      )
+      expect(prompt).toContain(
+        '{"status":"empty","ingredients":[],"reason":"no_food_detected"}'
+      )
+      expect(prompt).toContain(
+        '{"status":"empty","ingredients":[],"reason":"unrecognizable_image"}'
+      )
+      expect(prompt).toContain(
+        '{"status":"refused","ingredients":[],"reason":"brief policy reason"}'
+      )
       return mimoResponse(JSON.stringify(validRecognition))
     })
 
@@ -327,6 +340,52 @@ describe('Gemini production provider', () => {
       code: 'MALFORMED_AI_OUTPUT',
       message: 'AI output failed validation.',
     })
+  })
+
+  test.each(['mimo', 'gemini'] as const)(
+    'normalizes missing empty ingredients from %s before shared validation',
+    async (provider) => {
+      const output = { status: 'empty', reason: 'no_food_detected' }
+      const fetchMock = vi.fn<typeof fetch>(async () =>
+        provider === 'mimo'
+          ? mimoResponse(JSON.stringify(output))
+          : geminiResponse(JSON.stringify(output))
+      )
+
+      await expect(
+        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+      ).resolves.toEqual({ ...output, ingredients: [] })
+    }
+  )
+
+  test('normalizes missing refused ingredients without changing a valid reason', async () => {
+    const output = { status: 'refused', reason: 'policy restriction' }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(output))
+    )
+
+    await expect(
+      createServices(config(), fetchMock).recognizeIngredients(image)
+    ).resolves.toEqual({ ...output, ingredients: [] })
+  })
+
+  test.each([
+    { status: 'ok' },
+    { status: 'unknown', reason: 'no_food_detected' },
+    { status: 'refused', reason: '' },
+    {
+      status: 'empty',
+      ingredients: validRecognition.ingredients,
+      reason: 'no_food_detected',
+    },
+  ])('does not normalize malformed recognition variants', async (output) => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(output))
+    )
+
+    await expect(
+      createServices(config(), fetchMock).recognizeIngredients(image)
+    ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
   })
 
   test.each([

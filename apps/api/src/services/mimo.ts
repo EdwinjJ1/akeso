@@ -7,6 +7,7 @@ import {
 import { HttpError } from '../http-error'
 import {
   fallbackNutrition,
+  normalizeRecognitionResult,
   nutritionPrompt,
   parseJson,
   postJsonWithOneRetry,
@@ -78,7 +79,7 @@ export function createMimoAiServices(
       stream: false,
     })
     const parsed = ingredientRecognitionResultSchema.safeParse(
-      parseJson(outputText(payload))
+      normalizeRecognitionResult(parseJson(outputText(payload)))
     )
     if (!parsed.success) {
       throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI output failed validation.')

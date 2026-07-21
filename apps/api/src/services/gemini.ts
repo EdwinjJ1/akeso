@@ -8,6 +8,7 @@ import { HttpError } from '../http-error'
 import {
   fallbackNutrition,
   ingredientRecognitionJsonSchema,
+  normalizeRecognitionResult,
   nutritionBlueprintJsonSchema,
   nutritionPrompt,
   parseJson,
@@ -83,7 +84,7 @@ export function createGeminiAiServices(
       },
     })
     const parsed = ingredientRecognitionResultSchema.safeParse(
-      parseJson(outputText(payload))
+      normalizeRecognitionResult(parseJson(outputText(payload)))
     )
     if (!parsed.success) {
       throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI output failed validation.')
