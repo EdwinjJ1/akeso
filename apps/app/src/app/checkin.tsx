@@ -25,18 +25,18 @@ const ENERGY_OPTIONS = scaleOptions(['Drained', 'Low', 'OK', 'Good', 'Charged'])
 
 const SLEEP_OPTIONS: ChipOption<SleepDuration>[] = [
   { value: 'under_5h', label: 'Under 5h' },
-  { value: '5_6h', label: '5–6h' },
-  { value: '6_7h', label: '6–7h' },
-  { value: '7_8h', label: '7–8h' },
-  { value: '8_9h', label: '8–9h' },
+  { value: '5_6h', label: '5-6h' },
+  { value: '6_7h', label: '6-7h' },
+  { value: '7_8h', label: '7-8h' },
+  { value: '8_9h', label: '8-9h' },
   { value: 'over_9h', label: 'Over 9h' },
   { value: 'not_sure', label: 'Not sure' },
 ]
 
 const MEAL_OPTIONS: ChipOption<LastMealTiming>[] = [
   { value: 'within_1h', label: 'Within 1h' },
-  { value: '1_3h', label: '1–3h ago' },
-  { value: '3_5h', label: '3–5h ago' },
+  { value: '1_3h', label: '1-3h ago' },
+  { value: '3_5h', label: '3-5h ago' },
   { value: 'over_5h', label: 'Over 5h ago' },
   { value: 'not_today', label: 'Not yet today' },
   { value: 'not_sure', label: 'Not sure' },
@@ -44,46 +44,51 @@ const MEAL_OPTIONS: ChipOption<LastMealTiming>[] = [
 
 const HYDRATION_OPTIONS: ChipOption<Hydration>[] = [
   { value: 'under_0_5l', label: 'Under 0.5L' },
-  { value: '0_5_1l', label: '0.5–1L' },
-  { value: '1_1_5l', label: '1–1.5L' },
-  { value: '1_5_2l', label: '1.5–2L' },
+  { value: '0_5_1l', label: '0.5-1L' },
+  { value: '1_1_5l', label: '1-1.5L' },
+  { value: '1_5_2l', label: '1.5-2L' },
   { value: 'over_2l', label: 'Over 2L' },
   { value: 'not_sure', label: 'Not sure' },
 ]
 
 const STEP_META = [
-  { marker: '01 · ENERGY', question: 'How’s your energy right now?' },
-  { marker: '02 · REST', question: 'How much sleep did you get last night?' },
-  { marker: '03 · FUEL', question: 'When did you last eat?' },
-  { marker: '04 · WATER', question: 'How much water so far today?' },
+  { marker: '01 - ENERGY', question: "How's your energy right now?" },
+  { marker: '02 - REST', question: 'How much sleep did you get last night?' },
+  { marker: '03 - FUEL', question: 'When did you last eat?' },
+  { marker: '04 - WATER', question: 'How much water so far today?' },
 ] as const
 
 const STEP_COUNT = STEP_META.length
 
 /** One-question-per-step daily check-in. Chip taps advance automatically so
- * the whole thing takes about 20 seconds and never needs the keyboard, except
- * the single optional "what did you eat" note. */
+ * the whole thing takes about 20 seconds, except the optional meal note. */
 export default function CheckIn() {
-  const { submitCheckIn } = useAppState()
+  const { latestCheckIn, submitCheckIn } = useAppState()
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [reportedEnergy, setReportedEnergy] = useState<Scale1to5 | null>(null)
-  const [sleepDuration, setSleepDuration] = useState<SleepDuration | null>(null)
-  const [lastMealTiming, setLastMealTiming] = useState<LastMealTiming | null>(null)
-  const [lastMealDescription, setLastMealDescription] = useState('')
-  const [hydration, setHydration] = useState<Hydration | null>(null)
+  const [reportedEnergy, setReportedEnergy] = useState<Scale1to5 | null>(
+    latestCheckIn?.reportedEnergy ?? null
+  )
+  const [sleepDuration, setSleepDuration] = useState<SleepDuration | null>(
+    latestCheckIn?.sleepDuration ?? null
+  )
+  const [lastMealTiming, setLastMealTiming] = useState<LastMealTiming | null>(
+    latestCheckIn?.lastMealTiming ?? null
+  )
+  const [lastMealDescription, setLastMealDescription] = useState(
+    latestCheckIn?.lastMealDescription ?? ''
+  )
+  const [hydration, setHydration] = useState<Hydration | null>(
+    latestCheckIn?.hydration ?? null
+  )
 
-  // How many of the four required answers are in — drives the progress bar's
-  // fill so it reflects real completion, not just which step you're standing on.
+  const isUpdate = latestCheckIn !== null
   const answeredCount = [reportedEnergy, sleepDuration, lastMealTiming, hydration].filter(
     (value) => value !== null
   ).length
 
-  // Single source of truth for a valid check-in: both the submit button's
-  // enabled state and submit() derive from it, so adding a field later is a
-  // one-place edit and the two can never drift.
   const buildCheckInInput = (): CheckInInput | null => {
     if (
       reportedEnergy === null ||
@@ -93,6 +98,7 @@ export default function CheckIn() {
     ) {
       return null
     }
+
     return {
       date: todayISO(),
       reportedEnergy,
@@ -106,13 +112,15 @@ export default function CheckIn() {
   const complete = buildCheckInInput() !== null
   const isLastStep = step === STEP_COUNT - 1
 
-  // Safe back: dismiss the modal if we can, otherwise land on the dashboard.
   const closeCheckIn = () => {
     if (router.canGoBack()) router.back()
     else router.replace('/(tabs)')
   }
 
-  const goNext = () => setStep((current) => Math.min(current + 1, STEP_COUNT - 1))
+  const goNext = () => {
+    setError(null)
+    setStep((current) => Math.min(current + 1, STEP_COUNT - 1))
+  }
 
   const goBack = () => {
     setError(null)
@@ -120,13 +128,11 @@ export default function CheckIn() {
     else setStep((current) => current - 1)
   }
 
-  // Energy and sleep are pure single-select, so a tap both records the answer
-  // and moves the flow forward. Fuel keeps its optional note in view and
-  // hydration is the final step, so those two advance via a button instead.
   const onEnergy = (value: Scale1to5) => {
     setReportedEnergy(value)
     goNext()
   }
+
   const onSleep = (value: SleepDuration) => {
     setSleepDuration(value)
     goNext()
@@ -141,14 +147,22 @@ export default function CheckIn() {
       await submitCheckIn(input)
       closeCheckIn()
     } catch (submitError) {
-      // Keep every answer the user gave so they can retry with one tap.
       console.error('Check-in failed:', submitError)
-      setError('Something went wrong — please try again.')
+      setError('Something went wrong - please try again.')
       setSubmitting(false)
     }
   }
 
   const current = STEP_META[step]
+  const currentStepAnswered =
+    step === 0
+      ? reportedEnergy !== null
+      : step === 1
+        ? sleepDuration !== null
+        : step === 2
+          ? lastMealTiming !== null
+          : hydration !== null
+  const showContinue = !isLastStep && (step === 2 || (isUpdate && currentStepAnswered))
 
   return (
     <Screen>
@@ -173,7 +187,7 @@ export default function CheckIn() {
 
       <View style={styles.headerText}>
         <Text style={styles.eyebrow}>A SMALL PAUSE FOR YOURSELF</Text>
-        <Text style={type.h1}>Daily check-in</Text>
+        <Text style={type.h1}>{isUpdate ? "Update today's status" : 'Daily check-in'}</Text>
         <View style={styles.timeHint}>
           <Tag label="~20 seconds" color={colors.primaryDark} background={colors.primarySoft} />
         </View>
@@ -181,7 +195,7 @@ export default function CheckIn() {
 
       <View style={styles.progressBlock}>
         <View style={styles.progressHeader}>
-          <Text style={styles.progressLabel}>TODAY’S SIGNAL</Text>
+          <Text style={styles.progressLabel}>{"TODAY'S SIGNAL"}</Text>
           <Text style={styles.progressCount}>
             Step {step + 1} / {STEP_COUNT}
           </Text>
@@ -224,7 +238,11 @@ export default function CheckIn() {
         <ChipRow options={HYDRATION_OPTIONS} value={hydration} onChange={setHydration} />
       ) : null}
 
-      {step <= 1 ? <Text style={styles.hint}>Tap an answer to continue.</Text> : null}
+      {step <= 1 ? (
+        <Text style={styles.hint}>
+          {isUpdate ? 'Change it, or keep the previous answer.' : 'Tap an answer to continue.'}
+        </Text>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -233,19 +251,19 @@ export default function CheckIn() {
           <View style={styles.finishCopy}>
             <Text style={styles.finishKicker}>{complete ? 'ALL SIGNALS IN' : 'ONE LAST ANSWER'}</Text>
             <Text style={styles.finishTitle}>
-              {complete ? 'Let’s shape your day.' : 'How much water so far?'}
+              {complete ? "Let's shape your day." : 'How much water so far?'}
             </Text>
           </View>
           <Mascot state={complete ? 'celebrate' : 'steady'} size={112} />
         </View>
       ) : null}
 
-      {step === 2 ? (
+      {showContinue ? (
         <View style={styles.footer}>
           <Button
-            label="Continue"
+            label={isUpdate && step !== 2 ? 'Keep this answer' : 'Continue'}
             onPress={goNext}
-            disabled={lastMealTiming === null}
+            disabled={!currentStepAnswered}
             variant="cta"
           />
         </View>
@@ -254,7 +272,13 @@ export default function CheckIn() {
       {isLastStep ? (
         <View style={styles.footer}>
           <Button
-            label={complete ? 'Get my energy plan' : 'Pick one to continue'}
+            label={
+              complete
+                ? isUpdate
+                  ? 'Update my energy score'
+                  : 'Get my energy plan'
+                : 'Pick one to continue'
+            }
             onPress={submit}
             disabled={!complete}
             loading={submitting}
