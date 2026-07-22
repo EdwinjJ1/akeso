@@ -11,6 +11,7 @@ export default defineConfig({
   test: {
     include: [
       'apps/api/src/**/*.test.ts',
+      'apps/app/src/utils/**/*.test.ts',
       'packages/contracts/src/**/*.test.ts',
       'packages/domain/src/schemas.test.ts',
       'packages/domain/src/planner.test.ts',

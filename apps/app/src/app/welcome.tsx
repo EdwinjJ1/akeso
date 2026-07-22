@@ -11,6 +11,7 @@ import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
 import { useAppState } from '@/state/app-state'
 import { colors, radius, sp, type } from '@/theme/tokens'
+import { getOnboardingErrorMessage } from '@/utils/onboarding-error'
 
 const GOAL_OPTIONS: { value: UserGoal; label: string }[] = [
   { value: 'academic', label: 'Study & exams' },
@@ -40,6 +41,7 @@ export default function Welcome() {
   const { completeOnboarding } = useAppState()
   const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [goal, setGoal] = useState<UserGoal | null>(null)
@@ -50,6 +52,7 @@ export default function Welcome() {
   const finish = async () => {
     if (!goal || !wake || !sleep || !diet) return
     setSaving(true)
+    setSaveError(null)
     try {
       await completeOnboarding({
         displayName: name.trim() || 'there',
@@ -59,6 +62,9 @@ export default function Welcome() {
         dietaryPreference: diet,
       })
       router.replace('/(tabs)')
+    } catch (error) {
+      console.error('completeOnboarding failed:', error)
+      setSaveError(getOnboardingErrorMessage(error))
     } finally {
       setSaving(false)
     }
@@ -179,6 +185,11 @@ export default function Welcome() {
           <ChipRow options={DIET_OPTIONS} value={diet} onChange={setDiet} />
 
           <View style={styles.footer}>
+            {saveError ? (
+              <Text accessibilityRole="alert" style={styles.saveError}>
+                {saveError}
+              </Text>
+            ) : null}
             <Button label="Start using Akeso" onPress={finish} loading={saving} variant="cta" />
           </View>
         </View>
@@ -316,5 +327,12 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: sp(8),
+  },
+  saveError: {
+    ...type.small,
+    color: colors.danger,
+    fontWeight: '700',
+    marginBottom: sp(3),
+    textAlign: 'center',
   },
 })
