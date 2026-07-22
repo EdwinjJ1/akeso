@@ -4,9 +4,13 @@ import {
   CoachReplySchema,
   DayPlanSchema,
   EnergyResultSchema,
+  UpdatePlanBlockResponseSchema,
   GetFridgeResponseSchema,
+  GetNutritionResponseSchema,
+  GetProfileResponseSchema,
   GetReminderResponseSchema,
   PutFridgeItemResponseSchema,
+  PutProfileResponseSchema,
 } from '@akeso/contracts'
 import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -36,6 +40,37 @@ beforeEach(() => {
 })
 
 describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
+  test('GET /v1/profile -> UserProfile envelope', async () => {
+    const response = await request(app).get('/v1/profile').expect(200)
+
+    const result = GetProfileResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('PUT /v1/profile -> UserProfile envelope with dietary safety', async () => {
+    const response = await request(app)
+      .put('/v1/profile')
+      .send({
+        displayName: 'Alex',
+        goal: 'academic',
+        typicalWake: '07:30',
+        typicalSleep: '23:30',
+        dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: ['milk'],
+          avoidIngredients: ['salmon'],
+        },
+      })
+      .expect(200)
+
+    const result = PutProfileResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
   test('POST /v1/checkins → EnergyResult envelope', async () => {
     const response = await request(app)
       .post('/v1/checkins')
@@ -66,6 +101,27 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
       true
     )
+  })
+
+  test('PATCH /v1/plan/:date/blocks/:blockId → updated DayPlan envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    const block = plan.body.data.blocks[0]
+    const response = await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${block.id}`)
+      .send({
+        title: 'Updated suggestion',
+        start: block.start,
+        end: block.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    const result = UpdatePlanBlockResponseSchema.safeParse(response.body)
+    expect(
+      result.success,
+      JSON.stringify(result.success ? null : result.error.issues)
+    ).toBe(true)
   })
 
   test('GET /v1/coach/:date → CoachReply envelope', async () => {
@@ -104,6 +160,15 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
       .expect(200)
 
     const result = PutFridgeItemResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/nutrition/:date -> NutritionPlan envelope', async () => {
+    const response = await request(app).get('/v1/nutrition/2026-07-21').expect(200)
+
+    const result = GetNutritionResponseSchema.safeParse(response.body)
     expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
       true
     )

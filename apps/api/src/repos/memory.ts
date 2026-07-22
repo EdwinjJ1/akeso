@@ -4,6 +4,7 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  NutritionPlan,
   ReminderPreference,
   Task,
   UserProfile,
@@ -49,6 +50,7 @@ export function createMemoryRepos(): Repos {
   const plans = createBoundedMap<string, DayPlan>(limit)
   const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
   const reminders = createBoundedMap<string, ReminderPreference>(limit)
+  const nutritionPlans = createBoundedMap<string, NutritionPlan>(limit)
 
   return {
     profile: {
@@ -62,6 +64,9 @@ export function createMemoryRepos(): Repos {
     },
 
     checkins: {
+      async get(userId, date) {
+        return checkins.get(dateKey(userId, date)) ?? null
+      },
       async upsert(userId, input) {
         checkins.set(dateKey(userId, input.date), input)
       },
@@ -91,6 +96,19 @@ export function createMemoryRepos(): Repos {
         plans.set(dateKey(userId, plan.date), plan)
         return plan
       },
+      async updateBlock(userId, date, updatedBlock) {
+        const key = dateKey(userId, date)
+        const plan = plans.get(key)
+        if (!plan) throw new Error(`No plan exists for ${date}`)
+        plans.set(key, {
+          ...plan,
+          blocks: plan.blocks
+            .map((block) =>
+              block.id === updatedBlock.id ? updatedBlock : block
+            )
+            .sort((left, right) => left.start.localeCompare(right.start)),
+        })
+      },
     },
 
     fridge: {
@@ -105,6 +123,15 @@ export function createMemoryRepos(): Repos {
       },
       async remove(userId, id) {
         fridgeByUser.get(userId)?.delete(id)
+      },
+    },
+
+    nutritionPlanCache: {
+      async get(userId, cacheKey) {
+        return nutritionPlans.get(dateKey(userId, cacheKey)) ?? null
+      },
+      async upsert(userId, cacheKey, plan) {
+        nutritionPlans.set(dateKey(userId, cacheKey), plan)
       },
     },
 

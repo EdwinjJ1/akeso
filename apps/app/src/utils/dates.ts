@@ -38,3 +38,13 @@ export function formatHour(hour: number): string {
   const displayHour = hour % 12 === 0 ? 12 : hour % 12
   return `${displayHour}${suffix}`
 }
+
+/** Shifts an HH:mm time by `deltaMinutes`, wrapping around midnight. */
+export function shiftTime(time: string, deltaMinutes: number): string {
+  const [hour, minute] = time.split(':').map(Number)
+  const dayMinutes = 24 * 60
+  const total = ((hour * 60 + minute + deltaMinutes) % dayMinutes + dayMinutes) % dayMinutes
+  const hh = Math.floor(total / 60)
+  const mm = total % 60
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}

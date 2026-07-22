@@ -1,6 +1,7 @@
 import type { PlanBlock } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
-import { StyleSheet, Text, View } from 'react-native'
+import { useState } from 'react'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { Tag } from '@/components/ui/chips'
 import { colors, energyColors, energySoftColors, radius, sp } from '@/theme/tokens'
@@ -25,10 +26,16 @@ const BLOCK_LABELS: Record<PlanBlock['type'], string> = {
 interface PlanBlockCardProps {
   block: PlanBlock
   isLast?: boolean
+  onUpdate: () => void
 }
 
 /** One row in the day timeline: time rail + block card */
-export function PlanBlockCard({ block, isLast = false }: PlanBlockCardProps) {
+export function PlanBlockCard({
+  block,
+  isLast = false,
+  onUpdate,
+}: PlanBlockCardProps) {
+  const [showOriginal, setShowOriginal] = useState(false)
   const bandColor = energyColors[block.energyLevel]
   const blockBackground = block.type === 'focus'
     ? colors.primary
@@ -46,7 +53,13 @@ export function PlanBlockCard({ block, isLast = false }: PlanBlockCardProps) {
         {!isLast ? <View style={styles.line} /> : null}
       </View>
 
-      <View style={[styles.card, { backgroundColor: blockBackground }]}> 
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: blockBackground },
+          block.status === 'completed' && styles.completedCard,
+        ]}
+      >
         <View style={styles.cardHeader}>
           <View style={[styles.iconWrap, { backgroundColor: energySoftColors[block.energyLevel] }]}>
             <Ionicons name={BLOCK_ICONS[block.type]} size={15} color={bandColor} />
@@ -56,7 +69,14 @@ export function PlanBlockCard({ block, isLast = false }: PlanBlockCardProps) {
             {formatHourLabel(block.start)}–{formatHourLabel(block.end)}
           </Text>
         </View>
-        <Text style={styles.title}>{block.title}</Text>
+        <Text
+          style={[
+            styles.title,
+            block.status === 'completed' && styles.completedTitle,
+          ]}
+        >
+          {block.title}
+        </Text>
         <Text style={styles.rationale}>{block.rationale}</Text>
         <View style={styles.tagRow}>
           <Tag
@@ -64,7 +84,60 @@ export function PlanBlockCard({ block, isLast = false }: PlanBlockCardProps) {
             color={bandColor}
             background={energySoftColors[block.energyLevel]}
           />
+          {block.source === 'user' ? (
+            <Tag
+              label="Updated by you"
+              color={colors.text}
+              background={colors.lime}
+            />
+          ) : null}
+          {block.status === 'completed' ? (
+            <Tag
+              label="Completed"
+              color={colors.text}
+              background={colors.primarySoft}
+            />
+          ) : null}
         </View>
+        {block.source === 'user' ? (
+          <>
+            <Pressable
+              onPress={() => setShowOriginal((value) => !value)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                showOriginal ? 'Hide original suggestion' : 'Show original suggestion'
+              }
+              style={styles.originalToggle}
+            >
+              <Text style={styles.originalToggleText}>
+                {showOriginal ? 'Hide original' : 'Show original'}
+              </Text>
+            </Pressable>
+            {showOriginal ? (
+              <View style={styles.originalBox}>
+                <Text style={styles.originalLabel}>AKESO’S ORIGINAL</Text>
+                <Text style={styles.originalTitle}>
+                  {block.originalSuggestion.title}
+                </Text>
+                <Text style={styles.originalTime}>
+                  {block.originalSuggestion.start}–{block.originalSuggestion.end}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : null}
+        <Pressable
+          onPress={onUpdate}
+          accessibilityRole="button"
+          accessibilityLabel="Update"
+          style={({ pressed }) => [
+            styles.updateButton,
+            pressed && styles.updatePressed,
+          ]}
+        >
+          <Ionicons name="create-outline" size={15} color={colors.text} />
+          <Text style={styles.updateText}>Update</Text>
+        </Pressable>
       </View>
     </View>
   )
@@ -108,6 +181,7 @@ const styles = StyleSheet.create({
     padding: sp(4),
     marginBottom: sp(3),
   },
+  completedCard: { opacity: 0.82 },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -138,6 +212,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
   },
+  completedTitle: { textDecorationLine: 'line-through' },
   rationale: {
     fontSize: 13,
     color: colors.textSecondary,
@@ -147,6 +222,45 @@ const styles = StyleSheet.create({
   },
   tagRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: sp(1.5),
   },
+  originalToggle: { alignSelf: 'flex-start', marginTop: sp(2.5) },
+  originalToggleText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
+  originalBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    padding: sp(2.5),
+    marginTop: sp(2),
+  },
+  originalLabel: { fontSize: 10, fontWeight: '900', color: colors.textMuted },
+  originalTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  originalTime: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  updateButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sp(1.5),
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    marginTop: sp(3),
+    paddingHorizontal: sp(3),
+  },
+  updatePressed: { transform: [{ translateY: 2 }] },
+  updateText: { color: colors.text, fontSize: 13, fontWeight: '900' },
 })
