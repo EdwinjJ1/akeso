@@ -30,6 +30,11 @@ import {
   userProfileSchema,
 } from '@akeso/domain'
 
+import {
+  demoReportExtraction,
+  demoSavedReport,
+} from '../components/report/report-demo'
+
 const LATENCY_MS = 450
 const PROFILE_STORAGE_KEY = 'akeso.demo.profile.v1'
 
@@ -58,8 +63,10 @@ export class FixtureService implements AkesoService {
   private latestCheckIn: CheckInInput | null = null
   private fridge = new Map<string, FridgeItem>()
   private reminder: ReminderPreference | null = null
-  private reports = new Map<string, HealthReport>()
-  private reportSequence = 0
+  private reports = new Map<string, HealthReport>([
+    [demoSavedReport.id, demoSavedReport],
+  ])
+  private reportSequence = 1
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(this.latencyMs / 3)
@@ -205,9 +212,8 @@ export class FixtureService implements AkesoService {
   async extractReportMetrics(
     _image: ReportImageUpload
   ): Promise<ReportExtractionResult> {
-    throw new Error(
-      'Live report extraction requires EXPO_PUBLIC_API_URL. Manual entry is available.'
-    )
+    await wait(this.latencyMs * 2)
+    return demoReportExtraction
   }
 
   async getReports(): Promise<HealthReport[]> {
