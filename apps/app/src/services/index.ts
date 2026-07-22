@@ -1,4 +1,5 @@
 import type { AkesoService } from '@akeso/domain'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import { ApiService } from './api-service'
 import { FixtureService } from './fixture-service'
@@ -24,8 +25,12 @@ if (apiUrl && !demoApi && !isSupabaseConfigured()) {
 const service: AkesoService =
   apiUrl && (demoApi || isSupabaseConfigured())
     ? new ApiService(apiUrl, demoApi)
-    : new FixtureService()
+    : new FixtureService(undefined, AsyncStorage)
 
 export function getService(): AkesoService {
   return service
+}
+
+export function isAccountSyncAvailable(): boolean {
+  return Boolean(apiUrl && !demoApi && isSupabaseConfigured())
 }

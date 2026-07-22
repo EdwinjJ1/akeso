@@ -30,6 +30,8 @@ import { runSubmitCheckIn } from './checkin-flow'
 
 interface AppState {
   profile: UserProfile | null
+  profileHydrated: boolean
+  profileHydrationError: string | null
   energy: EnergyResult | null
   latestCheckIn: CheckInInput | null
   plan: DayPlan | null
@@ -49,10 +51,11 @@ interface AppState {
 
 interface AppActions {
   completeOnboarding(profile: UserProfile): Promise<void>
+  reloadProfile(): Promise<UserProfile | null | undefined>
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
   refreshToday(): Promise<void>
   updatePlanBlock(blockId: string, input: UpdatePlanBlockInput): Promise<void>
-  regeneratePlan(instruction?: string): Promise<void>
+  regeneratePlan(instruction?: string): Promise<CoachReply>
   saveReminderPreference(pref: ReminderPreference): Promise<void>
   recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
   saveFridgeItems(items: FridgeItem[]): Promise<void>
@@ -63,6 +66,8 @@ interface AppActions {
 
 const initialState: AppState = {
   profile: null,
+  profileHydrated: false,
+  profileHydrationError: null,
   energy: null,
   latestCheckIn: null,
   plan: null,
@@ -98,10 +103,42 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     latestRef.current = { energy: state.energy, reminder: state.reminder }
   }, [state.energy, state.reminder])
 
+  const reloadProfile = useCallback(async () => {
+    refreshRequestId.current += 1
+    setState(initialState)
+    try {
+      const profile = await service.getProfile()
+      setState((prev) => ({
+        ...prev,
+        profile,
+        profileHydrated: true,
+        profileHydrationError: null,
+      }))
+      return profile
+    } catch (cause) {
+      console.error('reloadProfile failed:', cause)
+      setState((prev) => ({
+        ...prev,
+        profileHydrated: true,
+        profileHydrationError: 'Could not load your profile. Check your connection and try again.',
+      }))
+      return undefined
+    }
+  }, [service])
+
+  useEffect(() => {
+    void reloadProfile()
+  }, [reloadProfile])
+
   const completeOnboarding = useCallback(
     async (profile: UserProfile) => {
       const saved = await service.saveProfile(profile)
-      setState((prev) => ({ ...prev, profile: saved }))
+      setState((prev) => ({
+        ...prev,
+        profile: saved,
+        profileHydrated: true,
+        profileHydrationError: null,
+      }))
     },
     [service]
   )
@@ -240,6 +277,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         planError: null,
         coachError: null,
       }))
+      return coach
     },
     [service]
   )
@@ -311,6 +349,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       completeOnboarding,
+      reloadProfile,
       submitCheckIn,
       refreshToday,
       updatePlanBlock,
@@ -325,6 +364,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       state,
       completeOnboarding,
+      reloadProfile,
       submitCheckIn,
       refreshToday,
       updatePlanBlock,

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
-import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine.js'
-import type { CheckInInput, EnergyFactor } from './types.js'
+import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine'
+import type { CheckInInput, EnergyFactor } from './types'
 
 const engine = new EnergyEngine()
 const { baseline } = ENERGY_ENGINE_CONFIG

@@ -160,6 +160,7 @@ export default function Welcome() {
           </View>
 
           <Button label="Get started" onPress={() => setStep(1)} />
+          <Button label="I already have an account" variant="ghost" onPress={() => router.push('../account')} />
         </View>
       ) : null}
 

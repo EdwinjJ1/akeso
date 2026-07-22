@@ -1,6 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
+export type EmailCodePurpose = 'link' | 'sign-in'
+
+export interface AccountStatus {
+  email: string | null
+  isAnonymous: boolean
+}
+
+export class AccountAuthError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AccountAuthError'
+  }
+}
+
 /**
  * Config comes from EXPO_PUBLIC_* vars, which Expo inlines into the client
  * bundle at build time — the only kind of env var safe to read here. Never
@@ -35,6 +49,30 @@ function getClient(): SupabaseClient {
   return client
 }
 
+function normalizedEmail(value: string): string {
+  const email = value.trim().toLowerCase()
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AccountAuthError('Enter a valid email address.')
+  }
+  return email
+}
+
+function normalizedCode(value: string): string {
+  const code = value.replace(/\s/g, '')
+  if (!/^\d{6}$/.test(code)) {
+    throw new AccountAuthError('Enter the 6-digit code from your email.')
+  }
+  return code
+}
+
+function isExistingIdentityError(code: string | undefined): boolean {
+  return (
+    code === 'email_exists' ||
+    code === 'identity_already_exists' ||
+    code === 'user_already_exists'
+  )
+}
+
 /**
  * In-flight anonymous sign-in, shared by concurrent callers. Without this,
  * the App's parallel refreshToday() (five service calls at once) would each
@@ -45,11 +83,10 @@ function getClient(): SupabaseClient {
 let pendingSignIn: Promise<Session> | undefined
 
 /**
- * Akeso's MVP has no sign-in screen (single-user product, TEAM_CONTRACT
- * §9/architecture.html) — anonymous auth gives every install a real,
- * persisted `auth.uid()` so the API's per-user RLS still applies, without
- * building a login flow nobody asked for. The session (and so the anonymous
- * identity) persists in AsyncStorage across restarts.
+ * Anonymous auth gives every install a real, persisted `auth.uid()` so the
+ * API's per-user RLS applies before the user chooses to link an email. The
+ * session persists in AsyncStorage across restarts; the Account screen can
+ * later upgrade it in place for cross-device recovery.
  */
 async function ensureSession(): Promise<Session> {
   const supabase = getClient()
@@ -72,8 +109,75 @@ async function ensureSession(): Promise<Session> {
   return pendingSignIn
 }
 
-/** Resolves once the anonymous (or real, once that ships) session is ready. */
+/** Resolves once the anonymous or email-linked session is ready. */
 export async function getAccessToken(): Promise<string> {
   const session = await ensureSession()
   return session.access_token
+}
+
+export async function getAccountStatus(): Promise<AccountStatus> {
+  const session = await ensureSession()
+  return {
+    email: session.user.email ?? null,
+    isAnonymous: session.user.is_anonymous === true,
+  }
+}
+
+/**
+ * An anonymous user is upgraded in place so their auth.uid() — and all data
+ * keyed to it — stays unchanged. If the address already belongs to an Akeso
+ * account, request a sign-in OTP instead. The UI deliberately presents the
+ * same response for both paths to avoid exposing whether an email is registered.
+ */
+export async function requestEmailCode(value: string): Promise<EmailCodePurpose> {
+  const email = normalizedEmail(value)
+  const supabase = getClient()
+  const session = await ensureSession()
+
+  if (!session.user.is_anonymous) {
+    throw new AccountAuthError('This Akeso is already linked to an account.')
+  }
+
+  const { error: linkError } = await supabase.auth.updateUser({ email })
+  if (!linkError) return 'link'
+
+  if (!isExistingIdentityError(linkError.code)) {
+    throw new AccountAuthError('We could not send a code. Please try again shortly.')
+  }
+
+  const { error: signInError } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false },
+  })
+  if (signInError) {
+    throw new AccountAuthError('We could not send a code. Please try again shortly.')
+  }
+  return 'sign-in'
+}
+
+export async function verifyEmailCode(
+  value: string,
+  tokenValue: string,
+  purpose: EmailCodePurpose
+): Promise<AccountStatus> {
+  const email = normalizedEmail(value)
+  const token = normalizedCode(tokenValue)
+  const { data, error } = await getClient().auth.verifyOtp({
+    email,
+    token,
+    type: purpose === 'link' ? 'email_change' : 'email',
+  })
+  if (error || !data.user) {
+    throw new AccountAuthError('That code is invalid or has expired. Request a new one.')
+  }
+  return {
+    email: data.user.email ?? email,
+    isAnonymous: data.user.is_anonymous === true,
+  }
+}
+
+export async function signOutAccount(): Promise<void> {
+  const { error } = await getClient().auth.signOut({ scope: 'local' })
+  if (error) throw new AccountAuthError('Could not sign out. Please try again.')
+  await ensureSession()
 }

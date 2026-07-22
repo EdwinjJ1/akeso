@@ -5,7 +5,9 @@ const CONFIG = {
   /** YouTube video id, e.g. 'dQw4w9WgXcQ'. Takes priority over videoMp4. */
   videoYouTubeId: '',
   /** Path to a local mp4, e.g. 'assets/demo.mp4' (drop the file into assets/). */
-  videoMp4: '',
+  videoMp4: 'assets/akeso-demo.mp4',
+  /** Poster frame shown before playback starts. */
+  videoPoster: 'assets/akeso-demo-poster.jpg',
   /** Direct APK / EAS build link. Falls back to the GitHub releases page. */
   apkUrl: '',
 }
@@ -34,6 +36,7 @@ function initVideo() {
     iframe.title = 'Akeso demo video'
     iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
     iframe.allowFullscreen = true
+    slot.classList.add('has-video')
     slot.replaceChildren(iframe)
     return
   }
@@ -41,9 +44,11 @@ function initVideo() {
   if (CONFIG.videoMp4) {
     const video = document.createElement('video')
     video.src = CONFIG.videoMp4
+    if (CONFIG.videoPoster) video.poster = CONFIG.videoPoster
     video.controls = true
     video.playsInline = true
     video.preload = 'metadata'
+    slot.classList.add('has-video')
     slot.replaceChildren(video)
   }
 }

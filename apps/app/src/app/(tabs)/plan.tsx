@@ -53,7 +53,7 @@ export default function Plan() {
       planLoading={planLoading}
       planError={planError}
       onRefresh={refreshToday}
-      onRegenerate={() => regeneratePlan()}
+      onRegenerate={() => regeneratePlan().then(() => undefined)}
       onUpdateBlock={updatePlanBlock}
     />
   )
