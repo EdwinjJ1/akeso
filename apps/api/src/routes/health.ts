@@ -1,11 +1,9 @@
-import { createRequire } from 'node:module'
-
 import { Router } from 'express'
 
 import { ok } from '../http'
+import pkg from '../../package.json' with { type: 'json' }
 
-const require = createRequire(import.meta.url)
-const { version: API_VERSION } = require('../../package.json') as { version: string }
+const { version: API_VERSION } = pkg as { version: string }
 
 export const healthRouter = Router()
 
