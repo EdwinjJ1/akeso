@@ -132,7 +132,7 @@ export function ReminderCard() {
 
       {enabled && permission === 'denied' ? (
         <Text style={styles.permissionNote}>
-          Push isn't authorized on this device — you'll still see this reminder in the app.
+          Push isn’t authorized on this device — you’ll still see this reminder in the app.
         </Text>
       ) : null}
 

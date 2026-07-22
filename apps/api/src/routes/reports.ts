@@ -2,10 +2,14 @@ import {
   buildReportRecommendationsFallback,
   computeMetricStatus,
   createReportRequestSchema,
+  healthReportSchema,
   healthRecommendationBlueprintSchema,
   healthRecommendationSetSchema,
   renderHealthRecommendationSet,
+  reportWithConfirmedMetrics,
   reportParamsSchema,
+  updateReportMetricsRequestSchema,
+  updateReportRequestSchema,
   type HealthReport,
   type ReportMetric,
 } from '@akeso/domain'
@@ -46,24 +50,20 @@ const detectReportImageType = (
 }
 
 /**
- * Rebuild the confirmed metrics under server control: the status is always
+ * Rebuild the reviewed metrics under server control: the status is always
  * recomputed from the report's own bounds (never trusted from the client, so
- * an out-of-range flag can't be spoofed), and a duplicate id keeps only its
- * last occurrence so ids stay unique within the report.
+ * an out-of-range flag can't be spoofed). Request validation rejects duplicate
+ * ids/names before this function runs.
  */
-const buildConfirmedMetrics = (metrics: ReportMetric[]): ReportMetric[] => {
-  const byId = new Map<string, ReportMetric>()
-  for (const metric of metrics) {
-    byId.set(metric.id, {
-      ...metric,
-      status: computeMetricStatus(
-        metric.value,
-        metric.referenceLow,
-        metric.referenceHigh
-      ),
-    })
-  }
-  return Array.from(byId.values())
+const buildReviewedMetrics = (metrics: ReportMetric[]): ReportMetric[] => {
+  return metrics.map((metric) => ({
+    ...metric,
+    status: computeMetricStatus(
+      metric.value,
+      metric.referenceLow,
+      metric.referenceHigh
+    ),
+  }))
 }
 
 export function createReportsRouter(
@@ -72,23 +72,29 @@ export function createReportsRouter(
   ai: AiServices
 ): Router {
   const router = Router()
+  const recommendationModel =
+    env.vision.provider === 'gemini'
+      ? env.vision.geminiModel
+      : env.vision.mimoModel
 
-  // Recommendations depend only on the confirmed metrics (immutable once the
-  // report is saved) plus the provider/model/prompt version — no photo or raw
-  // report text is ever part of the key or the stored value.
-  const recommendationCacheKey = (userId: string, report: HealthReport) =>
-    createHash('sha256')
+  // Recommendations depend only on currently confirmed metrics plus the
+  // provider/model/prompt version. Unconfirmed recognition results are stored
+  // for later correction but never cross the recommendation boundary.
+  const recommendationCacheKey = (userId: string, report: HealthReport) => {
+    const confirmed = reportWithConfirmedMetrics(report)
+    return createHash('sha256')
       .update(
         JSON.stringify({
           userId,
           reportId: report.id,
-          metrics: report.metrics,
+          metrics: confirmed.metrics,
           provider: env.vision.provider,
-          model: env.vision.mimoModel,
+          model: recommendationModel,
           promptVersion: REPORT_RECOMMENDATION_PROMPT_VERSION,
         })
       )
       .digest('hex')
+  }
 
   const loadReport = async (userId: string, id: string): Promise<HealthReport> => {
     const report = await repos.reports.get(userId, id)
@@ -125,23 +131,53 @@ export function createReportsRouter(
   })
 
   router.post('/reports', writeRateLimiter, async (req, res) => {
-    const { metrics } = createReportRequestSchema.parse(req.body)
-    const report: HealthReport = {
+    const { name, reportDate, metrics } = createReportRequestSchema.parse(req.body)
+    const report = healthReportSchema.parse({
       id: randomUUID(),
+      name,
+      reportDate,
       createdAt: new Date().toISOString(),
-      metrics: buildConfirmedMetrics(metrics),
-    }
+      metrics: buildReviewedMetrics(metrics),
+    })
     ok(res, await repos.reports.upsert(req.userId, report), 201)
+  })
+
+  router.get('/reports/:id', async (req, res) => {
+    const { id } = reportParamsSchema.parse(req.params)
+    ok(res, await loadReport(req.userId, id))
+  })
+
+  router.patch('/reports/:id', writeRateLimiter, async (req, res) => {
+    const { id } = reportParamsSchema.parse(req.params)
+    const patch = updateReportRequestSchema.parse(req.body)
+    const report = await loadReport(req.userId, id)
+    const updated = healthReportSchema.parse({ ...report, ...patch })
+    ok(res, await repos.reports.upsert(req.userId, updated))
+  })
+
+  router.patch('/reports/:id/metrics', writeRateLimiter, async (req, res) => {
+    const { id } = reportParamsSchema.parse(req.params)
+    const { metrics } = updateReportMetricsRequestSchema.parse(req.body)
+    const report = await loadReport(req.userId, id)
+    const updated = healthReportSchema.parse({
+      ...report,
+      metrics: buildReviewedMetrics(metrics),
+    })
+    // Sweep derived health data before the durable replacement. If cleanup
+    // fails, the report remains unchanged instead of leaving orphaned advice.
+    await repos.reportRecommendationCache.removeByReport(req.userId, id)
+    ok(res, await repos.reports.upsert(req.userId, updated))
   })
 
   router.delete('/reports/:id', writeRateLimiter, async (req, res) => {
     const { id } = reportParamsSchema.parse(req.params)
-    await repos.reports.remove(req.userId, id)
+    await loadReport(req.userId, id)
     // Deleting a report must not leave its cached recommendations behind: they
     // are derived health data for a report that no longer exists. Remove them
     // explicitly so both the in-memory and Supabase paths converge (Supabase
     // also cascades via the composite FK, so this is idempotent there).
     await repos.reportRecommendationCache.removeByReport(req.userId, id)
+    await repos.reports.remove(req.userId, id)
     ok(res, null)
   })
 
@@ -167,6 +203,8 @@ export function createReportsRouter(
     async (req, res) => {
       const { id } = reportParamsSchema.parse(req.params)
       const report = await loadReport(req.userId, id)
+      const confirmedReport = reportWithConfirmedMetrics(report)
+      const sourceCacheKey = recommendationCacheKey(req.userId, report)
       // The AI returns only a text-free blueprint (action codes + metric ids).
       // Validate its structure here (an AI fault is a 502, not a client 400),
       // then render the user-visible set from the persisted confirmed report:
@@ -175,7 +213,7 @@ export function createReportsRouter(
       // rendering, so a buggy service cannot smuggle phantom metrics or free
       // text into what we cache or return.
       const blueprint = healthRecommendationBlueprintSchema.safeParse(
-        await ai.generateHealthRecommendations({ report })
+        await ai.generateHealthRecommendations({ report: confirmedReport })
       )
       if (!blueprint.success) {
         throw new HttpError(
@@ -185,11 +223,24 @@ export function createReportsRouter(
         )
       }
       const recommendations = healthRecommendationSetSchema.parse(
-        renderHealthRecommendationSet({ report, blueprint: blueprint.data })
+        renderHealthRecommendationSet({
+          report: confirmedReport,
+          blueprint: blueprint.data,
+        })
       )
+      // AI calls can overlap a correction or deletion. Re-read under the same
+      // owner and refuse to publish a result for an older metric snapshot.
+      const currentReport = await loadReport(req.userId, id)
+      if (recommendationCacheKey(req.userId, currentReport) !== sourceCacheKey) {
+        throw new HttpError(
+          409,
+          'REPORT_CHANGED',
+          'The report changed while advice was being generated. Try again.'
+        )
+      }
       await repos.reportRecommendationCache.upsert(
         req.userId,
-        recommendationCacheKey(req.userId, report),
+        sourceCacheKey,
         recommendations
       )
       ok(res, recommendations)

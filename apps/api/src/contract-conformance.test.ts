@@ -2,15 +2,19 @@ import type { CheckInInput } from '@akeso/domain'
 import {
   apiResponseSchema,
   CoachReplySchema,
+  CreateReportResponseSchema,
   DayPlanSchema,
   EnergyResultSchema,
   UpdatePlanBlockResponseSchema,
   GetFridgeResponseSchema,
   GetNutritionResponseSchema,
   GetProfileResponseSchema,
+  GetReportResponseSchema,
   GetReminderResponseSchema,
   PutFridgeItemResponseSchema,
   PutProfileResponseSchema,
+  UpdateReportMetricsResponseSchema,
+  UpdateReportResponseSchema,
 } from '@akeso/contracts'
 import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -181,5 +185,42 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
       true
     )
+  })
+
+  test('report create/detail/metadata/metric responses conform to the report contract', async () => {
+    const metric = {
+      id: 'ferritin',
+      name: 'Ferritin',
+      value: 18,
+      unit: 'µg/L',
+      referenceLow: 30,
+      referenceHigh: 200,
+      status: 'normal',
+      confidence: 0.91,
+      uncertaintyReason: null,
+      confirmed: true,
+    }
+    const created = await request(app)
+      .post('/v1/reports')
+      .send({ name: 'Blood test', reportDate: '2026-07-20', metrics: [metric] })
+      .expect(201)
+    expect(CreateReportResponseSchema.safeParse(created.body).success).toBe(true)
+    const id = created.body.data.id as string
+
+    const detail = await request(app).get(`/v1/reports/${id}`).expect(200)
+    expect(GetReportResponseSchema.safeParse(detail.body).success).toBe(true)
+
+    const metadata = await request(app)
+      .patch(`/v1/reports/${id}`)
+      .send({ name: 'Corrected blood test', reportDate: null })
+      .expect(200)
+    expect(UpdateReportResponseSchema.safeParse(metadata.body).success).toBe(true)
+
+    const metrics = await request(app)
+      .patch(`/v1/reports/${id}/metrics`)
+      .send({ metrics: [{ ...metric, value: 35, status: 'low' }] })
+      .expect(200)
+    expect(UpdateReportMetricsResponseSchema.safeParse(metrics.body).success).toBe(true)
+    expect(metrics.body.data.metrics[0].status).toBe('normal')
   })
 })

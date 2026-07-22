@@ -1,6 +1,7 @@
 import type {
   CheckInInput,
   CoachReply,
+  CreateReportRequest,
   DayPlan,
   EnergyResult,
   FridgeImageUpload,
@@ -12,9 +13,10 @@ import type {
   ReminderPreference,
   ReportExtractionResult,
   ReportImageUpload,
-  ReportMetric,
   Task,
   UpdatePlanBlockInput,
+  UpdateReportMetricsRequest,
+  UpdateReportRequest,
   UserProfile,
 } from '@akeso/domain'
 import {
@@ -73,7 +75,13 @@ interface AppActions {
     image: ReportImageUpload
   ): Promise<ReportExtractionResult>
   getReports(): Promise<HealthReport[]>
-  saveReport(metrics: ReportMetric[]): Promise<HealthReport>
+  getReport(id: string): Promise<HealthReport>
+  saveReport(input: CreateReportRequest): Promise<HealthReport>
+  updateReport(id: string, input: UpdateReportRequest): Promise<HealthReport>
+  updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport>
   deleteReport(id: string): Promise<void>
   getReportRecommendations(id: string): Promise<HealthRecommendationSet>
   regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
@@ -142,6 +150,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [service])
 
   useEffect(() => {
+    // Initial profile hydration is the intended external synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reloadProfile()
   }, [reloadProfile])
 
@@ -380,8 +390,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
   const getReports = useCallback(() => service.getReports(), [service])
+  const getReport = useCallback(
+    (id: string) => service.getReport(id),
+    [service]
+  )
   const saveReport = useCallback(
-    (metrics: ReportMetric[]) => service.saveReport(metrics),
+    (input: CreateReportRequest) => service.saveReport(input),
+    [service]
+  )
+  const updateReport = useCallback(
+    (id: string, input: UpdateReportRequest) =>
+      service.updateReport(id, input),
+    [service]
+  )
+  const updateReportMetrics = useCallback(
+    (id: string, input: UpdateReportMetricsRequest) =>
+      service.updateReportMetrics(id, input),
     [service]
   )
   const deleteReport = useCallback(
@@ -414,7 +438,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       regenerateNutrition,
       extractReportMetrics,
       getReports,
+      getReport,
       saveReport,
+      updateReport,
+      updateReportMetrics,
       deleteReport,
       getReportRecommendations,
       regenerateReportRecommendations,
@@ -435,7 +462,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       regenerateNutrition,
       extractReportMetrics,
       getReports,
+      getReport,
       saveReport,
+      updateReport,
+      updateReportMetrics,
       deleteReport,
       getReportRecommendations,
       regenerateReportRecommendations,

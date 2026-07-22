@@ -39,6 +39,8 @@ export {
   ReportExtractionResultSchema as reportExtractionResultSchema,
   ReportMetricSchema as reportMetricSchema,
   ReportMetricStatusSchema as reportMetricStatusSchema,
+  UpdateReportMetricsRequestSchema as updateReportMetricsRequestSchema,
+  UpdateReportRequestSchema as updateReportRequestSchema,
   ReportParamsSchema as reportParamsSchema,
   Scale1to5Schema as scale1to5Schema,
   SleepDurationSchema as sleepDurationSchema,

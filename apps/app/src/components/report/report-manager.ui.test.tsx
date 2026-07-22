@@ -10,6 +10,16 @@ import {
 import { ReportManager } from './report-manager'
 
 jest.mock('@/state/app-state', () => ({ useAppState: jest.fn() }))
+const mockRouterPush = jest.fn()
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    // The hoisted mock factory cannot capture the module-level React binding.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const React = require('react') as typeof import('react')
+    React.useEffect(callback, [callback])
+  },
+}))
 jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }))
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(),
@@ -25,6 +35,7 @@ const mockedUseAppState = jest.mocked(useAppState)
 
 describe('ReportManager', () => {
   beforeEach(() => {
+    mockRouterPush.mockClear()
     mockedUseAppState.mockReturnValue({
       extractReportMetrics: jest.fn(),
       getReports: jest.fn().mockResolvedValue([demoSavedReport]),
@@ -37,7 +48,7 @@ describe('ReportManager', () => {
     } as unknown as ReturnType<typeof useAppState>)
   })
 
-  test('shows every upload source and an explainable sample report', async () => {
+  test('shows every upload source and a compact report-history entry', async () => {
     await render(<ReportManager />)
 
     expect(screen.getByRole('button', { name: 'Camera, Take a photo' })).toBeOnTheScreen()
@@ -45,28 +56,24 @@ describe('ReportManager', () => {
     expect(screen.getByRole('button', { name: 'Files, PDF preview' })).toBeOnTheScreen()
 
     expect(await screen.findByText('General pathology report')).toBeOnTheScreen()
-    expect(screen.getByText('Confirmed results')).toBeOnTheScreen()
-    expect(screen.getAllByText('Below report range').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('BASED ON CONFIRMED').length).toBeGreaterThan(0)
-    expect(screen.getByText('Not a medical diagnosis')).toBeOnTheScreen()
+    expect(screen.getByText('2 confirmed')).toBeOnTheScreen()
+    expect(screen.getByText('1 unconfirmed')).toBeOnTheScreen()
+    expect(screen.getByText('1 low confidence')).toBeOnTheScreen()
   })
 
-  test('shows a destructive-action confirmation before deleting', async () => {
+  test('opens a saved report on its independent detail route', async () => {
     await render(<ReportManager />)
 
     await screen.findByText('General pathology report')
     await fireEvent.press(
-      screen.getByRole('button', { name: 'Delete this health report' })
+      screen.getByRole('button', {
+        name: 'View details for General pathology report',
+      })
     )
 
-    expect(screen.getByText('Delete this report?')).toBeOnTheScreen()
-    expect(
-      screen.getByRole('button', { name: 'Confirm delete report' })
-    ).toBeOnTheScreen()
-
-    await fireEvent.press(
-      screen.getByRole('button', { name: 'Cancel report deletion' })
-    )
-    expect(screen.queryByText('Delete this report?')).not.toBeOnTheScreen()
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/report/[id]',
+      params: { id: demoSavedReport.id },
+    })
   })
 })

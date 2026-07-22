@@ -5,6 +5,7 @@ import type {
   HealthRecommendationSet,
   HealthReport,
   RecommendationActionCode,
+  ReportMetric,
   ReportMetricStatus,
 } from './types'
 
@@ -33,6 +34,29 @@ export function computeMetricStatus(
   if (referenceLow !== null && value < referenceLow) return 'low'
   if (referenceHigh !== null && value > referenceHigh) return 'high'
   return 'normal'
+}
+
+/**
+ * Return the only metrics that are allowed to influence recommendations.
+ * Legacy MVP rows are normalized by the contract parser to `confirmed: true`;
+ * new recognition results keep their explicit confirmation state.
+ */
+export function confirmedReportMetrics(report: HealthReport): ReportMetric[] {
+  return report.metrics.filter((metric) => metric.confirmed)
+}
+
+/**
+ * Strip unconfirmed recognition results before crossing the AI boundary.
+ * A saved report is contractually required to contain at least one confirmed
+ * metric; the explicit guard keeps unsafe hand-built values from silently
+ * producing ungrounded guidance.
+ */
+export function reportWithConfirmedMetrics(report: HealthReport): HealthReport {
+  const metrics = confirmedReportMetrics(report)
+  if (metrics.length === 0) {
+    throw new Error('Cannot generate recommendations without confirmed metrics')
+  }
+  return { ...report, metrics }
 }
 
 interface RecommendationTemplate {
@@ -118,8 +142,11 @@ export function renderHealthRecommendationSet({
   report: HealthReport
   blueprint: HealthRecommendationBlueprint
 }): HealthRecommendationSet {
-  const confirmedIds = new Set(report.metrics.map((metric) => metric.id))
-  const allIds = report.metrics.map((metric) => metric.id)
+  const confirmedReport = reportWithConfirmedMetrics(report)
+  const confirmedIds = new Set(
+    confirmedReport.metrics.map((metric) => metric.id)
+  )
+  const allIds = confirmedReport.metrics.map((metric) => metric.id)
 
   const recommendations: HealthRecommendation[] = []
   for (const item of blueprint.recommendations) {
@@ -148,7 +175,7 @@ export function renderHealthRecommendationSet({
 
   return {
     reportId: report.id,
-    metrics: report.metrics,
+    metrics: confirmedReport.metrics,
     recommendations,
     disclaimer: REPORT_RECOMMENDATION_DISCLAIMER,
   }
@@ -166,7 +193,8 @@ export function buildReportRecommendationBlueprint({
 }: {
   report: HealthReport
 }): HealthRecommendationBlueprint {
-  const needsFollowUp = report.metrics.filter(
+  const confirmedReport = reportWithConfirmedMetrics(report)
+  const needsFollowUp = confirmedReport.metrics.filter(
     (metric) =>
       metric.status === 'low' ||
       metric.status === 'high' ||
@@ -181,7 +209,7 @@ export function buildReportRecommendationBlueprint({
   }
   recommendations.push({
     actionCode: 'general_wellbeing',
-    basedOnMetricIds: report.metrics.map((metric) => metric.id),
+    basedOnMetricIds: confirmedReport.metrics.map((metric) => metric.id),
   })
   return { recommendations }
 }

@@ -48,6 +48,8 @@ export const demoReportExtraction: ReportExtractionResult = {
 
 export const demoSavedReport: HealthReport = {
   id: 'demo-health-report',
+  name: 'General pathology report',
+  reportDate: '2026-07-18',
   createdAt: '2026-07-18T09:30:00.000Z',
   metrics: [
     {
@@ -58,6 +60,9 @@ export const demoSavedReport: HealthReport = {
       referenceLow: 120,
       referenceHigh: 160,
       status: 'normal',
+      confidence: 0.98,
+      uncertaintyReason: null,
+      confirmed: true,
     },
     {
       id: 'demo-ferritin',
@@ -67,6 +72,9 @@ export const demoSavedReport: HealthReport = {
       referenceLow: 30,
       referenceHigh: 200,
       status: 'low',
+      confidence: 0.94,
+      uncertaintyReason: null,
+      confirmed: true,
     },
     {
       id: 'demo-vitamin-d',
@@ -76,6 +84,9 @@ export const demoSavedReport: HealthReport = {
       referenceLow: 50,
       referenceHigh: 150,
       status: 'low',
+      confidence: 0.61,
+      uncertaintyReason: 'The lower reference bound is faint. Please check the report.',
+      confirmed: false,
     },
   ],
 }

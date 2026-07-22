@@ -13,6 +13,8 @@ import {
  */
 export interface ReportMetricCandidate {
   localId: string
+  /** Stable server id once saved; null for a new extraction/manual row. */
+  persistedId: string | null
   name: string
   value: number
   unit: string
@@ -35,10 +37,28 @@ const cleanName = (name: string) => name.trim().replace(/\s+/g, ' ')
 const normalizedName = (name: string) => cleanName(name).toLocaleLowerCase()
 const nextLocalId = (prefix: string, index: number) => `${prefix}-${index + 1}`
 
+const nextAvailableLocalId = (
+  candidates: ReportMetricCandidate[],
+  prefix: string
+) => {
+  const ids = new Set(candidates.map((candidate) => candidate.localId))
+  let index = 1
+  while (ids.has(`${prefix}-${index}`)) index += 1
+  return `${prefix}-${index}`
+}
+
 export function candidateStatus(
   candidate: ReportMetricCandidate
 ): ReportMetricStatus {
-  if (!Number.isFinite(candidate.value)) return 'unknown'
+  if (
+    !Number.isFinite(candidate.value) ||
+    (candidate.referenceLow !== null &&
+      !Number.isFinite(candidate.referenceLow)) ||
+    (candidate.referenceHigh !== null &&
+      !Number.isFinite(candidate.referenceHigh))
+  ) {
+    return 'unknown'
+  }
   return computeMetricStatus(
     candidate.value,
     candidate.referenceLow,
@@ -64,12 +84,44 @@ export function hasInvalidConfirmedCandidates(
   )
 }
 
+/** Every saved row, including an unconfirmed one, must remain structurally
+ * valid so it can be shown and corrected on the detail screen later. */
+export function hasInvalidReportCandidates(
+  candidates: ReportMetricCandidate[]
+): boolean {
+  return candidates.some(
+    (candidate) =>
+      !cleanName(candidate.name) ||
+      !Number.isFinite(candidate.value) ||
+      (candidate.referenceLow !== null &&
+        !Number.isFinite(candidate.referenceLow)) ||
+      (candidate.referenceHigh !== null &&
+        !Number.isFinite(candidate.referenceHigh)) ||
+      (candidate.referenceLow !== null &&
+        candidate.referenceHigh !== null &&
+        candidate.referenceLow > candidate.referenceHigh)
+  )
+}
+
+export function hasDuplicateReportCandidates(
+  candidates: ReportMetricCandidate[]
+): boolean {
+  const names = new Set<string>()
+  for (const candidate of candidates) {
+    const name = normalizedName(candidate.name)
+    if (name && names.has(name)) return true
+    if (name) names.add(name)
+  }
+  return false
+}
+
 export function candidatesFromExtraction(
   result: ReportExtractionResult
 ): ReportMetricCandidate[] {
   if (result.status !== 'ok') return []
   return result.metrics.map((metric, index) => ({
     localId: nextLocalId('extracted', index),
+    persistedId: null,
     name: metric.name,
     value: metric.value,
     unit: metric.unit,
@@ -81,6 +133,24 @@ export function candidatesFromExtraction(
   }))
 }
 
+/** Rehydrate every saved recognition result, including unconfirmed fields. */
+export function candidatesFromReportMetrics(
+  metrics: ReportMetric[]
+): ReportMetricCandidate[] {
+  return metrics.map((metric, index) => ({
+    localId: nextLocalId('saved', index),
+    persistedId: metric.id,
+    name: metric.name,
+    value: metric.value,
+    unit: metric.unit,
+    referenceLow: metric.referenceLow,
+    referenceHigh: metric.referenceHigh,
+    confidence: metric.confidence,
+    uncertaintyReason: metric.uncertaintyReason,
+    confirmed: metric.confirmed,
+  }))
+}
+
 export function editMetricCandidate(
   candidates: ReportMetricCandidate[],
   localId: string,
@@ -88,14 +158,28 @@ export function editMetricCandidate(
 ): ReportMetricCandidate[] {
   return candidates.map((candidate) =>
     candidate.localId === localId
-      ? {
-          ...candidate,
-          name: cleanName(patch.name),
-          value: patch.value,
-          unit: patch.unit.trim(),
-          referenceLow: patch.referenceLow,
-          referenceHigh: patch.referenceHigh,
-        }
+      ? (() => {
+          const edited = {
+            name: cleanName(patch.name),
+            value: patch.value,
+            unit: patch.unit.trim(),
+            referenceLow: patch.referenceLow,
+            referenceHigh: patch.referenceHigh,
+          }
+          const changed =
+            edited.name !== candidate.name ||
+            !Object.is(edited.value, candidate.value) ||
+            edited.unit !== candidate.unit ||
+            edited.referenceLow !== candidate.referenceLow ||
+            edited.referenceHigh !== candidate.referenceHigh
+          return {
+            ...candidate,
+            ...edited,
+            // A corrected result must be explicitly re-confirmed before it can
+            // ground regenerated advice.
+            confirmed: changed ? false : candidate.confirmed,
+          }
+        })()
       : candidate
   )
 }
@@ -127,12 +211,35 @@ export function addManualMetricCandidate(
   return [
     ...candidates,
     {
-      localId: nextLocalId('manual', candidates.length),
+      localId: nextAvailableLocalId(candidates, 'manual'),
+      persistedId: null,
       name,
       value: input.value,
       unit: input.unit.trim(),
       referenceLow: input.referenceLow,
       referenceHigh: input.referenceHigh,
+      confidence: null,
+      uncertaintyReason: null,
+      confirmed: false,
+    },
+  ]
+}
+
+/** Add an intentionally incomplete draft. It cannot be saved until the user
+ * supplies a name and numeric result, avoiding a fabricated zero-value row. */
+export function addBlankManualMetricCandidate(
+  candidates: ReportMetricCandidate[]
+): ReportMetricCandidate[] {
+  return [
+    ...candidates,
+    {
+      localId: nextAvailableLocalId(candidates, 'manual'),
+      persistedId: null,
+      name: '',
+      value: Number.NaN,
+      unit: '',
+      referenceLow: null,
+      referenceHigh: null,
       confidence: null,
       uncertaintyReason: null,
       confirmed: false,
@@ -151,27 +258,36 @@ const metricId = (name: string) => {
     .join('-')}`
 }
 
+const uniqueMetricId = (base: string, used: Set<string>) => {
+  if (!used.has(base)) return base
+  let suffix = 2
+  while (used.has(`${base}-${suffix}`)) suffix += 1
+  return `${base}-${suffix}`
+}
+
 /**
- * The confirmed, deduplicated metrics to persist. Only confirmed candidates
- * with a name and a finite value survive; duplicates (by normalized name) are
- * dropped; status is recomputed from the bounds (the server recomputes it
- * again on write, so a spoofed status can never reach storage).
+ * Convert all valid reviewed fields for persistence. Unconfirmed and
+ * low-confidence rows are intentionally retained so the report detail page
+ * can show and correct them later; only `confirmed: true` rows may ground
+ * recommendations on the server.
  */
-export function toConfirmedReportMetrics(
+export function toReviewedReportMetrics(
   candidates: ReportMetricCandidate[]
 ): ReportMetric[] {
-  const seen = new Set<string>()
+  const seenNames = new Set<string>()
+  const usedIds = new Set<string>()
   const metrics: ReportMetric[] = []
   for (const candidate of candidates) {
     const name = cleanName(candidate.name)
     const key = normalizedName(name)
-    if (!candidate.confirmed || !name || !Number.isFinite(candidate.value)) {
+    if (!name || !Number.isFinite(candidate.value) || seenNames.has(key)) {
       continue
     }
-    if (seen.has(key)) continue
-    seen.add(key)
+    seenNames.add(key)
+    const id = uniqueMetricId(candidate.persistedId ?? metricId(name), usedIds)
+    usedIds.add(id)
     metrics.push({
-      id: metricId(name),
+      id,
       name,
       value: candidate.value,
       unit: candidate.unit.trim(),
@@ -182,7 +298,24 @@ export function toConfirmedReportMetrics(
         candidate.referenceLow,
         candidate.referenceHigh
       ),
+      confidence: candidate.confidence,
+      uncertaintyReason: candidate.uncertaintyReason,
+      confirmed: candidate.confirmed,
     })
   }
   return metrics
+}
+
+/**
+ * The confirmed, deduplicated metrics to persist. Only confirmed candidates
+ * with a name and a finite value survive; duplicates (by normalized name) are
+ * dropped; status is recomputed from the bounds (the server recomputes it
+ * again on write, so a spoofed status can never reach storage).
+ */
+export function toConfirmedReportMetrics(
+  candidates: ReportMetricCandidate[]
+): ReportMetric[] {
+  return toReviewedReportMetrics(candidates).filter(
+    (metric) => metric.confirmed
+  )
 }

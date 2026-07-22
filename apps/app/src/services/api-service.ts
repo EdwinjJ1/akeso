@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   CheckInInput,
   CoachReply,
+  CreateReportRequest,
   DayPlan,
   EnergyResult,
   FridgeImageUpload,
@@ -14,9 +15,10 @@ import type {
   ReminderPreference,
   ReportExtractionResult,
   ReportImageUpload,
-  ReportMetric,
   Task,
   UpdatePlanBlockInput,
+  UpdateReportMetricsRequest,
+  UpdateReportRequest,
   UserProfile,
 } from '@akeso/domain'
 import { Platform } from 'react-native'
@@ -241,8 +243,34 @@ export class ApiService implements AkesoService {
     return this.request('GET', '/v1/reports')
   }
 
-  saveReport(metrics: ReportMetric[]): Promise<HealthReport> {
-    return this.request('POST', '/v1/reports', { metrics })
+  getReport(id: string): Promise<HealthReport> {
+    return this.request('GET', `/v1/reports/${encodeURIComponent(id)}`)
+  }
+
+  saveReport(input: CreateReportRequest): Promise<HealthReport> {
+    return this.request('POST', '/v1/reports', input)
+  }
+
+  updateReport(
+    id: string,
+    input: UpdateReportRequest
+  ): Promise<HealthReport> {
+    return this.request(
+      'PATCH',
+      `/v1/reports/${encodeURIComponent(id)}`,
+      input
+    )
+  }
+
+  updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport> {
+    return this.request(
+      'PATCH',
+      `/v1/reports/${encodeURIComponent(id)}/metrics`,
+      input
+    )
   }
 
   async deleteReport(id: string): Promise<void> {
