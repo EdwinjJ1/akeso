@@ -64,6 +64,9 @@ export function createMemoryRepos(): Repos {
     },
 
     checkins: {
+      async get(userId, date) {
+        return checkins.get(dateKey(userId, date)) ?? null
+      },
       async upsert(userId, input) {
         checkins.set(dateKey(userId, input.date), input)
       },

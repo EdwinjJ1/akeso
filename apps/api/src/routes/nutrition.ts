@@ -1,8 +1,11 @@
 import {
   buildInventoryNutritionFallback,
   filterNutritionPlanForDietarySafety,
+  hydrationLitresFromBand,
   localDateSchema,
+  NutritionEngine,
   nutritionPlanSchema,
+  type CheckInInput,
   type EnergyResult,
   type FridgeItem,
   type NutritionPlan,
@@ -20,21 +23,27 @@ import {
 } from '../services/ai'
 import type { AiServices } from '../services/types'
 
-/** Inventory-backed nutrition reads are instant; explicit regeneration uses AI. */
+/**
+ * Inventory-backed reads use the deterministic AFCD engine where possible;
+ * explicit regeneration uses AI. Unknown items retain the conservative
+ * inventory fallback rather than being silently treated as a specific food.
+ */
 export function createNutritionRouter(
   repos: Repos,
   ai: AiServices,
   writeRateLimiter: RequestHandler
 ): Router {
   const router = Router()
+  const nutritionEngine = new NutritionEngine()
 
   const context = async (userId: string, date: string) => {
-    const [fridge, energy, profile] = await Promise.all([
+    const [fridge, energy, profile, checkin] = await Promise.all([
       repos.fridge.list(userId),
       repos.energy.get(userId, date),
       repos.profile.get(userId),
+      repos.checkins.get(userId, date),
     ])
-    return { date, fridge, energy, profile }
+    return { date, fridge, energy, profile, checkin }
   }
 
   const cacheKey = (
@@ -44,12 +53,14 @@ export function createNutritionRouter(
       fridge: FridgeItem[]
       energy: EnergyResult | null
       profile: UserProfile | null
+      checkin: CheckInInput | null
     }
   ) => {
     const canonicalContext = JSON.stringify({
       date: input.date,
       energy: input.energy && { score: input.energy.score, band: input.energy.band },
       profile: input.profile,
+      hydration: input.checkin?.hydration,
       fridge: [...input.fridge].sort((left, right) => left.id.localeCompare(right.id)),
       ...getSelectedVisionIdentity(env.vision),
       promptVersion: NUTRITION_PROMPT_VERSION,
@@ -59,14 +70,24 @@ export function createNutritionRouter(
       .digest('hex')
   }
 
-  const fallback = (input: Awaited<ReturnType<typeof context>>) =>
-    buildInventoryNutritionFallback({
+  const fallback = (input: Awaited<ReturnType<typeof context>>) => {
+    const deterministic = nutritionEngine.plan({
       date: input.date,
       fridge: input.fridge,
-      energyBand: input.energy?.band ?? 'moderate',
-      dietaryPreference: input.profile?.dietaryPreference ?? 'none',
-      needs: [],
+      dietaryPreference: input.profile?.dietaryPreference,
+      waterIntakeLitres: hydrationLitresFromBand(input.checkin?.hydration),
     })
+
+    return deterministic.meals.length > 0 || input.fridge.length === 0
+      ? deterministic
+      : buildInventoryNutritionFallback({
+          date: input.date,
+          fridge: input.fridge,
+          energyBand: input.energy?.band ?? 'moderate',
+          dietaryPreference: input.profile?.dietaryPreference ?? 'none',
+          needs: deterministic.needs,
+        })
+  }
 
   const applyDietarySafety = (
     plan: NutritionPlan,
