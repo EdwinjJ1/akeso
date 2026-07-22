@@ -90,6 +90,17 @@ describe('userProfileSchema', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  test('rejects an unknown food allergen', () => {
+    const result = userProfileSchema.safeParse({
+      ...fixtureProfile,
+      dietarySafety: {
+        allergens: ['dragonfruit'],
+        avoidIngredients: [],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 describe('localDateSchema', () => {

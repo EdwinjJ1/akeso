@@ -522,7 +522,7 @@ describe('Gemini production provider', () => {
   test('generates a structured nutrition plan from confirmed inventory', async () => {
     const input = {
       date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
       energy: null,
       profile: null,
     }
@@ -584,6 +584,7 @@ describe('Gemini production provider', () => {
           title: 'Sliced Tomato',
           description: 'Slice Tomato.',
           usesFridgeItemIds: ['tomato'],
+          allergenTags: [],
           boosts: [],
           prepMinutes: 5,
           tags: ['slice', 'confirmed inventory'],
@@ -597,7 +598,7 @@ describe('Gemini production provider', () => {
   test('falls back when Gemini replaces confirmed inventory with invented food', async () => {
     const input = {
       date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
       energy: null,
       profile: null,
     }
@@ -629,7 +630,7 @@ describe('Gemini production provider', () => {
   test('grounds every user-visible field when provider prose invents unavailable food', async () => {
     const input = {
       date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
       energy: null,
       profile: {
         displayName: 'Alex',
@@ -637,6 +638,7 @@ describe('Gemini production provider', () => {
         typicalWake: '07:00',
         typicalSleep: '23:00',
         dietaryPreference: 'vegetarian' as const,
+        dietarySafety: { allergens: [], avoidIngredients: [] },
       },
     }
     const blueprintWithUntrustedProse = {
@@ -684,8 +686,8 @@ describe('Gemini production provider', () => {
     const input = {
       date: '2026-07-22',
       fridge: [
-        { id: 'tomato', name: 'Tomato', category: 'vegetable' as const },
-        { id: 'cheese', name: 'Cheese', category: 'dairy' as const },
+        { id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] },
+        { id: 'cheese', name: 'Cheese', category: 'dairy' as const, allergenTags: ['milk' as const] },
       ],
       energy: null,
       profile: {
@@ -694,6 +696,7 @@ describe('Gemini production provider', () => {
         typicalWake: '07:00',
         typicalSleep: '23:00',
         dietaryPreference: 'vegan' as const,
+        dietarySafety: { allergens: [], avoidIngredients: [] },
       },
     }
     const blueprint = {
@@ -729,7 +732,7 @@ describe('Gemini production provider', () => {
   test('renders different grounded advice from different safe action blueprints', async () => {
     const input = {
       date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
       energy: null,
       profile: null,
     }
@@ -764,7 +767,7 @@ describe('Gemini production provider', () => {
   test('renders grounded MiMo nutrition and falls back on unknown item ids', async () => {
     const input = {
       date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
       energy: null,
       profile: null,
     }

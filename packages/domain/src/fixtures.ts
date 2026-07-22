@@ -27,4 +27,8 @@ export const fixtureProfile: UserProfile = {
   typicalWake: '07:30',
   typicalSleep: '23:30',
   dietaryPreference: 'none',
+  dietarySafety: {
+    allergens: [],
+    avoidIngredients: [],
+  },
 }

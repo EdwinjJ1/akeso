@@ -40,9 +40,9 @@ describe('inventory nutrition fallback', () => {
     const plan = buildInventoryNutritionFallback({
       date: '2026-07-21',
       fridge: [
-        { id: 'egg', name: 'Egg', category: 'protein' },
-        { id: 'tomato', name: 'Tomato', category: 'vegetable' },
-        { id: 'rice', name: 'Brown rice', category: 'grain' },
+        { id: 'egg', name: 'Egg', category: 'protein', allergenTags: ['eggs'] },
+        { id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] },
+        { id: 'rice', name: 'Brown rice', category: 'grain', allergenTags: [] },
       ],
       energyBand: 'low',
       dietaryPreference: 'none',
@@ -55,13 +55,14 @@ describe('inventory nutrition fallback', () => {
       expect(meal.prepMinutes).toBeLessThanOrEqual(15)
       expect(meal.usesFridgeItemIds.every((id) => confirmedIds.has(id))).toBe(true)
     }
+    expect(plan.meals[0].allergenTags).toEqual(['eggs'])
     expect(NutritionPlanSchema.safeParse(plan).success).toBe(true)
   })
 
   it('sorts nutrition priorities by target minus current', () => {
     const plan = buildInventoryNutritionFallback({
       date: '2026-07-21',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] }],
       energyBand: 'moderate',
       dietaryPreference: 'none',
       needs: [needs[1], needs[0]],

@@ -21,6 +21,11 @@ export interface AppStatePatch {
   nutrition?: NutritionPlan | null
   coach?: CoachReply | null
   error?: string | null
+  ancillaryDate?: string | null
+  planLoading?: boolean
+  planError?: string | null
+  coachLoading?: boolean
+  coachError?: string | null
 }
 
 const GUIDANCE_FAILED_MESSAGE =
@@ -51,6 +56,11 @@ export async function runSubmitCheckIn(
     nutrition: null,
     coach: null,
     error: null,
+    ancillaryDate: input.date,
+    planLoading: true,
+    planError: null,
+    coachLoading: true,
+    coachError: null,
   })
 
   void loadGuidance(service, input.date, applyPatch)
@@ -69,9 +79,24 @@ async function loadGuidance(
       service.getNutritionPlan(date),
       service.getCoachReply(date),
     ])
-    applyPatch({ plan, nutrition, coach })
+    applyPatch({
+      plan,
+      nutrition,
+      coach,
+      ancillaryDate: date,
+      planLoading: false,
+      planError: null,
+      coachLoading: false,
+      coachError: null,
+    })
   } catch (error) {
     console.error('Post-check-in refresh failed:', error)
-    applyPatch({ error: GUIDANCE_FAILED_MESSAGE })
+    applyPatch({
+      ancillaryDate: date,
+      planLoading: false,
+      planError: GUIDANCE_FAILED_MESSAGE,
+      coachLoading: false,
+      coachError: GUIDANCE_FAILED_MESSAGE,
+    })
   }
 }

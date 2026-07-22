@@ -1,9 +1,11 @@
 import {
   buildInventoryNutritionFallback,
+  filterNutritionPlanForDietarySafety,
   localDateSchema,
   nutritionPlanSchema,
   type EnergyResult,
   type FridgeItem,
+  type NutritionPlan,
   type UserProfile,
 } from '@akeso/domain'
 import { createHash } from 'node:crypto'
@@ -66,6 +68,12 @@ export function createNutritionRouter(
       needs: [],
     })
 
+  const applyDietarySafety = (
+    plan: NutritionPlan,
+    profile: UserProfile | null
+  ): NutritionPlan =>
+    filterNutritionPlanForDietarySafety(plan, profile?.dietarySafety)
+
   router.get('/nutrition/:date', async (req, res) => {
     const date = localDateSchema.parse(req.params.date)
     const input = await context(req.userId, date)
@@ -74,7 +82,8 @@ export function createNutritionRouter(
       cacheKey(req.userId, input)
     )
     const parsedCache = cached ? nutritionPlanSchema.safeParse(cached) : null
-    ok(res, parsedCache?.success ? parsedCache.data : fallback(input))
+    const plan = parsedCache?.success ? parsedCache.data : fallback(input)
+    ok(res, applyDietarySafety(plan, input.profile))
   })
 
   router.post(
@@ -84,12 +93,13 @@ export function createNutritionRouter(
       const date = localDateSchema.parse(req.params.date)
       const input = await context(req.userId, date)
       const plan = nutritionPlanSchema.parse(await ai.generateNutrition(input))
+      const safePlan = applyDietarySafety(plan, input.profile)
       await repos.nutritionPlanCache.upsert(
         req.userId,
         cacheKey(req.userId, input),
-        plan
+        safePlan
       )
-      ok(res, plan)
+      ok(res, safePlan)
     }
   )
 

@@ -48,7 +48,11 @@ export function NutritionSnapshot({ nutrition }: NutritionSnapshotProps) {
             </Text>
           </View>
         </View>
-      ) : null}
+      ) : (
+        <Text style={styles.emptySafety}>
+          No meal ideas match your reported restrictions yet.
+        </Text>
+      )}
     </Card>
   )
 }
@@ -102,5 +106,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 1,
+  },
+  emptySafety: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
+    marginTop: sp(1),
   },
 })

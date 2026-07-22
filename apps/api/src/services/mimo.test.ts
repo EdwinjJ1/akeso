@@ -14,7 +14,7 @@ const config: VisionConfig = {
 
 const input: NutritionGenerationInput = {
   date: '2026-07-21',
-  fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+  fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] }],
   energy: null,
   profile: null,
 }

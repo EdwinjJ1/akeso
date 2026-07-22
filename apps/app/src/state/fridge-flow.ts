@@ -98,7 +98,12 @@ export function toConfirmedFridgeItems(
     const key = normalizedName(name)
     if (!candidate.confirmed || !name || seen.has(key)) continue
     seen.add(key)
-    items.push({ id: itemId(name), name, category: candidate.category })
+    items.push({
+      id: itemId(name),
+      name,
+      category: candidate.category,
+      allergenTags: [],
+    })
   }
   return items
 }

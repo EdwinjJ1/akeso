@@ -14,11 +14,23 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { Reveal } from '@/components/ui/reveal'
 import { useAppState } from '@/state/app-state'
 import { colors, sp, type } from '@/theme/tokens'
-import { todayLabel } from '@/utils/dates'
+import { todayISO, todayLabel } from '@/utils/dates'
 
 export default function Plan() {
-  const { energy, plan, tasks, coach, regeneratePlan } = useAppState()
+  const {
+    energy,
+    plan,
+    tasks,
+    coach,
+    planLoading,
+    planError,
+    refreshToday,
+    regeneratePlan,
+  } = useAppState()
   const [regenerating, setRegenerating] = useState(false)
+  const today = todayISO()
+  const todayEnergy = energy?.date === today ? energy : null
+  const todayPlan = plan?.date === today ? plan : null
 
   const regenerate = async () => {
     setRegenerating(true)
@@ -29,7 +41,7 @@ export default function Plan() {
     }
   }
 
-  if (!energy || !plan) {
+  if (!todayEnergy) {
     return (
       <Screen tabbed>
         <SectionHeader title="Today’s plan" subtitle={todayLabel()} />
@@ -43,6 +55,33 @@ export default function Plan() {
             hardest work into your best hours.
           </Text>
           <Button label="Start check-in" onPress={() => router.push('/checkin')} variant="cta" />
+        </Card>
+      </Screen>
+    )
+  }
+
+  if (!todayPlan) {
+    return (
+      <Screen tabbed>
+        <SectionHeader title="Today's plan" subtitle={todayLabel()} />
+        <Card style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="cloud-offline-outline" size={26} color={colors.primaryDark} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {planLoading ? 'Loading your plan' : "Today's plan is unavailable"}
+          </Text>
+          <Text style={styles.emptyText}>
+            {planLoading
+              ? 'Your energy result is ready. We are still matching tasks to your best hours.'
+              : planError ?? 'Your energy result is safe. Try loading the plan again.'}
+          </Text>
+          <Button
+            label={planLoading ? 'Loading plan…' : 'Retry plan'}
+            onPress={refreshToday}
+            disabled={planLoading}
+            variant="cta"
+          />
         </Card>
       </Screen>
     )
@@ -67,16 +106,16 @@ export default function Plan() {
       <Reveal delay={70}>
       <Card tone="yellow" style={styles.noteCard}>
         <Ionicons name="sparkles" size={16} color={colors.primaryDark} />
-        <Text style={styles.noteText}>{plan.coachNote}</Text>
+        <Text style={styles.noteText}>{todayPlan.coachNote}</Text>
       </Card>
       </Reveal>
 
       <Reveal delay={130} style={styles.timeline}>
-        {plan.blocks.map((block, index) => (
+        {todayPlan.blocks.map((block, index) => (
           <PlanBlockCard
             key={block.id}
             block={block}
-            isLast={index === plan.blocks.length - 1}
+            isLast={index === todayPlan.blocks.length - 1}
           />
         ))}
       </Reveal>

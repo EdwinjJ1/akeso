@@ -54,8 +54,8 @@ describe('fridge recognition confirmation flow', () => {
     })
 
     expect(toConfirmedFridgeItems(candidates)).toEqual([
-      { id: 'cherry-tomato', name: 'Cherry tomato', category: 'fruit' },
-      { id: 'rice', name: 'Rice', category: 'grain' },
+      { id: 'cherry-tomato', name: 'Cherry tomato', category: 'fruit', allergenTags: [] },
+      { id: 'rice', name: 'Rice', category: 'grain', allergenTags: [] },
     ])
   })
 
@@ -65,7 +65,7 @@ describe('fridge recognition confirmation flow', () => {
       ...addManualCandidate([], { name: 'oat milk', category: 'other' }),
     ]
     expect(toConfirmedFridgeItems(candidates)).toEqual([
-      { id: 'oat-milk', name: 'Oat Milk', category: 'dairy' },
+      { id: 'oat-milk', name: 'Oat Milk', category: 'dairy', allergenTags: [] },
     ])
   })
 
