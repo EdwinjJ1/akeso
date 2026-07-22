@@ -313,6 +313,7 @@ export class NutritionEngine {
               ? `Uses ${available.map((item) => item.name).join(', ')} from your fridge.`
               : `Uses ${available.map((item) => item.name).join(', ')}. Needs purchase: ${missingNames.join(', ')}.`,
           usesFridgeItemIds: available.map((item) => item.id),
+          allergenTags: [...new Set(available.flatMap((item) => item.allergenTags))],
           boosts: [...recipe.boosts],
           prepMinutes: recipe.prepMinutes,
           tags: [
@@ -337,7 +338,12 @@ export class NutritionEngine {
       plan: {
         date: input.date,
         needs,
-        fridge: input.fridge.map(({ id, name, category }) => ({ id, name, category })),
+        fridge: input.fridge.map(({ id, name, category, allergenTags }) => ({
+          id,
+          name,
+          category,
+          allergenTags,
+        })),
         meals,
         rationale: `Inventory analysis uses ${NUTRITION_DATASET.source} ${NUTRITION_DATASET.version} demo mappings. ${unmatchedNote} ${hydrationNote} This is general food-planning information, not medical advice.`,
       },

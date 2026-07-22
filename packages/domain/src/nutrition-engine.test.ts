@@ -60,7 +60,7 @@ describe('NutritionEngine', () => {
   test('uses a safe zero-contribution fallback for unknown food names', () => {
     const result = engine.analyse({
       date: '2026-07-21',
-      fridge: [{ id: 'unknown-1', name: 'Mystery campus snack', category: 'other' }],
+      fridge: [{ id: 'unknown-1', name: 'Mystery campus snack', category: 'other', allergenTags: [] }],
     })
 
     expect(result.unmatchedFridgeItemIds).toEqual(['unknown-1'])
@@ -74,10 +74,10 @@ describe('NutritionEngine', () => {
     const result = engine.analyse({
       date: '2026-07-21',
       fridge: [
-        { id: 'ambiguous-1', name: 'Rice', category: 'grain' },
-        { id: 'ambiguous-2', name: 'Yogurt', category: 'dairy' },
-        { id: 'ambiguous-3', name: 'Spinach', category: 'vegetable' },
-        { id: 'ambiguous-4', name: 'Capsicum', category: 'vegetable' },
+        { id: 'ambiguous-1', name: 'Rice', category: 'grain', allergenTags: [] },
+        { id: 'ambiguous-2', name: 'Yogurt', category: 'dairy', allergenTags: [] },
+        { id: 'ambiguous-3', name: 'Spinach', category: 'vegetable', allergenTags: [] },
+        { id: 'ambiguous-4', name: 'Capsicum', category: 'vegetable', allergenTags: [] },
       ],
     })
 
@@ -96,7 +96,7 @@ describe('NutritionEngine', () => {
   test('does not trust a name-only match when the confirmed category conflicts', () => {
     const result = engine.analyse({
       date: '2026-07-21',
-      fridge: [{ id: 'uncertain-1', name: 'Salmon fillet', category: 'vegetable' }],
+      fridge: [{ id: 'uncertain-1', name: 'Salmon fillet', category: 'vegetable', allergenTags: [] }],
     })
 
     expect(result.unmatchedFridgeItemIds).toEqual(['uncertain-1'])

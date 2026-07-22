@@ -27,6 +27,10 @@ export const fixtureProfile: UserProfile = {
   typicalWake: '07:30',
   typicalSleep: '23:30',
   dietaryPreference: 'none',
+  dietarySafety: {
+    allergens: [],
+    avoidIngredients: [],
+  },
 }
 
 /**
@@ -35,17 +39,15 @@ export const fixtureProfile: UserProfile = {
  * "Capsicum" would be rejected as ambiguous by the nutrition engine.
  */
 export const fixtureFridge: FridgeItem[] = [
-  { id: 'fridge-1', name: 'Eggs', category: 'protein' },
-  { id: 'fridge-2', name: 'Baby spinach', category: 'vegetable' },
-  { id: 'fridge-3', name: 'Salmon fillet', category: 'protein' },
-  { id: 'fridge-4', name: 'Natural yogurt', category: 'dairy' },
-  { id: 'fridge-5', name: 'Oats', category: 'grain' },
-  { id: 'fridge-6', name: 'Blueberries', category: 'fruit' },
-  { id: 'fridge-7', name: 'Brown rice', category: 'grain' },
-  { id: 'fridge-8', name: 'Red capsicum', category: 'vegetable' },
+  { id: 'fridge-1', name: 'Eggs', category: 'protein', allergenTags: ['eggs'] },
+  { id: 'fridge-2', name: 'Baby spinach', category: 'vegetable', allergenTags: [] },
+  { id: 'fridge-3', name: 'Salmon fillet', category: 'protein', allergenTags: ['fish'] },
+  { id: 'fridge-4', name: 'Natural yogurt', category: 'dairy', allergenTags: ['milk'] },
+  { id: 'fridge-5', name: 'Oats', category: 'grain', allergenTags: ['wheat_gluten'] },
+  { id: 'fridge-6', name: 'Blueberries', category: 'fruit', allergenTags: [] },
+  { id: 'fridge-7', name: 'Brown rice', category: 'grain', allergenTags: [] },
+  { id: 'fridge-8', name: 'Red capsicum', category: 'vegetable', allergenTags: [] },
 ]
 
 // The previous hand-written fixtureNutritionPlan was removed: nothing
 // consumes it, and it carried a second, divergent set of targets and meal
-// values. NutritionEngine.plan(...) over fixtureFridge is the only source
-// of demo nutrition output now.

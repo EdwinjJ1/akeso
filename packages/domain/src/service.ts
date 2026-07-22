@@ -4,11 +4,18 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
   Task,
   UserProfile,
 } from './types'
+
+export interface FridgeImageUpload {
+  uri: string
+  filename: string
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+}
 
 /**
  * The single seam between the app and the backend.
@@ -39,6 +46,7 @@ export interface AkesoService {
   ): Promise<{ plan: DayPlan; coach: CoachReply }>
 
   getNutritionPlan(date: string): Promise<NutritionPlan | null>
+  regenerateNutrition(date: string): Promise<NutritionPlan>
   getCoachReply(date: string): Promise<CoachReply>
 
   /**
@@ -52,6 +60,8 @@ export interface AkesoService {
   /** Upsert by `item.id` — same id twice overwrites, so retries are safe. */
   saveFridgeItem(item: FridgeItem): Promise<FridgeItem>
   deleteFridgeItem(id: string): Promise<void>
+  saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]>
+  recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
 
   /** GET /v1/reminders — null until the user has set a preference */
   getReminderPreference(): Promise<ReminderPreference | null>

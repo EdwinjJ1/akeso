@@ -4,6 +4,7 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  NutritionPlan,
   ReminderPreference,
   Task,
   UserProfile,
@@ -49,6 +50,7 @@ export function createMemoryRepos(): Repos {
   const plans = createBoundedMap<string, DayPlan>(limit)
   const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
   const reminders = createBoundedMap<string, ReminderPreference>(limit)
+  const nutritionPlans = createBoundedMap<string, NutritionPlan>(limit)
 
   return {
     profile: {
@@ -108,6 +110,15 @@ export function createMemoryRepos(): Repos {
       },
       async remove(userId, id) {
         fridgeByUser.get(userId)?.delete(id)
+      },
+    },
+
+    nutritionPlanCache: {
+      async get(userId, cacheKey) {
+        return nutritionPlans.get(dateKey(userId, cacheKey)) ?? null
+      },
+      async upsert(userId, cacheKey, plan) {
+        nutritionPlans.set(dateKey(userId, cacheKey), plan)
       },
     },
 
