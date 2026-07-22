@@ -1,5 +1,6 @@
 import { ZodError } from '@akeso/domain'
 import type { NextFunction, Request, Response } from 'express'
+import multer from 'multer'
 
 import { HttpError } from '../http-error'
 import { fail } from '../http'
@@ -47,6 +48,18 @@ export function errorHandler(
 
   if (err instanceof HttpError) {
     fail(res, err.status, err.code, err.message)
+    return
+  }
+
+  if (err instanceof multer.MulterError) {
+    fail(
+      res,
+      err.code === 'LIMIT_FILE_SIZE' ? 413 : 400,
+      'INVALID_IMAGE',
+      err.code === 'LIMIT_FILE_SIZE'
+        ? 'Image exceeds the 5 MiB upload limit.'
+        : 'Invalid image upload.'
+    )
     return
   }
 

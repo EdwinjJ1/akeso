@@ -1,11 +1,16 @@
-import type { DietaryPreference, UserGoal } from '@akeso/domain'
+import type {
+  DietaryPreference,
+  DietarySafetyProfile,
+  FoodAllergen,
+  UserGoal,
+} from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { Button } from '@/components/ui/buttons'
-import { ChipRow } from '@/components/ui/chips'
+import { ChipRow, MultiChipRow } from '@/components/ui/chips'
 import { Mascot } from '@/components/mascot'
 import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
@@ -31,11 +36,34 @@ const DIET_OPTIONS: { value: DietaryPreference; label: string }[] = [
   { value: 'gluten_free', label: 'Gluten-free' },
 ]
 
+const ALLERGEN_OPTIONS: { value: FoodAllergen; label: string }[] = [
+  { value: 'peanuts', label: 'Peanuts' },
+  { value: 'tree_nuts', label: 'Tree nuts' },
+  { value: 'milk', label: 'Milk' },
+  { value: 'eggs', label: 'Eggs' },
+  { value: 'soy', label: 'Soy' },
+  { value: 'wheat_gluten', label: 'Wheat / gluten' },
+  { value: 'fish', label: 'Fish' },
+  { value: 'shellfish', label: 'Shellfish' },
+  { value: 'sesame', label: 'Sesame' },
+]
+
 const VALUE_PROPS: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
   { icon: 'flash', text: 'A 20-second check-in turns into your daily energy score' },
   { icon: 'calendar', text: 'Your hardest work lands in your best hours' },
   { icon: 'nutrition', text: 'Meals matched to what your body needs — from your own fridge' },
 ]
+
+function listFromText(text: string): string[] {
+  return Array.from(
+    new Set(
+      text
+        .split(/[,\n]/)
+        .map((value) => value.trim().slice(0, 80))
+        .filter(Boolean)
+    )
+  ).slice(0, 20)
+}
 
 export default function Welcome() {
   const { completeOnboarding } = useAppState()
@@ -48,9 +76,17 @@ export default function Welcome() {
   const [wake, setWake] = useState<string | null>('07:00')
   const [sleep, setSleep] = useState<string | null>('23:00')
   const [diet, setDiet] = useState<DietaryPreference | null>('none')
+  const [allergens, setAllergens] = useState<FoodAllergen[]>([])
+  const [avoidIngredientsText, setAvoidIngredientsText] = useState('')
+  const [safetyNotes, setSafetyNotes] = useState('')
 
   const finish = async () => {
     if (!goal || !wake || !sleep || !diet) return
+    const dietarySafety: DietarySafetyProfile = {
+      allergens,
+      avoidIngredients: listFromText(avoidIngredientsText),
+      ...(safetyNotes.trim() ? { notes: safetyNotes.trim() } : {}),
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -60,6 +96,7 @@ export default function Welcome() {
         typicalWake: wake,
         typicalSleep: sleep,
         dietaryPreference: diet,
+        dietarySafety,
       })
       router.replace('/(tabs)')
     } catch (error) {
@@ -183,6 +220,37 @@ export default function Welcome() {
 
           <Text style={styles.fieldLabel}>Any dietary preference?</Text>
           <ChipRow options={DIET_OPTIONS} value={diet} onChange={setDiet} />
+
+          <Text style={styles.fieldLabel}>Food allergies Akeso should avoid</Text>
+          <Text style={styles.safetyHint}>
+            Used to filter meal ideas. Leave blank if none; always check labels yourself.
+          </Text>
+          <MultiChipRow options={ALLERGEN_OPTIONS} values={allergens} onChange={setAllergens} />
+
+          <Text style={styles.fieldLabel}>Other foods to avoid</Text>
+          <TextInput
+            style={styles.input}
+            value={avoidIngredientsText}
+            onChangeText={setAvoidIngredientsText}
+            placeholder="e.g. banana, spicy food"
+            placeholderTextColor={colors.textMuted}
+            maxLength={280}
+          />
+
+          <Text style={styles.fieldLabel}>Additional safety requirement (optional)</Text>
+          <Text style={styles.safetyHint}>
+            We cannot verify free-text safety requirements. Adding one hides meal ideas so you can
+            check ingredients and labels yourself.
+          </Text>
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            value={safetyNotes}
+            onChangeText={setSafetyNotes}
+            placeholder="e.g. avoid cross-contamination"
+            placeholderTextColor={colors.textMuted}
+            maxLength={280}
+            multiline
+          />
 
           <View style={styles.footer}>
             {saveError ? (
@@ -324,6 +392,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     minHeight: 50,
+  },
+  multilineInput: {
+    minHeight: 82,
+    textAlignVertical: 'top',
+  },
+  safetyHint: {
+    ...type.small,
+    color: colors.textMuted,
+    marginTop: -sp(1),
+    marginBottom: sp(2.5),
   },
   footer: {
     marginTop: sp(8),

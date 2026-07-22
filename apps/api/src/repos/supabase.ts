@@ -3,6 +3,7 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  NutritionPlan,
   PlanBlock,
   ReminderPreference,
   Task,
@@ -28,6 +29,7 @@ interface UserProfileRow {
   typical_wake: string
   typical_sleep: string
   dietary_preference: UserProfile['dietaryPreference']
+  dietary_safety: UserProfile['dietarySafety'] | null
 }
 
 interface EnergyResultRow {
@@ -63,19 +65,111 @@ interface PlanBlockRow {
   type: PlanBlock['type']
   title: string
   task_id: string | null
+  status: PlanBlock['status']
+  source: PlanBlock['source']
+  original_title: string | null
+  original_start_time: string | null
+  original_end_time: string | null
   energy_level: PlanBlock['energyLevel']
   rationale: string
+}
+
+function planBlockFromRow(row: PlanBlockRow): PlanBlock {
+  const block = {
+    id: row.id,
+    start: row.start_time,
+    end: row.end_time,
+    type: row.type,
+    title: row.title,
+    taskId: row.task_id ?? undefined,
+    status: row.status,
+    energyLevel: row.energy_level,
+    rationale: row.rationale,
+  }
+
+  if (row.source === 'akeso') return { ...block, source: 'akeso' }
+  if (
+    !row.original_title ||
+    !row.original_start_time ||
+    !row.original_end_time
+  ) {
+    throw new Error(
+      `plan_block.get: user block ${row.id} is missing its original suggestion`
+    )
+  }
+  return {
+    ...block,
+    source: 'user',
+    originalSuggestion: {
+      title: row.original_title,
+      start: row.original_start_time,
+      end: row.original_end_time,
+    },
+  }
+}
+
+function originalSuggestionColumns(block: PlanBlock) {
+  return block.source === 'user'
+    ? {
+        original_title: block.originalSuggestion.title,
+        original_start_time: block.originalSuggestion.start,
+        original_end_time: block.originalSuggestion.end,
+      }
+    : {
+        original_title: null,
+        original_start_time: null,
+        original_end_time: null,
+      }
+}
+
+function editablePlanBlockColumns(block: PlanBlock) {
+  return {
+    start_time: block.start,
+    end_time: block.end,
+    title: block.title,
+    status: block.status,
+    source: block.source,
+    ...originalSuggestionColumns(block),
+  }
+}
+
+function planBlockInsertRow(userId: string, date: string, block: PlanBlock) {
+  return {
+    id: block.id,
+    user_id: userId,
+    date,
+    ...editablePlanBlockColumns(block),
+    type: block.type,
+    task_id: block.taskId ?? null,
+    energy_level: block.energyLevel,
+    rationale: block.rationale,
+  }
+}
+
+interface CheckinRow {
+  date: string
+  reported_energy: CheckInInput['reportedEnergy']
+  sleep_duration: CheckInInput['sleepDuration']
+  last_meal_timing: CheckInInput['lastMealTiming']
+  last_meal_description: string | null
+  hydration: CheckInInput['hydration']
 }
 
 interface FridgeItemRow {
   id: string
   name: string
   category: FridgeItem['category']
+  allergen_tags: FridgeItem['allergenTags'] | null
 }
 
 interface ReminderPreferenceRow {
   enabled: boolean
   check_in_time: string
+  timezone: string
+}
+
+interface NutritionPlanCacheRow {
+  plan: NutritionPlan
 }
 
 /**
@@ -92,7 +186,9 @@ export function createSupabaseRepos(): Repos {
         const row = unwrap<UserProfileRow>(
           await supabase
             .from('user_profile')
-            .select('display_name, goal, typical_wake, typical_sleep, dietary_preference')
+            .select(
+              'display_name, goal, typical_wake, typical_sleep, dietary_preference, dietary_safety'
+            )
             .eq('user_id', userId)
             .maybeSingle(),
           'user_profile.get'
@@ -104,6 +200,10 @@ export function createSupabaseRepos(): Repos {
           typicalWake: row.typical_wake,
           typicalSleep: row.typical_sleep,
           dietaryPreference: row.dietary_preference,
+          dietarySafety: row.dietary_safety ?? {
+            allergens: [],
+            avoidIngredients: [],
+          },
         }
       },
       async upsert(userId, profile) {
@@ -116,6 +216,7 @@ export function createSupabaseRepos(): Repos {
               typical_wake: profile.typicalWake,
               typical_sleep: profile.typicalSleep,
               dietary_preference: profile.dietaryPreference,
+              dietary_safety: profile.dietarySafety,
             },
             { onConflict: 'user_id' }
           ),
@@ -126,6 +227,30 @@ export function createSupabaseRepos(): Repos {
     },
 
     checkins: {
+      async get(userId, date) {
+        const row = unwrap<CheckinRow>(
+          await supabase
+            .from('checkin')
+            .select(
+              'date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration'
+            )
+            .eq('user_id', userId)
+            .eq('date', date)
+            .maybeSingle(),
+          'checkin.get'
+        )
+        if (!row) return null
+        return {
+          date: row.date,
+          reportedEnergy: row.reported_energy,
+          sleepDuration: row.sleep_duration,
+          lastMealTiming: row.last_meal_timing,
+          ...(row.last_meal_description === null
+            ? {}
+            : { lastMealDescription: row.last_meal_description }),
+          hydration: row.hydration,
+        }
+      },
       async upsert(userId, input: CheckInInput) {
         unwrap(
           await supabase.from('checkin').upsert(
@@ -233,7 +358,9 @@ export function createSupabaseRepos(): Repos {
           unwrap<PlanBlockRow[]>(
             await supabase
               .from('plan_block')
-              .select('id, start_time, end_time, type, title, task_id, energy_level, rationale')
+              .select(
+                'id, start_time, end_time, type, title, task_id, status, source, original_title, original_start_time, original_end_time, energy_level, rationale'
+              )
               .eq('user_id', userId)
               .eq('date', date)
               .order('start_time', { ascending: true }),
@@ -242,16 +369,7 @@ export function createSupabaseRepos(): Repos {
 
         return {
           date,
-          blocks: blockRows.map((row) => ({
-            id: row.id,
-            start: row.start_time,
-            end: row.end_time,
-            type: row.type,
-            title: row.title,
-            taskId: row.task_id ?? undefined,
-            energyLevel: row.energy_level,
-            rationale: row.rationale,
-          })),
+          blocks: blockRows.map(planBlockFromRow),
           coachNote: dayPlanRow.coach_note,
           generatedAt: dayPlanRow.generated_at,
         }
@@ -286,24 +404,31 @@ export function createSupabaseRepos(): Repos {
         if (plan.blocks.length > 0) {
           unwrap(
             await supabase.from('plan_block').insert(
-              plan.blocks.map((block) => ({
-                id: block.id,
-                user_id: userId,
-                date: plan.date,
-                start_time: block.start,
-                end_time: block.end,
-                type: block.type,
-                title: block.title,
-                task_id: block.taskId ?? null,
-                energy_level: block.energyLevel,
-                rationale: block.rationale,
-              }))
+              plan.blocks.map((block) =>
+                planBlockInsertRow(userId, plan.date, block)
+              )
             ),
             'plan_block.insert'
           )
         }
 
         return plan
+      },
+      async updateBlock(userId, date, block) {
+        const row = unwrap<{ id: string }>(
+          await supabase
+            .from('plan_block')
+            .update(editablePlanBlockColumns(block))
+            .eq('user_id', userId)
+            .eq('date', date)
+            .eq('id', block.id)
+            .select('id')
+            .maybeSingle(),
+          'plan_block.update'
+        )
+        if (!row) {
+          throw new Error(`plan_block.update: block ${block.id} was not found`)
+        }
       },
     },
 
@@ -313,7 +438,7 @@ export function createSupabaseRepos(): Repos {
           unwrap<FridgeItemRow[]>(
             await supabase
               .from('fridge_item')
-              .select('id, name, category')
+              .select('id, name, category, allergen_tags')
               .eq('user_id', userId)
               .order('created_at', { ascending: true }),
             'fridge_item.list'
@@ -322,6 +447,7 @@ export function createSupabaseRepos(): Repos {
           id: row.id,
           name: row.name,
           category: row.category,
+          allergenTags: row.allergen_tags ?? [],
         }))
       },
       async upsert(userId, item: FridgeItem) {
@@ -332,6 +458,7 @@ export function createSupabaseRepos(): Repos {
               user_id: userId,
               name: item.name,
               category: item.category,
+              allergen_tags: item.allergenTags,
             },
             { onConflict: 'user_id,id' }
           ),
@@ -351,18 +478,52 @@ export function createSupabaseRepos(): Repos {
       },
     },
 
+    nutritionPlanCache: {
+      async get(userId, cacheKey) {
+        const row = unwrap<NutritionPlanCacheRow>(
+          await supabase
+            .from('nutrition_plan_cache')
+            .select('plan')
+            .eq('user_id', userId)
+            .eq('cache_key', cacheKey)
+            .maybeSingle(),
+          'nutrition_plan_cache.get'
+        )
+        return row?.plan ?? null
+      },
+      async upsert(userId, cacheKey, plan) {
+        unwrap(
+          await supabase.from('nutrition_plan_cache').upsert(
+            {
+              user_id: userId,
+              cache_key: cacheKey,
+              date: plan.date,
+              plan,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,cache_key' }
+          ),
+          'nutrition_plan_cache.upsert'
+        )
+      },
+    },
+
     reminders: {
       async get(userId) {
         const row = unwrap<ReminderPreferenceRow>(
           await supabase
             .from('reminder_preference')
-            .select('enabled, check_in_time')
+            .select('enabled, check_in_time, timezone')
             .eq('user_id', userId)
             .maybeSingle(),
           'reminder_preference.get'
         )
         if (!row) return null
-        return { enabled: row.enabled, checkInTime: row.check_in_time }
+        return {
+          enabled: row.enabled,
+          checkInTime: row.check_in_time,
+          timezone: row.timezone,
+        }
       },
       async upsert(userId, pref: ReminderPreference) {
         unwrap(
@@ -371,6 +532,7 @@ export function createSupabaseRepos(): Repos {
               user_id: userId,
               enabled: pref.enabled,
               check_in_time: pref.checkInTime,
+              timezone: pref.timezone,
               // The column's default now() only fires on insert — without this
               // an updated row would keep its original timestamp forever.
               updated_at: new Date().toISOString(),

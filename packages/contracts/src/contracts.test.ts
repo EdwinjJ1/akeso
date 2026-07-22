@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   apiContract,
+  BatchFridgeItemsRequestSchema,
+  BatchFridgeItemsResponseSchema,
   CheckInResponseSchema,
   DateParamsSchema,
   GetCoachResponseSchema,
@@ -18,6 +20,9 @@ import {
   RegeneratePlanBodySchema,
   RegeneratePlanResponseSchema,
   TasksQuerySchema,
+  UpdatePlanBlockParamsSchema,
+  UpdatePlanBlockRequestSchema,
+  UpdatePlanBlockResponseSchema,
 } from './api'
 import {
   fixtureApiError,
@@ -31,8 +36,13 @@ import {
   CheckInInputSchema,
   CoachReplySchema,
   DayPlanSchema,
+  DetectedIngredientSchema,
   EnergyResultSchema,
+  PlanBlockSchema,
+  IngredientRecognitionResultSchema,
+  NutritionPlanSchema,
   TaskSchema,
+  UpdatePlanBlockInputSchema,
 } from './schemas'
 import type { EnergyFactor } from './schemas'
 
@@ -117,6 +127,14 @@ describe('fixtures satisfy the frozen schemas', () => {
     expect(DayPlanSchema.parse(fixtureDayPlan)).toEqual(fixtureDayPlan)
   })
 
+  it('marks generated plan blocks as pending Akeso suggestions', () => {
+    expect(
+      fixtureDayPlan.blocks.every(
+        (block) => block.source === 'akeso' && block.status === 'planned'
+      )
+    ).toBe(true)
+  })
+
   it('CoachReply', () => {
     expect(CoachReplySchema.parse(fixtureCoachReply)).toEqual(fixtureCoachReply)
   })
@@ -153,8 +171,117 @@ describe('fixtures are internally consistent', () => {
   })
 })
 
+describe('ingredient recognition contract', () => {
+  const tomato = {
+    name: 'tomato',
+    category: 'vegetable',
+    confidence: 0.94,
+    uncertaintyReason: null,
+  }
+
+  it('accepts a successful presence-only recognition', () => {
+    const result = { status: 'ok', ingredients: [tomato] }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(DetectedIngredientSchema.parse(tomato)).toEqual(tomato)
+  })
+
+  it('represents empty images without inventing ingredients', () => {
+    const result = {
+      status: 'empty',
+      ingredients: [],
+      reason: 'no_food_detected',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('represents provider refusal without inventing ingredients', () => {
+    const result = {
+      status: 'refused',
+      ingredients: [],
+      reason: 'The image cannot be processed under the provider policy.',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects invalid categories and confidence outside 0..1', () => {
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, category: 'snack' }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: 1.01 }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: -0.01 }).success
+    ).toBe(false)
+  })
+
+  it('rejects quantity, unit and gram fields from recognition output', () => {
+    for (const extra of [
+      { quantity: 2 },
+      { unit: 'pieces' },
+      { grams: 300 },
+    ]) {
+      expect(DetectedIngredientSchema.safeParse({ ...tomato, ...extra }).success).toBe(
+        false
+      )
+    }
+  })
+})
+
+describe('nutrition plan inventory integrity', () => {
+  it('rejects meal references to fridge items that are not in the same plan', () => {
+    const result = NutritionPlanSchema.safeParse({
+      date: '2026-07-21',
+      needs: [],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+      meals: [
+        {
+          id: 'meal-1',
+          slot: 'lunch',
+          title: 'Imaginary meal',
+          description: 'Must not reference ingredients the user does not have.',
+          usesFridgeItemIds: ['salmon'],
+          boosts: [],
+          prepMinutes: 10,
+          tags: [],
+        },
+      ],
+      rationale: 'Uses only confirmed inventory.',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts an empty-inventory plan only when fridge-based meals are empty', () => {
+    expect(
+      NutritionPlanSchema.safeParse({
+        date: '2026-07-21',
+        needs: [],
+        fridge: [],
+        meals: [],
+        rationale: 'Add confirmed fridge items to generate meal suggestions.',
+      }).success
+    ).toBe(true)
+  })
+})
+
 describe('API contract: route map matches the implemented /v1 API', () => {
-  it('covers all fourteen implemented endpoints', () => {
+  it('covers every implemented endpoint', () => {
     expect(
       Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
     ).toEqual([
@@ -164,12 +291,16 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'GET /v1/energy/:date',
       'GET /v1/tasks',
       'GET /v1/plan/:date',
+      'PATCH /v1/plan/:date/blocks/:blockId',
       'POST /v1/plan/:date/regenerate',
       'GET /v1/nutrition/:date',
       'GET /v1/coach/:date',
       'GET /v1/fridge',
       'PUT /v1/fridge/:id',
       'DELETE /v1/fridge/:id',
+      'POST /v1/fridge-items/batch',
+      'POST /v1/fridge/recognitions',
+      'POST /v1/nutrition/:date/regenerate',
       'GET /v1/reminders',
       'PUT /v1/reminders',
     ])
@@ -190,6 +321,10 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       typicalWake: '07:30',
       typicalSleep: '23:30',
       dietaryPreference: 'none',
+      dietarySafety: {
+        allergens: [],
+        avoidIngredients: [],
+      },
     }
     expect(PutProfileRequestSchema.parse(profile)).toEqual(profile)
     const envelope = { success: true, data: profile }
@@ -214,21 +349,45 @@ describe('API contract: route map matches the implemented /v1 API', () => {
 
   it('PUT /v1/fridge/:id: body omits id (it comes from the path) and round-trips', () => {
     const body = { name: 'Milk', category: 'dairy' }
-    expect(PutFridgeItemBodySchema.parse(body)).toEqual(body)
+    const parsedBody = { ...body, allergenTags: [] }
+    expect(PutFridgeItemBodySchema.parse(body)).toEqual(parsedBody)
     // A stray `id` in the body is stripped, not authoritative — the path wins.
-    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(body)
-    const envelope = { success: true, data: { id: 'milk', ...body } }
+    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(parsedBody)
+    const envelope = { success: true, data: { id: 'milk', ...parsedBody } }
     expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
-  it('PUT /v1/reminders: preference round-trips and rejects a malformed time', () => {
-    const pref = { enabled: true, checkInTime: '08:00' }
+  it('PUT /v1/reminders: preference round-trips and rejects a malformed time or timezone', () => {
+    const pref = { enabled: true, checkInTime: '08:00', timezone: 'Australia/Sydney' }
     expect(PutReminderRequestSchema.parse(pref)).toEqual(pref)
     expect(
       PutReminderRequestSchema.safeParse({ ...pref, checkInTime: '8am' }).success
     ).toBe(false)
+    expect(
+      PutReminderRequestSchema.safeParse({ ...pref, timezone: 'Not/AZone' }).success
+    ).toBe(false)
     const envelope = { success: true, data: pref }
     expect(PutReminderResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
+  it('batch fridge writes contain only the explicitly submitted presence-only items', () => {
+    const body = {
+      items: [
+        { id: 'tomato', name: 'Tomato', category: 'vegetable' },
+        { id: 'tofu', name: 'Tofu', category: 'protein' },
+      ],
+    }
+    const parsedBody = {
+      items: body.items.map((item) => ({ ...item, allergenTags: [] })),
+    }
+    expect(BatchFridgeItemsRequestSchema.parse(body)).toEqual(parsedBody)
+    expect(
+      BatchFridgeItemsRequestSchema.safeParse({
+        items: [{ ...body.items[0], quantity: 3 }],
+      }).success
+    ).toBe(true)
+    const envelope = { success: true, data: parsedBody.items }
+    expect(BatchFridgeItemsResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
   it('GET /v1/plan/:date and /v1/coach/:date success envelopes validate', () => {
@@ -253,6 +412,33 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(RegeneratePlanResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
+  it('PATCH /v1/plan/:date/blocks/:blockId accepts only editable fields', () => {
+    expect(
+      UpdatePlanBlockParamsSchema.parse({
+        date: fixtureDayPlan.date,
+        blockId: fixtureDayPlan.blocks[0].id,
+      })
+    ).toEqual({
+      date: fixtureDayPlan.date,
+      blockId: fixtureDayPlan.blocks[0].id,
+    })
+    expect(
+      UpdatePlanBlockRequestSchema.parse({
+        title: 'Updated breakfast',
+        start: '08:15',
+        end: '08:45',
+        status: 'completed',
+      })
+    ).toEqual({
+      title: 'Updated breakfast',
+      start: '08:15',
+      end: '08:45',
+      status: 'completed',
+    })
+    const envelope = { success: true, data: fixtureDayPlan }
+    expect(UpdatePlanBlockResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
   it('error envelope validates on every endpoint', () => {
     const envelope = { success: false, error: fixtureApiError }
     for (const endpoint of Object.values(apiContract)) {
@@ -262,6 +448,62 @@ describe('API contract: route map matches the implemented /v1 API', () => {
 })
 
 describe('numeric ranges are enforced at runtime', () => {
+  it('accepts an empty suggestion list as a valid empty Plan', () => {
+    expect(
+      DayPlanSchema.safeParse({ ...fixtureDayPlan, blocks: [] }).success
+    ).toBe(true)
+  })
+
+  it('requires a user-updated block to retain its original suggestion', () => {
+    const block = fixtureDayPlan.blocks[0]
+    expect(
+      PlanBlockSchema.safeParse({
+        ...block,
+        source: 'user',
+        title: 'Updated breakfast',
+      }).success
+    ).toBe(false)
+
+    expect(
+      PlanBlockSchema.safeParse({
+        ...block,
+        source: 'user',
+        title: 'Updated breakfast',
+        originalSuggestion: {
+          title: block.title,
+          start: block.start,
+          end: block.end,
+        },
+      }).success
+    ).toBe(true)
+  })
+
+  it('accepts only the four user-editable plan block fields', () => {
+    expect(
+      UpdatePlanBlockInputSchema.parse({
+        title: 'Write project outline',
+        start: '09:30',
+        end: '10:45',
+        status: 'completed',
+      })
+    ).toEqual({
+      title: 'Write project outline',
+      start: '09:30',
+      end: '10:45',
+      status: 'completed',
+    })
+
+    expect(
+      UpdatePlanBlockInputSchema.safeParse({
+        title: 'Write project outline',
+        start: '09:30',
+        end: '10:45',
+        status: 'planned',
+        energyLevel: 'high',
+      }).success
+    ).toBe(false)
+  })
+
   it('rejects reportedEnergy outside 1–5', () => {
     expect(
       CheckInInputSchema.safeParse({ ...fixtureCheckIn, reportedEnergy: 6 })

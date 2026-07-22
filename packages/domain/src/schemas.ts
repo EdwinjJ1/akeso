@@ -12,18 +12,27 @@
  * different class.
  */
 export {
+  BatchFridgeItemsRequestSchema as batchFridgeItemsRequestSchema,
   ZodError,
   CheckInInputSchema as checkInInputSchema,
   DateStringSchema as localDateSchema,
+  DietarySafetyProfileSchema as dietarySafetyProfileSchema,
   DietaryPreferenceSchema as dietaryPreferenceSchema,
+  FoodAllergenSchema as foodAllergenSchema,
   FridgeItemParamsSchema as fridgeItemParamsSchema,
+  FridgeItemSchema as fridgeItemSchema,
   HydrationSchema as hydrationSchema,
+  IngredientRecognitionResultSchema as ingredientRecognitionResultSchema,
   LastMealTimingSchema as lastMealTimingSchema,
   PutFridgeItemBodySchema as putFridgeItemBodySchema,
+  PatchFridgeItemBodySchema as patchFridgeItemBodySchema,
+  NutritionPlanSchema as nutritionPlanSchema,
   RegeneratePlanBodySchema as regeneratePlanBodySchema,
   ReminderPreferenceSchema as reminderPreferenceSchema,
   Scale1to5Schema as scale1to5Schema,
   SleepDurationSchema as sleepDurationSchema,
+  UpdatePlanBlockInputSchema as updatePlanBlockInputSchema,
+  UpdatePlanBlockParamsSchema as updatePlanBlockParamsSchema,
   UserGoalSchema as userGoalSchema,
   UserProfileSchema as userProfileSchema,
 } from '@akeso/contracts'

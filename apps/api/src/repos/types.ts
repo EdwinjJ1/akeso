@@ -2,7 +2,9 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  PlanBlock,
   FridgeItem,
+  NutritionPlan,
   ReminderPreference,
   Task,
   UserProfile,
@@ -14,6 +16,7 @@ export interface ProfileRepo {
 }
 
 export interface CheckinRepo {
+  get(userId: string, date: string): Promise<CheckInInput | null>
   upsert(userId: string, input: CheckInInput): Promise<void>
 }
 
@@ -29,6 +32,7 @@ export interface TaskRepo {
 export interface PlanRepo {
   get(userId: string, date: string): Promise<DayPlan | null>
   upsert(userId: string, plan: DayPlan): Promise<DayPlan>
+  updateBlock(userId: string, date: string, block: PlanBlock): Promise<void>
 }
 
 export interface FridgeRepo {
@@ -44,6 +48,11 @@ export interface ReminderRepo {
   upsert(userId: string, pref: ReminderPreference): Promise<ReminderPreference>
 }
 
+export interface NutritionPlanCacheRepo {
+  get(userId: string, cacheKey: string): Promise<NutritionPlan | null>
+  upsert(userId: string, cacheKey: string, plan: NutritionPlan): Promise<void>
+}
+
 export interface Repos {
   profile: ProfileRepo
   checkins: CheckinRepo
@@ -51,5 +60,6 @@ export interface Repos {
   tasks: TaskRepo
   plans: PlanRepo
   fridge: FridgeRepo
+  nutritionPlanCache: NutritionPlanCacheRepo
   reminders: ReminderRepo
 }

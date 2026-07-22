@@ -7,12 +7,14 @@ import {
   DayPlanSchema,
   EnergyResultSchema,
   FridgeItemSchema,
+  IngredientRecognitionResultSchema,
   NutritionPlanSchema,
   ReminderPreferenceSchema,
   TaskSchema,
+  UpdatePlanBlockInputSchema,
   UserProfileSchema,
   type ApiError,
-} from './schemas.js'
+} from './schemas'
 
 /**
  * HTTP contract between App and API (Issue #6 — FROZEN once agreed).
@@ -71,6 +73,16 @@ export const TasksResponseSchema = apiResponseSchema(z.array(TaskSchema))
 /** `data: null` (HTTP 200) when no plan exists for that date yet. */
 export const GetPlanResponseSchema = apiResponseSchema(DayPlanSchema.nullable())
 
+// ── PATCH /v1/plan/:date/blocks/:blockId ───────────────────────────────────
+
+export const UpdatePlanBlockParamsSchema = DateParamsSchema.extend({
+  blockId: z.string().min(1),
+})
+export type UpdatePlanBlockParams = z.infer<typeof UpdatePlanBlockParamsSchema>
+
+export const UpdatePlanBlockRequestSchema = UpdatePlanBlockInputSchema
+export const UpdatePlanBlockResponseSchema = apiResponseSchema(DayPlanSchema)
+
 // ── POST /v1/plan/:date/regenerate ──────────────────────────────────────────
 
 export const RegeneratePlanBodySchema = z.object({
@@ -105,7 +117,38 @@ export const PutFridgeItemBodySchema = FridgeItemSchema.omit({ id: true })
 export type PutFridgeItemBody = z.infer<typeof PutFridgeItemBodySchema>
 export const PutFridgeItemResponseSchema = apiResponseSchema(FridgeItemSchema)
 
+export const PostFridgeItemRequestSchema = FridgeItemSchema
+export const PatchFridgeItemBodySchema = PutFridgeItemBodySchema.partial().refine(
+  (body) => body.name !== undefined || body.category !== undefined,
+  { message: 'At least one field is required' }
+)
+
 export const DeleteFridgeItemResponseSchema = apiResponseSchema(z.null())
+
+// ── POST /v1/fridge-items/batch ──────────────────────────────────────────────
+
+/** The client sends only candidates the user explicitly confirmed. */
+export const BatchFridgeItemsRequestSchema = z
+  .object({ items: z.array(FridgeItemSchema).max(50) })
+  .strict()
+export type BatchFridgeItemsRequest = z.infer<
+  typeof BatchFridgeItemsRequestSchema
+>
+export const BatchFridgeItemsResponseSchema = apiResponseSchema(
+  z.array(FridgeItemSchema)
+)
+
+// ── POST /v1/fridge/recognitions (multipart image) ──────────────────────────
+
+export const CreateFridgeRecognitionResponseSchema = apiResponseSchema(
+  IngredientRecognitionResultSchema
+)
+
+// ── POST /v1/nutrition/:date/regenerate ────────────────────────────────────────
+
+export const RegenerateNutritionResponseSchema = apiResponseSchema(
+  NutritionPlanSchema
+)
 
 // ── GET /v1/reminders · PUT /v1/reminders ───────────────────────────────────
 
@@ -161,6 +204,13 @@ export const apiContract = {
     params: DateParamsSchema,
     response: GetPlanResponseSchema,
   },
+  updatePlanBlock: {
+    method: 'PATCH',
+    path: '/v1/plan/:date/blocks/:blockId',
+    params: UpdatePlanBlockParamsSchema,
+    request: UpdatePlanBlockRequestSchema,
+    response: UpdatePlanBlockResponseSchema,
+  },
   regeneratePlan: {
     method: 'POST',
     path: '/v1/plan/:date/regenerate',
@@ -197,6 +247,23 @@ export const apiContract = {
     path: '/v1/fridge/:id',
     params: FridgeItemParamsSchema,
     response: DeleteFridgeItemResponseSchema,
+  },
+  saveFridgeItemsBatch: {
+    method: 'POST',
+    path: '/v1/fridge-items/batch',
+    request: BatchFridgeItemsRequestSchema,
+    response: BatchFridgeItemsResponseSchema,
+  },
+  recognizeFridgeImage: {
+    method: 'POST',
+    path: '/v1/fridge/recognitions',
+    response: CreateFridgeRecognitionResponseSchema,
+  },
+  regenerateNutrition: {
+    method: 'POST',
+    path: '/v1/nutrition/:date/regenerate',
+    params: DateParamsSchema,
+    response: RegenerateNutritionResponseSchema,
   },
   getReminderPreference: {
     method: 'GET',
