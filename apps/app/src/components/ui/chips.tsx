@@ -45,6 +45,50 @@ export function ChipRow<T extends string | number>({
   )
 }
 
+interface MultiChipRowProps<T extends string | number> {
+  options: ChipOption<T>[]
+  values: readonly T[]
+  onChange: (values: T[]) => void
+}
+
+/** Tappable multi-select chips — used for user-declared dietary safety filters. */
+export function MultiChipRow<T extends string | number>({
+  options,
+  values,
+  onChange,
+}: MultiChipRowProps<T>) {
+  return (
+    <View style={styles.row}>
+      {options.map((option) => {
+        const selected = values.includes(option.value)
+        return (
+          <Pressable
+            key={String(option.value)}
+            onPress={() =>
+              onChange(
+                selected
+                  ? values.filter((value) => value !== option.value)
+                  : [...values, option.value]
+              )
+            }
+            style={({ pressed }) => [
+              styles.chip,
+              selected && styles.chipSelected,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+          >
+            <Text style={[styles.label, selected && styles.labelSelected]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
+
 interface TagProps {
   label: string
   color?: string
