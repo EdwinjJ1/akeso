@@ -1,7 +1,38 @@
-import { fixtureCheckIn } from '@akeso/domain'
+import { fixtureCheckIn, fixtureProfile } from '@akeso/domain'
 import { describe, expect, test } from 'vitest'
 
 import { FixtureService } from './fixture-service'
+
+function memoryStorage() {
+  const values = new Map<string, string>()
+  return {
+    getItem: async (key: string) => values.get(key) ?? null,
+    setItem: async (key: string, value: string) => {
+      values.set(key, value)
+    },
+  }
+}
+
+describe('FixtureService local profile persistence', () => {
+  test('restores onboarding data in a new service instance', async () => {
+    const storage = memoryStorage()
+    await new FixtureService(0, storage).saveProfile(fixtureProfile)
+
+    await expect(new FixtureService(0, storage).getProfile()).resolves.toEqual(
+      fixtureProfile
+    )
+  })
+
+  test('ignores malformed or schema-invalid stored data', async () => {
+    const storage = memoryStorage()
+    await storage.setItem(
+      'akeso.demo.profile.v1',
+      JSON.stringify({ displayName: 'Incomplete' })
+    )
+
+    await expect(new FixtureService(0, storage).getProfile()).resolves.toBeNull()
+  })
+})
 
 describe('FixtureService editable plan flow', () => {
   test('persists an updated block and leaves energy unchanged', async () => {

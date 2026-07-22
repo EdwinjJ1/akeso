@@ -9,6 +9,7 @@
   "scripts": {
     "app": "npm run start --workspace=apps/app",
     "app:web": "npm run web --workspace=apps/app",
+    "app:export": "npm run export:web --workspace=apps/app",
     "api": "npm run dev --workspace=apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/vision-eval/tsconfig.json",
     "test": "vitest run && npm run test --workspace=apps/app",

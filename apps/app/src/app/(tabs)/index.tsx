@@ -56,11 +56,17 @@ export default function Dashboard() {
             <Text style={styles.eyebrow}>{todayLabel()}</Text>
             <Text style={type.h1}>{greetingForNow(profile?.displayName)}</Text>
           </View>
-          <View style={styles.avatar}>
+          <Pressable
+            accessibilityHint="Opens your profile and settings"
+            accessibilityLabel="Open profile"
+            accessibilityRole="button"
+            onPress={() => router.push('../profile')}
+            style={({ pressed }) => [styles.avatar, pressed && styles.avatarPressed]}
+          >
             <Text style={styles.avatarText}>
               {(profile?.displayName ?? 'A').slice(0, 1).toUpperCase()}
             </Text>
-          </View>
+          </Pressable>
         </View>
       </Reveal>
 
@@ -294,6 +300,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '3deg' }],
   },
   avatarText: { color: colors.lime, fontSize: 17, fontWeight: '900' },
+  avatarPressed: { transform: [{ rotate: '3deg' }, { translateY: 2 }] },
   loading: { paddingVertical: sp(10), alignItems: 'center', gap: sp(2) },
   loadingText: { ...type.small, color: colors.text },
   errorTitle: { ...type.h2, color: colors.text, marginBottom: sp(1) },

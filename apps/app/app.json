@@ -8,9 +8,11 @@
     "scheme": "akeso",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.edwinjj1.akeso"
     },
     "android": {
+      "package": "com.edwinjj1.akeso",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,6 +40,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "883412ee-9043-4563-8b9c-182049caf672"
+      }
     }
   }
 }

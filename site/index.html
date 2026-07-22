@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Akeso — Your Personal Energy Coach</title>
+  <meta name="description" content="Akeso turns a 20-second check-in into an explainable energy score, an energy-aware day plan, and meals matched to what your body needs. Built at the ICON UNSW × Lyra Hackathon 2026." />
+  <meta property="og:title" content="Akeso — Your Personal Energy Coach" />
+  <meta property="og:description" content="Less grind. Better timing. A 20-second check-in becomes your energy score, your day plan, and your next meal." />
+  <meta property="og:image" content="/assets/akeso-welcome.jpg" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#F6F5E8" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav" id="top">
+    <div class="nav-inner container">
+      <a class="wordmark" href="#top" aria-label="Akeso — back to top">
+        <span class="wordmark-tile" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.5-6 3.5 10 3-7 1.5 3H21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="wordmark-name">Akeso</span>
+      </a>
+      <nav class="nav-links" aria-label="Sections">
+        <a href="#idea">The idea</a>
+        <a href="#demo">Demo</a>
+        <a href="#screens">Screens</a>
+        <a href="#tech">Under the hood</a>
+      </nav>
+      <a class="btn btn-lime btn-sm" href="#download">Download</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero container">
+      <div class="hero-card">
+        <p class="kicker kicker-lime">Akeso · Daily Energy</p>
+        <h1 class="display">Meet your day<br />at the right<br />energy.</h1>
+        <p class="hero-sub">
+          A 20-second check-in becomes your energy score, your day plan,
+          and your next meal. Built for students who are done pretending
+          every hour is a good hour.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-lime" href="#demo">
+            <svg class="btn-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4c0 .6.7 1 1.2.7l8.2-5.2c.5-.3.5-1 0-1.4L5.7 2.1c-.5-.3-1.2 0-1.2.7Z" fill="currentColor"/></svg>
+            Watch the demo
+          </a>
+          <a class="btn btn-ghost-paper" href="#download">Download the app</a>
+        </div>
+        <span class="sticker" aria-hidden="true">Less grind.<br />Better timing.</span>
+        <img class="hero-mascot" src="assets/mascot-celebrate.png" alt="" width="220" height="220" />
+        <svg class="hero-curve" viewBox="0 0 640 120" fill="none" preserveAspectRatio="none" aria-hidden="true">
+          <path id="hero-curve-path" d="M0 96 C 60 92, 96 46, 150 38 C 196 32, 224 54, 268 66 C 312 78, 344 84, 392 70 C 436 57, 458 44, 506 47 C 556 50, 596 74, 640 84" stroke="#C9F227" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="150" cy="38" r="6" fill="#C9F227"/>
+          <circle cx="506" cy="47" r="6" fill="#F6A58C"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ============ TICKER ============ -->
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span class="ticker-row">
+          Less grind ✦ Better timing ✦ 20-second check-in ✦ Energy-aware plans ✦ Fuel the rhythm ✦ No black boxes ✦&nbsp;
+        </span>
+        <span class="ticker-row">
+          Less grind ✦ Better timing ✦ 20-second check-in ✦ Energy-aware plans ✦ Fuel the rhythm ✦ No black boxes ✦&nbsp;
+        </span>
+      </div>
+    </div>
+
+    <!-- ============ THE IDEA ============ -->
+    <section class="section container" id="idea">
+      <p class="kicker">The idea</p>
+      <h2 class="h2">One check-in. A day that fits.</h2>
+      <p class="section-sub">
+        Most planners assume you're a machine with nine identical hours.
+        Akeso plans around the day you actually have — not the perfect day you imagined.
+      </p>
+      <ol class="idea-list">
+        <li class="idea-row reveal">
+          <span class="num-chip" aria-hidden="true">01</span>
+          <div>
+            <h3 class="h3">A 20-second check-in turns into your daily energy score</h3>
+            <p>Sleep, mood, stress and a few quick signals — no typing, no friction, updatable as the day changes.</p>
+          </div>
+        </li>
+        <li class="idea-row reveal">
+          <span class="num-chip" aria-hidden="true">02</span>
+          <div>
+            <h3 class="h3">Your hardest work lands in your best hours</h3>
+            <p>The planner matches task demand to energy supply: deep work in the peak, admin in the dip, recovery on the schedule.</p>
+          </div>
+        </li>
+        <li class="idea-row reveal">
+          <span class="num-chip" aria-hidden="true">03</span>
+          <div>
+            <h3 class="h3">Meals matched to what your body needs — from your own fridge</h3>
+            <p>Quick recipes built from ingredients you already have, timed around today's energy curve.</p>
+          </div>
+        </li>
+      </ol>
+      <div class="stat-strip reveal">
+        <div class="stat">
+          <span class="stat-big">≈20<span class="stat-unit">s</span></span>
+          <span class="stat-label">one daily check-in</span>
+        </div>
+        <div class="stat">
+          <span class="stat-big">6</span>
+          <span class="stat-label">quick signals, zero typing</span>
+        </div>
+        <div class="stat">
+          <span class="stat-big">0</span>
+          <span class="stat-label">black boxes — the score is deterministic &amp; explainable</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DEMO VIDEO ============ -->
+    <section class="section container" id="demo">
+      <p class="kicker">The demo</p>
+      <h2 class="h2">Watch it run.</h2>
+      <p class="section-sub">
+        Three and a half minutes, one student, two very different days — and a
+        plan that actually changes when the energy does.
+      </p>
+      <!--
+        To wire the video: open site.js and set CONFIG.videoYouTubeId
+        (e.g. "dQw4w9WgXcQ") or CONFIG.videoMp4 (e.g. "assets/demo.mp4").
+        Until then the styled placeholder below is shown.
+      -->
+      <div class="video-frame reveal" id="video-slot">
+        <div class="demo-stage" id="demo-stage">
+          <div class="demo-grid" aria-hidden="true"></div>
+          <div class="demo-copy">
+            <span class="demo-live"><span aria-hidden="true"></span> Product tour</span>
+            <p class="video-placeholder-title">From signal<br />to a day that fits.</p>
+            <p class="video-placeholder-sub">Check in, protect the peak, then turn what is already in the fridge into the next useful meal.</p>
+          </div>
+          <div class="demo-phones" aria-label="Akeso product preview">
+            <figure class="demo-phone demo-phone-left">
+              <img src="assets/akeso-today.jpg" alt="Akeso energy dashboard" />
+            </figure>
+            <figure class="demo-phone demo-phone-main">
+              <img src="assets/akeso-fridge.png" alt="Akeso From my fridge nutrition screen" />
+            </figure>
+            <figure class="demo-phone demo-phone-right">
+              <img src="assets/akeso-plan.jpg" alt="Akeso energy-aware day plan" />
+            </figure>
+          </div>
+          <span class="demo-sticker" aria-hidden="true">One check-in<br />Three useful answers</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SCREENS ============ -->
+    <section class="section" id="screens">
+      <div class="container">
+        <div class="screens-head">
+          <div>
+            <p class="kicker">The app</p>
+            <h2 class="h2">A tour in seven screens.</h2>
+          </div>
+          <div class="gallery-nav">
+            <button class="gallery-btn" id="gallery-prev" type="button" aria-label="Previous screens">‹</button>
+            <button class="gallery-btn" id="gallery-next" type="button" aria-label="Next screens">›</button>
+          </div>
+        </div>
+      </div>
+      <div class="gallery" id="gallery" tabindex="0" aria-label="App screenshots — scroll horizontally">
+        <figure class="shot">
+          <div class="phone">
+            <img src="assets/akeso-welcome.jpg" alt="Akeso welcome screen: 'Meet your day at the right energy' with the three-step pitch" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Welcome</span>
+            <p>Less grind, better timing — the pitch in one screen.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone">
+            <img src="assets/akeso-checkin.jpg" alt="Daily check-in screen with quick-tap answers for sleep, mood and stress" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Check-in</span>
+            <p>Six quick taps, about twenty seconds, no typing.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone">
+            <img src="assets/akeso-today.jpg" alt="Today dashboard showing an energy score of 53 with the day's energy rhythm curve" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Today</span>
+            <p>Your score with the why: factors, curve, and a receipt.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone">
+            <img src="assets/akeso-plan.jpg" alt="Plan screen with a timeline placing deep work inside the morning energy peak" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Plan</span>
+            <p>Hard things when you're sharp. Space when you're not.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="phone">
+            <img src="assets/akeso-nutrition.jpg" alt="Nutrition screen matching meals to today's needs from your own fridge" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Nutrition</span>
+            <p>Eat for the day you have — from your own fridge.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot shot-new">
+          <div class="phone">
+            <span class="new-badge">New</span>
+            <img src="assets/akeso-fridge.png" alt="From my fridge screen listing ingredients already available" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Fridge</span>
+            <p>Turn what is already nearby into a useful next meal.</p>
+          </figcaption>
+        </figure>
+        <figure class="shot shot-new">
+          <div class="phone">
+            <span class="new-badge">New</span>
+            <img src="assets/akeso-needs.png" alt="For my needs screen showing today's nutrient targets" loading="lazy" />
+          </div>
+          <figcaption>
+            <span class="shot-chip">Needs</span>
+            <p>See the nutritional why before choosing what to eat.</p>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============ ADAPTS ============ -->
+    <section class="section container" id="adapts">
+      <p class="kicker">The wow moment</p>
+      <h2 class="h2">Same student. Same tasks.<br />Different day.</h2>
+      <p class="section-sub">
+        Personalisation only matters if the plan changes. Flip the check-in
+        and watch Akeso recalculate the whole day.
+      </p>
+      <div class="adapt reveal">
+        <div class="adapt-toggle" role="tablist" aria-label="Choose the kind of day">
+          <button class="adapt-tab is-active" id="tab-high" type="button" role="tab" aria-selected="true" aria-controls="adapt-card">Solid morning</button>
+          <button class="adapt-tab" id="tab-low" type="button" role="tab" aria-selected="false" aria-controls="adapt-card">Crashed after lunch</button>
+        </div>
+        <div class="adapt-card" id="adapt-card" data-band="high">
+          <div class="adapt-score adapt-swap">
+            <p class="adapt-band" id="adapt-band">High energy</p>
+            <p class="adapt-num"><span id="adapt-score">72</span><span class="adapt-denominator">/100</span></p>
+            <p class="adapt-line" id="adapt-line">Two hard tasks fit inside the 9–11:30 peak.</p>
+          </div>
+          <ul class="adapt-plan adapt-swap" id="adapt-plan">
+            <li><span class="plan-tag">Deep work</span> COMP2521 assignment lands in the peak</li>
+            <li><span class="plan-tag">Admin</span> Emails ride the 2–4pm dip</li>
+            <li><span class="plan-tag">Meal</span> Salmon bowl before the afternoon reset</li>
+          </ul>
+          <img class="adapt-mascot adapt-swap" id="adapt-mascot" src="assets/mascot-high.png" alt="" width="170" height="170" />
+        </div>
+        <p class="adapt-footnote">One updated answer. A recalculated day. Not another static to-do list.</p>
+      </div>
+    </section>
+
+    <!-- ============ UNDER THE HOOD ============ -->
+    <section class="section container" id="tech">
+      <p class="kicker">Under the hood</p>
+      <h2 class="h2">The receipt.</h2>
+      <p class="section-sub">
+        Just like the app's “Why this score” — here's exactly what the plan is made of.
+      </p>
+      <div class="receipt reveal" role="table" aria-label="Technology stack">
+        <p class="receipt-head" role="row"><span role="cell">Akeso · engineering receipt</span><span role="cell">v1</span></p>
+        <div class="receipt-rows">
+          <p class="receipt-row" role="row"><span role="cell">Expo Router app</span><span class="receipt-dots" aria-hidden="true"></span><span role="cell">iOS · Android · Web</span></p>
+          <p class="receipt-row" role="row"><span role="cell">Express API</span><span class="receipt-dots" aria-hidden="true"></span><span role="cell">frozen v1 contract</span></p>
+          <p class="receipt-row" role="row"><span role="cell">Supabase</span><span class="receipt-dots" aria-hidden="true"></span><span role="cell">persistence + demo seed</span></p>
+          <p class="receipt-row" role="row"><span role="cell">Energy Engine + Planner</span><span class="receipt-dots" aria-hidden="true"></span><span role="cell">deterministic TypeScript</span></p>
+          <p class="receipt-row" role="row"><span role="cell">AI coach</span><span class="receipt-dots" aria-hidden="true"></span><span role="cell">validated — never invents the score</span></p>
+        </div>
+        <p class="receipt-total" role="row"><span role="cell">Total</span><span role="cell">Less grind. Better timing.</span></p>
+        <p class="receipt-fine">Deterministic scoring · Structured validation · Tested domain logic</p>
+      </div>
+    </section>
+
+    <!-- ============ DOWNLOAD ============ -->
+    <section class="section container" id="download">
+      <div class="dl-card reveal">
+        <p class="kicker kicker-lime">Get Akeso</p>
+        <h2 class="display display-sm">Take Akeso<br />for a spin.</h2>
+        <p class="dl-sub">
+          Grab the Android build, or run the whole thing — app, API and engine — straight from the repo.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-lime" id="apk-btn" href="https://github.com/EdwinjJ1/akeso/releases/latest">
+            <svg class="btn-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v8m0 0 3-3m-3 3-3-3M2.5 12v1a1.5 1.5 0 0 0 1.5 1.5h8a1.5 1.5 0 0 0 1.5-1.5v-1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            <span id="apk-btn-label">Download the Android APK</span>
+          </a>
+          <a class="btn btn-ghost-paper" href="https://github.com/EdwinjJ1/akeso">Get the source on GitHub</a>
+        </div>
+        <p class="dl-fine">
+          On iPhone? Clone the repo and run <code>npm install &amp;&amp; npm run app</code>,
+          then scan the QR with Expo Go.
+        </p>
+        <img class="dl-mascot" src="assets/mascot-celebrate.png" alt="" width="190" height="190" />
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <a class="wordmark" href="#top">
+        <span class="wordmark-tile" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h4l2.5-6 3.5 10 3-7 1.5 3H21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="wordmark-name">Akeso</span>
+      </a>
+      <p class="footer-note">
+        Built at the ICON UNSW × Lyra Hackathon 2026 ·
+        <a href="https://github.com/EdwinjJ1/akeso">EdwinjJ1/akeso</a>
+      </p>
+      <p class="footer-disclaimer">Akeso is an energy coach, not a medical device.</p>
+    </div>
+  </footer>
+
+  <script src="site.js"></script>
+</body>
+</html>

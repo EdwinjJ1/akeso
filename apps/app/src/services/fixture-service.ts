@@ -20,9 +20,16 @@ import {
   type Task,
   type UpdatePlanBlockInput,
   type UserProfile,
+  userProfileSchema,
 } from '@akeso/domain'
 
 const LATENCY_MS = 450
+const PROFILE_STORAGE_KEY = 'akeso.demo.profile.v1'
+
+interface ProfileStorage {
+  getItem(key: string): Promise<string | null>
+  setItem(key: string, value: string): Promise<void>
+}
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -37,24 +44,38 @@ export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
   private energy: EnergyResult | null = null
   private plan: DayPlan | null = null
-  constructor(private readonly latencyMs = LATENCY_MS) {}
+  constructor(
+    private readonly latencyMs = LATENCY_MS,
+    private readonly profileStorage?: ProfileStorage
+  ) {}
   private latestCheckIn: CheckInInput | null = null
   private fridge = new Map<string, FridgeItem>()
   private reminder: ReminderPreference | null = null
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(this.latencyMs / 3)
+    if (!this.profile && this.profileStorage) {
+      const stored = await this.profileStorage.getItem(PROFILE_STORAGE_KEY)
+      if (stored) {
+        try {
+          const parsed = userProfileSchema.safeParse(JSON.parse(stored))
+          if (parsed.success) this.profile = parsed.data
+        } catch {
+          // Ignore malformed local demo data and let onboarding replace it.
+        }
+      }
+    }
     return this.profile
   }
 
   async saveProfile(profile: UserProfile): Promise<UserProfile> {
     await wait(this.latencyMs / 3)
     this.profile = profile
+    await this.profileStorage?.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
     return profile
   }
 
   async submitCheckIn(input: CheckInInput): Promise<EnergyResult> {
-    await wait(this.latencyMs * 2)
     await wait(this.latencyMs * 2)
     this.latestCheckIn = input
     this.energy = energyEngine.evaluate(input)

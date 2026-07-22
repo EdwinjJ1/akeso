@@ -1,31 +1,33 @@
 import { Ionicons } from '@expo/vector-icons'
 import { Tabs } from 'expo-router'
 
+import { CoachFab } from '@/components/coach-fab'
 import { colors } from '@/theme/tokens'
 
 export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.lime,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.text,
-          borderTopWidth: 1.5,
-          height: 74,
-          paddingTop: 8,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '800',
-        },
-        tabBarItemStyle: { borderRadius: 18, marginHorizontal: 5 },
-        tabBarActiveBackgroundColor: colors.text,
-      }}
-    >
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.lime,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.text,
+            borderTopWidth: 1.5,
+            height: 74,
+            paddingTop: 8,
+            paddingBottom: 8,
+          },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '800',
+          },
+          tabBarItemStyle: { borderRadius: 18, marginHorizontal: 5 },
+          tabBarActiveBackgroundColor: colors.text,
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -53,6 +55,8 @@ export default function TabsLayout() {
           ),
         }}
       />
-    </Tabs>
+      </Tabs>
+      <CoachFab />
+    </>
   )
 }
