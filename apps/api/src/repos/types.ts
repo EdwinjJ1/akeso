@@ -15,6 +15,7 @@ export interface ProfileRepo {
 }
 
 export interface CheckinRepo {
+  get(userId: string, date: string): Promise<CheckInInput | null>
   upsert(userId: string, input: CheckInInput): Promise<void>
 }
 
