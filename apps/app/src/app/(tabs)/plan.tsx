@@ -22,7 +22,7 @@ import { SectionHeader } from '@/components/ui/section-header'
 import { Reveal } from '@/components/ui/reveal'
 import { useAppState } from '@/state/app-state'
 import { colors, sp, type } from '@/theme/tokens'
-import { todayLabel } from '@/utils/dates'
+import { todayISO, todayLabel } from '@/utils/dates'
 
 export default function Plan() {
   const {
@@ -31,6 +31,8 @@ export default function Plan() {
     coach,
     loading,
     error,
+    planLoading,
+    planError,
     refreshToday,
     regeneratePlan,
     updatePlanBlock,
@@ -40,13 +42,16 @@ export default function Plan() {
     void refreshToday()
   }, [refreshToday])
 
+  const today = todayISO()
   return (
     <PlanView
-      energy={energy}
-      plan={plan}
+      energy={energy?.date === today ? energy : null}
+      plan={plan?.date === today ? plan : null}
       coach={coach}
       loading={loading}
       error={error}
+      planLoading={planLoading}
+      planError={planError}
       onRefresh={refreshToday}
       onRegenerate={() => regeneratePlan()}
       onUpdateBlock={updatePlanBlock}
@@ -60,6 +65,8 @@ interface PlanViewProps {
   coach: CoachReply | null
   loading: boolean
   error: string | null
+  planLoading: boolean
+  planError: string | null
   onRefresh: () => void | Promise<void>
   onRegenerate: () => Promise<void>
   onUpdateBlock: (
@@ -74,6 +81,8 @@ export function PlanView({
   coach,
   loading,
   error,
+  planLoading,
+  planError,
   onRefresh,
   onRegenerate,
   onUpdateBlock,
@@ -147,14 +156,18 @@ export function PlanView({
           <View style={styles.emptyIcon}>
             <Ionicons name="sparkles-outline" size={26} color={colors.primaryDark} />
           </View>
-          <Text style={styles.emptyTitle}>No suggestions yet</Text>
+          <Text style={styles.emptyTitle}>
+            {planLoading ? 'Loading your plan' : 'No suggestions yet'}
+          </Text>
           <Text style={styles.emptyText}>
-            Akeso can rebuild a light, energy-matched set of suggestions for today.
+            {planLoading
+              ? 'Your energy result is ready. We are still matching tasks to your best hours.'
+              : planError ?? 'Akeso can rebuild a light, energy-matched set of suggestions for today.'}
           </Text>
           <Button
-            label="Regenerate suggestions"
-            onPress={regenerate}
-            loading={regenerating}
+            label={planLoading ? 'Loading plan…' : 'Regenerate suggestions'}
+            onPress={planLoading ? () => void onRefresh() : regenerate}
+            loading={planLoading || regenerating}
             variant="cta"
           />
           {regenerateError ? (

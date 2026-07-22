@@ -3,6 +3,9 @@ import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
+  FridgeItem,
+  NutritionPlan,
+  ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -45,6 +48,9 @@ export function createMemoryRepos(): Repos {
   const checkins = createBoundedMap<string, CheckInInput>(limit)
   const energyResults = createBoundedMap<string, EnergyResult>(limit)
   const plans = createBoundedMap<string, DayPlan>(limit)
+  const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
+  const reminders = createBoundedMap<string, ReminderPreference>(limit)
+  const nutritionPlans = createBoundedMap<string, NutritionPlan>(limit)
 
   return {
     profile: {
@@ -58,6 +64,9 @@ export function createMemoryRepos(): Repos {
     },
 
     checkins: {
+      async get(userId, date) {
+        return checkins.get(dateKey(userId, date)) ?? null
+      },
       async upsert(userId, input) {
         checkins.set(dateKey(userId, input.date), input)
       },
@@ -99,6 +108,40 @@ export function createMemoryRepos(): Repos {
             )
             .sort((left, right) => left.start.localeCompare(right.start)),
         })
+      },
+    },
+
+    fridge: {
+      async list(userId) {
+        return Array.from((fridgeByUser.get(userId) ?? new Map()).values())
+      },
+      async upsert(userId, item) {
+        const items = fridgeByUser.get(userId) ?? new Map<string, FridgeItem>()
+        items.set(item.id, item)
+        fridgeByUser.set(userId, items)
+        return item
+      },
+      async remove(userId, id) {
+        fridgeByUser.get(userId)?.delete(id)
+      },
+    },
+
+    nutritionPlanCache: {
+      async get(userId, cacheKey) {
+        return nutritionPlans.get(dateKey(userId, cacheKey)) ?? null
+      },
+      async upsert(userId, cacheKey, plan) {
+        nutritionPlans.set(dateKey(userId, cacheKey), plan)
+      },
+    },
+
+    reminders: {
+      async get(userId) {
+        return reminders.get(userId) ?? null
+      },
+      async upsert(userId, pref) {
+        reminders.set(userId, pref)
+        return pref
       },
     },
   }

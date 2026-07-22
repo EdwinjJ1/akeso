@@ -1,0 +1,737 @@
+{
+  "mode": "live",
+  "evaluatedAt": "2026-07-21T13:23:32.639Z",
+  "manifestVersion": 1,
+  "verifiedAt": "2026-07-21",
+  "imageCount": 20,
+  "providers": [
+    {
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "status": "completed",
+      "capability": {
+        "provider": "mimo",
+        "model": "mimo-v2.5",
+        "supportsImageInput": true,
+        "supportsStructuredOutput": true,
+        "officialDocumentation": "https://mimo.mi.com/docs/zh-CN/api/chat/openai-api",
+        "note": "Native omni-modal image input through the domestic OpenAI-compatible endpoint. The API documents JSON object mode, not strict JSON Schema; every response is revalidated with the shared Zod contract."
+      },
+      "images": [
+        {
+          "id": "fridge-full-night",
+          "scenario": "full_fridge",
+          "schemaValid": true,
+          "latencyMs": 8589.741875,
+          "inputTokens": 5414,
+          "outputTokens": 162,
+          "costUsd": 0.00080332,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "cake",
+                "category": "grain",
+                "confidence": 0.9,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "pickle",
+                "category": "vegetable",
+                "confidence": 0.85,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "tomato",
+                "category": "vegetable",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "grape",
+                "category": "fruit",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "lemon",
+                "category": "fruit",
+                "confidence": 0.9,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "carrot",
+                "category": "vegetable",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "orange",
+                "category": "fruit",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 6,
+            "falsePositives": 1,
+            "falseNegatives": 6,
+            "categoryMatches": 6,
+            "matchedIngredients": 6,
+            "humanAdditions": 6,
+            "humanEdits": 0,
+            "humanDeletions": 1
+          }
+        },
+        {
+          "id": "fridge-packaged-occlusion",
+          "scenario": "occluded_or_blurry",
+          "schemaValid": true,
+          "latencyMs": 4222.2071670000005,
+          "inputTokens": 2954,
+          "outputTokens": 156,
+          "costUsd": 0.0004572400000000001,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "V8 Splash Berry Blend",
+                "category": "other",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "Mae Ploy Sweet Chili Sauce",
+                "category": "other",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "Mazola Canola Oil",
+                "category": "other",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "Roundy's Fat Free Skim Milk",
+                "category": "dairy",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 4,
+            "falseNegatives": 6,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 6,
+            "humanEdits": 0,
+            "humanDeletions": 4
+          }
+        },
+        {
+          "id": "fridge-tilted-cluttered",
+          "scenario": "full_fridge",
+          "schemaValid": true,
+          "latencyMs": 10906.608208,
+          "inputTokens": 2734,
+          "outputTokens": 289,
+          "costUsd": 0.00046368000000000006,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "ketchup",
+                "category": "other",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "curry ketchup",
+                "category": "other",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "chili sauce",
+                "category": "other",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "crème fraîche",
+                "category": "dairy",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "mayonnaise",
+                "category": "other",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "orange juice",
+                "category": "fruit",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "milk",
+                "category": "dairy",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "bread",
+                "category": "grain",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "avocado",
+                "category": "fruit",
+                "confidence": 0.9,
+                "uncertaintyReason": "The item in the drawer is partially obscured but matches the shape and color of an avocado."
+              },
+              {
+                "name": "butter",
+                "category": "dairy",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              },
+              {
+                "name": "cocoa powder",
+                "category": "other",
+                "confidence": 0.9,
+                "uncertaintyReason": "The box on the bottom shelf is labeled 'Cocoa'."
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 3,
+            "falsePositives": 8,
+            "falseNegatives": 2,
+            "categoryMatches": 3,
+            "matchedIngredients": 3,
+            "humanAdditions": 2,
+            "humanEdits": 0,
+            "humanDeletions": 8
+          }
+        },
+        {
+          "id": "fridge-door-milk",
+          "scenario": "multi_ingredient_shelf",
+          "schemaValid": true,
+          "latencyMs": 4085.0802079999994,
+          "inputTokens": 3314,
+          "outputTokens": 45,
+          "costUsd": 0.00047656000000000006,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "milk",
+                "category": "dairy",
+                "confidence": 0.85,
+                "uncertaintyReason": "The containers resemble standard milk jugs but labels are not clearly readable."
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "fridge-labelled-milk-bottles",
+          "scenario": "multi_ingredient_shelf",
+          "schemaValid": true,
+          "latencyMs": 3471.762582999996,
+          "inputTokens": 3575,
+          "outputTokens": 33,
+          "costUsd": 0.0005097400000000001,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "breast milk",
+                "category": "dairy",
+                "confidence": 0.98,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "fridge-blurred-beverages",
+          "scenario": "occluded_or_blurry",
+          "schemaValid": true,
+          "latencyMs": 2873.4603750000024,
+          "inputTokens": 3014,
+          "outputTokens": 33,
+          "costUsd": 0.0004312,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "coca-cola",
+                "category": "other",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 1,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 1
+          }
+        },
+        {
+          "id": "empty-fridge-interior",
+          "scenario": "no_food",
+          "schemaValid": true,
+          "latencyMs": 1665.8405830000047,
+          "inputTokens": 2234,
+          "outputTokens": 15,
+          "costUsd": 0.00031696000000000003,
+          "recognition": {
+            "status": "empty",
+            "ingredients": [],
+            "reason": "no_food_detected"
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "closed-double-door-fridge",
+          "scenario": "no_food",
+          "schemaValid": true,
+          "latencyMs": 2829.9223330000023,
+          "inputTokens": 5414,
+          "outputTokens": 15,
+          "costUsd": 0.0007621600000000001,
+          "recognition": {
+            "status": "empty",
+            "ingredients": [],
+            "reason": "no_food_detected"
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "closed-fridge-with-cat",
+          "scenario": "no_food",
+          "schemaValid": true,
+          "latencyMs": 4118.385833,
+          "inputTokens": 1406,
+          "outputTokens": 24,
+          "costUsd": 0.00020356000000000004,
+          "recognition": {
+            "status": "empty",
+            "ingredients": [],
+            "reason": "no_food_detected"
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "old-fridge-garden",
+          "scenario": "no_food",
+          "schemaValid": true,
+          "latencyMs": 4198.818416000002,
+          "inputTokens": 3314,
+          "outputTokens": 15,
+          "costUsd": 0.00046816,
+          "recognition": {
+            "status": "empty",
+            "ingredients": [],
+            "reason": "no_food_detected"
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-banana",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 2758.8638750000027,
+          "inputTokens": 3794,
+          "outputTokens": 30,
+          "costUsd": 0.00053956,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "banana",
+                "category": "fruit",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-broccoli",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 3143.9636669999963,
+          "inputTokens": 2264,
+          "outputTokens": 55,
+          "costUsd": 0.00033236,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "broccoli",
+                "category": "vegetable",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-carrots",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 3719.2711250000066,
+          "inputTokens": 3314,
+          "outputTokens": 31,
+          "costUsd": 0.00047264000000000003,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "carrot",
+                "category": "vegetable",
+                "confidence": 1,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-cheese",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 4307.4859579999975,
+          "inputTokens": 3014,
+          "outputTokens": 33,
+          "costUsd": 0.0004312,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "Swiss cheese",
+                "category": "dairy",
+                "confidence": 0.98,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-cucumber",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 3306.5782080000063,
+          "inputTokens": 1814,
+          "outputTokens": 32,
+          "costUsd": 0.00026292000000000004,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "zucchini",
+                "category": "vegetable",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 0,
+            "falsePositives": 1,
+            "falseNegatives": 1,
+            "categoryMatches": 0,
+            "matchedIngredients": 0,
+            "humanAdditions": 1,
+            "humanEdits": 0,
+            "humanDeletions": 1
+          }
+        },
+        {
+          "id": "single-milk",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 3147.227417000002,
+          "inputTokens": 974,
+          "outputTokens": 48,
+          "costUsd": 0.0001498,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "milk",
+                "category": "dairy",
+                "confidence": 0.9,
+                "uncertaintyReason": "The white liquid in the glass resembles milk, but could be another dairy product or substitute."
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-red-apple",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 5679.737832999992,
+          "inputTokens": 3854,
+          "outputTokens": 30,
+          "costUsd": 0.00054796,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "apple",
+                "category": "fruit",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-tomato",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 2070.113083000004,
+          "inputTokens": 3246,
+          "outputTokens": 32,
+          "costUsd": 0.00046340000000000004,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "tomato",
+                "category": "vegetable",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-chicken-egg",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 4606.099167000008,
+          "inputTokens": 4286,
+          "outputTokens": 30,
+          "costUsd": 0.00060844,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "egg",
+                "category": "other",
+                "confidence": 0.99,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 0,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 1,
+            "humanDeletions": 0
+          }
+        },
+        {
+          "id": "single-brown-rice",
+          "scenario": "single_ingredient",
+          "schemaValid": true,
+          "latencyMs": 8254.536457999988,
+          "inputTokens": 5414,
+          "outputTokens": 32,
+          "costUsd": 0.00076692,
+          "recognition": {
+            "status": "ok",
+            "ingredients": [
+              {
+                "name": "brown rice",
+                "category": "grain",
+                "confidence": 0.95,
+                "uncertaintyReason": null
+              }
+            ]
+          },
+          "score": {
+            "truePositives": 1,
+            "falsePositives": 0,
+            "falseNegatives": 0,
+            "categoryMatches": 1,
+            "matchedIngredients": 1,
+            "humanAdditions": 0,
+            "humanEdits": 0,
+            "humanDeletions": 0
+          }
+        }
+      ],
+      "metrics": {
+        "schemaSuccessRate": 1,
+        "precision": 0.5714285714285714,
+        "recall": 0.5714285714285714,
+        "f1": 0.5714285714285714,
+        "categoryAccuracy": 0.95,
+        "hallucinationRate": 0.42857142857142855,
+        "humanAdditions": 15,
+        "humanEdits": 1,
+        "humanDeletions": 15,
+        "p50LatencyMs": 3719.2711250000066,
+        "p95LatencyMs": 8589.741875,
+        "totalCostUsd": 0.00946778,
+        "costPerImageUsd": 0.000473389
+      },
+      "admission": {
+        "schemaSuccessRate": true,
+        "precision": false,
+        "recall": false,
+        "hallucinationRate": false,
+        "p95Latency": true,
+        "passed": false
+      }
+    }
+  ]
+}

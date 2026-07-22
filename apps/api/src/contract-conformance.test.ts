@@ -5,6 +5,12 @@ import {
   DayPlanSchema,
   EnergyResultSchema,
   UpdatePlanBlockResponseSchema,
+  GetFridgeResponseSchema,
+  GetNutritionResponseSchema,
+  GetProfileResponseSchema,
+  GetReminderResponseSchema,
+  PutFridgeItemResponseSchema,
+  PutProfileResponseSchema,
 } from '@akeso/contracts'
 import request from 'supertest'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -34,6 +40,37 @@ beforeEach(() => {
 })
 
 describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
+  test('GET /v1/profile -> UserProfile envelope', async () => {
+    const response = await request(app).get('/v1/profile').expect(200)
+
+    const result = GetProfileResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('PUT /v1/profile -> UserProfile envelope with dietary safety', async () => {
+    const response = await request(app)
+      .put('/v1/profile')
+      .send({
+        displayName: 'Alex',
+        goal: 'academic',
+        typicalWake: '07:30',
+        typicalSleep: '23:30',
+        dietaryPreference: 'none',
+        dietarySafety: {
+          allergens: ['milk'],
+          avoidIngredients: ['salmon'],
+        },
+      })
+      .expect(200)
+
+    const result = PutProfileResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
   test('POST /v1/checkins → EnergyResult envelope', async () => {
     const response = await request(app)
       .post('/v1/checkins')
@@ -105,5 +142,44 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     const result = apiResponseSchema(EnergyResultSchema).safeParse(response.body)
     expect(result.success).toBe(true)
     expect(result.success && result.data.success).toBe(false)
+  })
+
+  test('GET /v1/fridge → FridgeItem[] envelope', async () => {
+    const response = await request(app).get('/v1/fridge').expect(200)
+
+    const result = GetFridgeResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('PUT /v1/fridge/:id → FridgeItem envelope', async () => {
+    const response = await request(app)
+      .put('/v1/fridge/milk')
+      .send({ name: 'Milk', category: 'dairy' })
+      .expect(200)
+
+    const result = PutFridgeItemResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/nutrition/:date -> NutritionPlan envelope', async () => {
+    const response = await request(app).get('/v1/nutrition/2026-07-21').expect(200)
+
+    const result = GetNutritionResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('GET /v1/reminders → ReminderPreference envelope', async () => {
+    const response = await request(app).get('/v1/reminders').expect(200)
+
+    const result = GetReminderResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
   })
 })

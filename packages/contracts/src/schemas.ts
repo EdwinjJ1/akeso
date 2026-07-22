@@ -63,6 +63,22 @@ export type TimeString = z.infer<typeof TimeStringSchema>
 export const IsoDateTimeSchema = z.string().datetime({ offset: true })
 export type IsoDateTime = z.infer<typeof IsoDateTimeSchema>
 
+function isValidTimeZone(value: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** IANA timezone identifier, e.g. "Australia/Sydney". */
+export const TimeZoneSchema = z
+  .string()
+  .min(1)
+  .refine(isValidTimeZone, { message: 'expected a valid IANA timezone identifier' })
+export type TimeZone = z.infer<typeof TimeZoneSchema>
+
 // ── Check-in ────────────────────────────────────────────────────────────────
 
 /** Bucketed hours of sleep last night. */
@@ -339,12 +355,41 @@ export const DietaryPreferenceSchema = z.enum([
 ])
 export type DietaryPreference = z.infer<typeof DietaryPreferenceSchema>
 
+export const FoodAllergenSchema = z.enum([
+  'peanuts',
+  'tree_nuts',
+  'milk',
+  'eggs',
+  'soy',
+  'wheat_gluten',
+  'fish',
+  'shellfish',
+  'sesame',
+])
+export type FoodAllergen = z.infer<typeof FoodAllergenSchema>
+
+export const DietarySafetyProfileSchema = z
+  .object({
+    /** User-reported allergies Akeso must avoid when suggesting meals. */
+    allergens: z.array(FoodAllergenSchema).max(12).default([]),
+    /** Free-text foods or ingredients the user wants Akeso to avoid. */
+    avoidIngredients: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+    /** Optional clarification, e.g. "cross-contamination is okay/not okay". */
+    notes: z.string().trim().max(280).optional(),
+  })
+  .strict()
+export type DietarySafetyProfile = z.infer<typeof DietarySafetyProfileSchema>
+
 export const UserProfileSchema = z.object({
   displayName: z.string().min(1).max(60),
   goal: UserGoalSchema,
   typicalWake: TimeStringSchema,
   typicalSleep: TimeStringSchema,
   dietaryPreference: DietaryPreferenceSchema,
+  dietarySafety: DietarySafetyProfileSchema.default({
+    allergens: [],
+    avoidIngredients: [],
+  }),
 })
 export type UserProfile = z.infer<typeof UserProfileSchema>
 
@@ -383,10 +428,62 @@ export type FridgeCategory = z.infer<typeof FridgeCategorySchema>
 
 export const FridgeItemSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(100),
   category: FridgeCategorySchema,
+  allergenTags: z.array(FoodAllergenSchema).default([]),
 })
 export type FridgeItem = z.infer<typeof FridgeItemSchema>
+
+/**
+ * Presence-only ingredient returned by a vision provider.
+ *
+ * Quantity, unit, weight and expiry intentionally do not belong in this
+ * contract: a recognition only claims that the ingredient is visible. The
+ * user confirms and edits these candidates before anything reaches inventory.
+ */
+export const DetectedIngredientSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    category: FridgeCategorySchema,
+    confidence: z.number().min(0).max(1),
+    uncertaintyReason: z.string().trim().min(1).max(280).nullable(),
+  })
+  .strict()
+export type DetectedIngredient = z.infer<typeof DetectedIngredientSchema>
+
+const RecognizedIngredientsSchema = z.array(DetectedIngredientSchema)
+
+/**
+ * AI structured output for fridge-photo recognition.
+ *
+ * Empty and refused outcomes must carry an empty ingredient list so callers
+ * never have to guess whether a provider-generated item is real.
+ */
+export const IngredientRecognitionResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('ok'),
+      ingredients: RecognizedIngredientsSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('empty'),
+      ingredients: RecognizedIngredientsSchema.length(0),
+      reason: z.enum(['no_food_detected', 'unrecognizable_image']),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('refused'),
+      ingredients: RecognizedIngredientsSchema.length(0),
+      reason: z.string().trim().min(1).max(280),
+    })
+    .strict(),
+])
+export type IngredientRecognitionResult = z.infer<
+  typeof IngredientRecognitionResultSchema
+>
 
 export const MealSlotSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack'])
 export type MealSlot = z.infer<typeof MealSlotSchema>
@@ -398,21 +495,55 @@ export const MealRecommendationSchema = z.object({
   description: z.string().min(1),
   /** References NutritionPlan.fridge[].id within the same response. */
   usesFridgeItemIds: z.array(z.string().min(1)),
+  /** User-facing safety tags; meals matching the user's allergens are filtered out. */
+  allergenTags: z.array(FoodAllergenSchema).default([]),
   boosts: z.array(NutrientKeySchema),
   prepMinutes: z.number().int().positive(),
   tags: z.array(z.string().min(1)),
 })
 export type MealRecommendation = z.infer<typeof MealRecommendationSchema>
 
-export const NutritionPlanSchema = z.object({
-  date: DateStringSchema,
-  needs: z.array(NutrientNeedSchema),
-  fridge: z.array(FridgeItemSchema),
-  meals: z.array(MealRecommendationSchema),
-  /** Ties recommendations back to today's energy factors. */
-  rationale: z.string().min(1),
-})
+export const NutritionPlanSchema = z
+  .object({
+    date: DateStringSchema,
+    needs: z.array(NutrientNeedSchema),
+    fridge: z.array(FridgeItemSchema),
+    meals: z.array(MealRecommendationSchema),
+    /** Ties recommendations back to today's energy factors. */
+    rationale: z.string().min(1),
+  })
+  .superRefine((plan, context) => {
+    const fridgeIds = new Set(plan.fridge.map((item) => item.id))
+    plan.meals.forEach((meal, mealIndex) => {
+      meal.usesFridgeItemIds.forEach((itemId, itemIndex) => {
+        if (!fridgeIds.has(itemId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['meals', mealIndex, 'usesFridgeItemIds', itemIndex],
+            message: `Unknown fridge item id: ${itemId}`,
+          })
+        }
+      })
+    })
+  })
 export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
+
+// ── Reminders ───────────────────────────────────────────────────────────────
+
+export const ReminderPreferenceSchema = z.object({
+  enabled: z.boolean(),
+  /** Local time, HH:mm, 24h — when to send the daily check-in reminder. */
+  checkInTime: TimeStringSchema,
+  /**
+   * IANA timezone the reminder time is interpreted in, e.g. "Australia/Sydney".
+   * Phase 1 (on-device notifications) doesn't need this — the device's own
+   * clock handles DST — but a future server-side push scheduler will need to
+   * know which timezone `checkInTime` was set in, so it's captured now rather
+   * than requiring a data migration later.
+   */
+  timezone: TimeZoneSchema,
+})
+export type ReminderPreference = z.infer<typeof ReminderPreferenceSchema>
 
 // ── API error ───────────────────────────────────────────────────────────────
 

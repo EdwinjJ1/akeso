@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   apiContract,
+  BatchFridgeItemsRequestSchema,
+  BatchFridgeItemsResponseSchema,
   CheckInResponseSchema,
   DateParamsSchema,
   GetCoachResponseSchema,
@@ -8,8 +10,13 @@ import {
   GetNutritionResponseSchema,
   GetPlanResponseSchema,
   GetProfileResponseSchema,
+  GetReminderResponseSchema,
+  PutFridgeItemBodySchema,
+  PutFridgeItemResponseSchema,
   PutProfileRequestSchema,
   PutProfileResponseSchema,
+  PutReminderRequestSchema,
+  PutReminderResponseSchema,
   RegeneratePlanBodySchema,
   RegeneratePlanResponseSchema,
   TasksQuerySchema,
@@ -29,8 +36,11 @@ import {
   CheckInInputSchema,
   CoachReplySchema,
   DayPlanSchema,
+  DetectedIngredientSchema,
   EnergyResultSchema,
   PlanBlockSchema,
+  IngredientRecognitionResultSchema,
+  NutritionPlanSchema,
   TaskSchema,
   UpdatePlanBlockInputSchema,
 } from './schemas'
@@ -161,8 +171,117 @@ describe('fixtures are internally consistent', () => {
   })
 })
 
+describe('ingredient recognition contract', () => {
+  const tomato = {
+    name: 'tomato',
+    category: 'vegetable',
+    confidence: 0.94,
+    uncertaintyReason: null,
+  }
+
+  it('accepts a successful presence-only recognition', () => {
+    const result = { status: 'ok', ingredients: [tomato] }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(DetectedIngredientSchema.parse(tomato)).toEqual(tomato)
+  })
+
+  it('represents empty images without inventing ingredients', () => {
+    const result = {
+      status: 'empty',
+      ingredients: [],
+      reason: 'no_food_detected',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('represents provider refusal without inventing ingredients', () => {
+    const result = {
+      status: 'refused',
+      ingredients: [],
+      reason: 'The image cannot be processed under the provider policy.',
+    }
+
+    expect(IngredientRecognitionResultSchema.parse(result)).toEqual(result)
+    expect(
+      IngredientRecognitionResultSchema.safeParse({
+        ...result,
+        ingredients: [tomato],
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects invalid categories and confidence outside 0..1', () => {
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, category: 'snack' }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: 1.01 }).success
+    ).toBe(false)
+    expect(
+      DetectedIngredientSchema.safeParse({ ...tomato, confidence: -0.01 }).success
+    ).toBe(false)
+  })
+
+  it('rejects quantity, unit and gram fields from recognition output', () => {
+    for (const extra of [
+      { quantity: 2 },
+      { unit: 'pieces' },
+      { grams: 300 },
+    ]) {
+      expect(DetectedIngredientSchema.safeParse({ ...tomato, ...extra }).success).toBe(
+        false
+      )
+    }
+  })
+})
+
+describe('nutrition plan inventory integrity', () => {
+  it('rejects meal references to fridge items that are not in the same plan', () => {
+    const result = NutritionPlanSchema.safeParse({
+      date: '2026-07-21',
+      needs: [],
+      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' }],
+      meals: [
+        {
+          id: 'meal-1',
+          slot: 'lunch',
+          title: 'Imaginary meal',
+          description: 'Must not reference ingredients the user does not have.',
+          usesFridgeItemIds: ['salmon'],
+          boosts: [],
+          prepMinutes: 10,
+          tags: [],
+        },
+      ],
+      rationale: 'Uses only confirmed inventory.',
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts an empty-inventory plan only when fridge-based meals are empty', () => {
+    expect(
+      NutritionPlanSchema.safeParse({
+        date: '2026-07-21',
+        needs: [],
+        fridge: [],
+        meals: [],
+        rationale: 'Add confirmed fridge items to generate meal suggestions.',
+      }).success
+    ).toBe(true)
+  })
+})
+
 describe('API contract: route map matches the implemented /v1 API', () => {
-  it('covers all ten implemented endpoints', () => {
+  it('covers every implemented endpoint', () => {
     expect(
       Object.values(apiContract).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
     ).toEqual([
@@ -176,6 +295,14 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'POST /v1/plan/:date/regenerate',
       'GET /v1/nutrition/:date',
       'GET /v1/coach/:date',
+      'GET /v1/fridge',
+      'PUT /v1/fridge/:id',
+      'DELETE /v1/fridge/:id',
+      'POST /v1/fridge-items/batch',
+      'POST /v1/fridge/recognitions',
+      'POST /v1/nutrition/:date/regenerate',
+      'GET /v1/reminders',
+      'PUT /v1/reminders',
     ])
   })
 
@@ -194,6 +321,10 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       typicalWake: '07:30',
       typicalSleep: '23:30',
       dietaryPreference: 'none',
+      dietarySafety: {
+        allergens: [],
+        avoidIngredients: [],
+      },
     }
     expect(PutProfileRequestSchema.parse(profile)).toEqual(profile)
     const envelope = { success: true, data: profile }
@@ -213,6 +344,50 @@ describe('API contract: route map matches the implemented /v1 API', () => {
     expect(GetEnergyResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
     expect(GetPlanResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
     expect(GetNutritionResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+    expect(GetReminderResponseSchema.parse(nullEnvelope)).toEqual(nullEnvelope)
+  })
+
+  it('PUT /v1/fridge/:id: body omits id (it comes from the path) and round-trips', () => {
+    const body = { name: 'Milk', category: 'dairy' }
+    const parsedBody = { ...body, allergenTags: [] }
+    expect(PutFridgeItemBodySchema.parse(body)).toEqual(parsedBody)
+    // A stray `id` in the body is stripped, not authoritative — the path wins.
+    expect(PutFridgeItemBodySchema.parse({ ...body, id: 'ignored' })).toEqual(parsedBody)
+    const envelope = { success: true, data: { id: 'milk', ...parsedBody } }
+    expect(PutFridgeItemResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
+  it('PUT /v1/reminders: preference round-trips and rejects a malformed time or timezone', () => {
+    const pref = { enabled: true, checkInTime: '08:00', timezone: 'Australia/Sydney' }
+    expect(PutReminderRequestSchema.parse(pref)).toEqual(pref)
+    expect(
+      PutReminderRequestSchema.safeParse({ ...pref, checkInTime: '8am' }).success
+    ).toBe(false)
+    expect(
+      PutReminderRequestSchema.safeParse({ ...pref, timezone: 'Not/AZone' }).success
+    ).toBe(false)
+    const envelope = { success: true, data: pref }
+    expect(PutReminderResponseSchema.parse(envelope)).toEqual(envelope)
+  })
+
+  it('batch fridge writes contain only the explicitly submitted presence-only items', () => {
+    const body = {
+      items: [
+        { id: 'tomato', name: 'Tomato', category: 'vegetable' },
+        { id: 'tofu', name: 'Tofu', category: 'protein' },
+      ],
+    }
+    const parsedBody = {
+      items: body.items.map((item) => ({ ...item, allergenTags: [] })),
+    }
+    expect(BatchFridgeItemsRequestSchema.parse(body)).toEqual(parsedBody)
+    expect(
+      BatchFridgeItemsRequestSchema.safeParse({
+        items: [{ ...body.items[0], quantity: 3 }],
+      }).success
+    ).toBe(true)
+    const envelope = { success: true, data: parsedBody.items }
+    expect(BatchFridgeItemsResponseSchema.parse(envelope)).toEqual(envelope)
   })
 
   it('GET /v1/plan/:date and /v1/coach/:date success envelopes validate', () => {

@@ -10,15 +10,18 @@ import type {
   LastMealTiming,
   Scale1to5,
   SleepDuration,
-} from './types.js'
+} from './types'
+import { localDateSchema } from './schemas'
 
 /**
  * The score-only portion of an EnergyResult.  Keeping this as a derived type
- * means the engine cannot drift from the shared API contract.
+ * means the engine cannot drift from the shared API contract.  The headline
+ * is excluded on purpose: it quotes the peak/dip windows, which only exist
+ * once the curve has been computed, so evaluate() is its single home.
  */
 export type EnergyScore = Pick<
   EnergyResult,
-  'date' | 'score' | 'band' | 'headline' | 'factors'
+  'date' | 'score' | 'band' | 'factors'
 >
 
 type ScaleScoreMap = Readonly<Record<Scale1to5, number>>
@@ -63,7 +66,7 @@ export const ENERGY_ENGINE_CONFIG: EnergyEngineConfig = {
 
 const SCORE_MIN = 0
 const SCORE_MAX = 100
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const FALLBACK_DATE = '1970-01-01'
 
 interface ContextCopy {
   readonly label: string
@@ -162,6 +165,15 @@ const normalizedNumber = (value: number, minimum: number, maximum: number) =>
 const normalizedScale = (value: number): Scale1to5 =>
   Math.round(normalizedNumber(value, 1, 5)) as Scale1to5
 
+/**
+ * Sanitized once here, so the result's `date` and `computedAt` can never
+ * disagree about which day was scored. Reuses the shared calendar-date
+ * schema from @akeso/contracts so an impossible date like 2026-13-45 is
+ * rejected here too, not just format-checked.
+ */
+const normalizedDate = (date: string) =>
+  localDateSchema.safeParse(date).success ? date : FALLBACK_DATE
+
 const energyBandFor = (score: number): EnergyBand => {
   if (score >= 70) return 'high'
   if (score >= 40) return 'moderate'
@@ -190,20 +202,10 @@ const unknownContextCount = (input: CheckInInput): number =>
     (value) => value === 'not_sure'
   ).length
 
-const deterministicComputedAt = (date: string) =>
-  `${DATE_PATTERN.test(date) ? date : '1970-01-01'}T00:00:00.000Z`
-
 const windowAround = (hour: number): HourWindow => ({
   startHour: Math.max(0, hour - 1),
   endHour: Math.min(23, hour + 1),
 })
-
-const bandHeadline = (band: EnergyBand): string =>
-  band === 'high'
-    ? 'Strong energy expected today — reserve your best window for demanding work.'
-    : band === 'moderate'
-      ? 'Steady energy expected today — give one important task your best window.'
-      : 'Lower energy expected today — keep the plan light and leave room for recovery.'
 
 /**
  * Pure, deterministic domain engine.  It has no dependency on time, storage,
@@ -213,7 +215,11 @@ const bandHeadline = (band: EnergyBand): string =>
 export class EnergyEngine {
   constructor(
     private readonly config: EnergyEngineConfig = ENERGY_ENGINE_CONFIG
-  ) {}
+  ) {
+    if (config.curveOffsets.length === 0) {
+      throw new Error('EnergyEngineConfig.curveOffsets needs at least one point')
+    }
+  }
 
   score(input: CheckInInput): EnergyScore {
     const reportedEnergy = normalizedScale(input.reportedEnergy)
@@ -242,13 +248,10 @@ export class EnergyEngine {
       if (factor) factors.push(factor)
     }
 
-    const band = energyBandFor(score)
-
     return {
-      date: input.date,
+      date: normalizedDate(input.date),
       score,
-      band,
-      headline: bandHeadline(band),
+      band: energyBandFor(score),
       factors,
     }
   }
@@ -269,7 +272,10 @@ export class EnergyEngine {
     const afternoonCurve = curve.filter(
       (point) => point.hour >= 13 && point.hour <= 17
     )
-    const dip = afternoonCurve.reduce((lowest, point) =>
+    // A custom config may plot no afternoon points; the dip then falls back
+    // to the lowest point of the whole day instead of crashing.
+    const dipCandidates = afternoonCurve.length > 0 ? afternoonCurve : curve
+    const dip = dipCandidates.reduce((lowest, point) =>
       point.level < lowest.level ? point : lowest
     )
     const peakWindow = windowAround(peak.hour)
@@ -292,7 +298,10 @@ export class EnergyEngine {
       curve,
       peakWindow,
       dipWindow,
-      computedAt: deterministicComputedAt(score.date),
+      // Deterministic by design: derived from the sanitized check-in date,
+      // never from the wall clock, so identical input yields an identical
+      // result.
+      computedAt: `${score.date}T00:00:00.000Z`,
     }
   }
 }

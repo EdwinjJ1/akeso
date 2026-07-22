@@ -1,4 +1,4 @@
-import type { FridgeItem, MealRecommendation } from '@akeso/domain'
+import type { FoodAllergen, FridgeItem, MealRecommendation } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { StyleSheet, Text, View } from 'react-native'
 
@@ -10,6 +10,18 @@ const SLOT_LABELS: Record<MealRecommendation['slot'], string> = {
   lunch: 'Lunch',
   dinner: 'Dinner',
   snack: 'Snack',
+}
+
+const ALLERGEN_LABELS: Record<FoodAllergen, string> = {
+  peanuts: 'peanuts',
+  tree_nuts: 'tree nuts',
+  milk: 'milk',
+  eggs: 'eggs',
+  soy: 'soy',
+  wheat_gluten: 'wheat/gluten',
+  fish: 'fish',
+  shellfish: 'shellfish',
+  sesame: 'sesame',
 }
 
 interface MealCardProps {
@@ -47,6 +59,15 @@ export function MealCard({ meal, fridge }: MealCardProps) {
         <View style={styles.fridgeRow}>
           <Ionicons name="snow-outline" size={14} color={colors.primaryDark} />
           <Text style={styles.fridgeText}>From your fridge: {fridgeNames.join(', ')}</Text>
+        </View>
+      ) : null}
+
+      {meal.allergenTags.length > 0 ? (
+        <View style={styles.allergenRow}>
+          <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+          <Text style={styles.allergenText}>
+            Contains: {meal.allergenTags.map((tag) => ALLERGEN_LABELS[tag]).join(', ')}
+          </Text>
         </View>
       ) : null}
 
@@ -116,6 +137,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.text,
     flex: 1,
+  },
+  allergenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: sp(1.5),
+    marginTop: sp(2),
+  },
+  allergenText: {
+    fontSize: 12,
+    color: colors.danger,
+    flex: 1,
+    fontWeight: '700',
   },
   tagRow: {
     flexDirection: 'row',

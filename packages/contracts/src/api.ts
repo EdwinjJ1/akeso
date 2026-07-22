@@ -6,7 +6,10 @@ import {
   DateStringSchema,
   DayPlanSchema,
   EnergyResultSchema,
+  FridgeItemSchema,
+  IngredientRecognitionResultSchema,
   NutritionPlanSchema,
+  ReminderPreferenceSchema,
   TaskSchema,
   UpdatePlanBlockInputSchema,
   UserProfileSchema,
@@ -102,6 +105,60 @@ export const GetNutritionResponseSchema = apiResponseSchema(
 
 export const GetCoachResponseSchema = apiResponseSchema(CoachReplySchema)
 
+// ── GET /v1/fridge · PUT /v1/fridge/:id · DELETE /v1/fridge/:id ─────────────
+
+export const FridgeItemParamsSchema = z.object({ id: z.string().min(1) })
+export type FridgeItemParams = z.infer<typeof FridgeItemParamsSchema>
+
+export const GetFridgeResponseSchema = apiResponseSchema(z.array(FridgeItemSchema))
+
+/** `id` comes from the path, not the body — a PUT is always "upsert this id". */
+export const PutFridgeItemBodySchema = FridgeItemSchema.omit({ id: true })
+export type PutFridgeItemBody = z.infer<typeof PutFridgeItemBodySchema>
+export const PutFridgeItemResponseSchema = apiResponseSchema(FridgeItemSchema)
+
+export const PostFridgeItemRequestSchema = FridgeItemSchema
+export const PatchFridgeItemBodySchema = PutFridgeItemBodySchema.partial().refine(
+  (body) => body.name !== undefined || body.category !== undefined,
+  { message: 'At least one field is required' }
+)
+
+export const DeleteFridgeItemResponseSchema = apiResponseSchema(z.null())
+
+// ── POST /v1/fridge-items/batch ──────────────────────────────────────────────
+
+/** The client sends only candidates the user explicitly confirmed. */
+export const BatchFridgeItemsRequestSchema = z
+  .object({ items: z.array(FridgeItemSchema).max(50) })
+  .strict()
+export type BatchFridgeItemsRequest = z.infer<
+  typeof BatchFridgeItemsRequestSchema
+>
+export const BatchFridgeItemsResponseSchema = apiResponseSchema(
+  z.array(FridgeItemSchema)
+)
+
+// ── POST /v1/fridge/recognitions (multipart image) ──────────────────────────
+
+export const CreateFridgeRecognitionResponseSchema = apiResponseSchema(
+  IngredientRecognitionResultSchema
+)
+
+// ── POST /v1/nutrition/:date/regenerate ────────────────────────────────────────
+
+export const RegenerateNutritionResponseSchema = apiResponseSchema(
+  NutritionPlanSchema
+)
+
+// ── GET /v1/reminders · PUT /v1/reminders ───────────────────────────────────
+
+/** `data: null` until the user has set a preference. */
+export const GetReminderResponseSchema = apiResponseSchema(
+  ReminderPreferenceSchema.nullable()
+)
+export const PutReminderRequestSchema = ReminderPreferenceSchema
+export const PutReminderResponseSchema = apiResponseSchema(ReminderPreferenceSchema)
+
 // ── Route map ───────────────────────────────────────────────────────────────
 
 /**
@@ -172,5 +229,51 @@ export const apiContract = {
     path: '/v1/coach/:date',
     params: DateParamsSchema,
     response: GetCoachResponseSchema,
+  },
+  getFridgeItems: {
+    method: 'GET',
+    path: '/v1/fridge',
+    response: GetFridgeResponseSchema,
+  },
+  saveFridgeItem: {
+    method: 'PUT',
+    path: '/v1/fridge/:id',
+    params: FridgeItemParamsSchema,
+    request: PutFridgeItemBodySchema,
+    response: PutFridgeItemResponseSchema,
+  },
+  deleteFridgeItem: {
+    method: 'DELETE',
+    path: '/v1/fridge/:id',
+    params: FridgeItemParamsSchema,
+    response: DeleteFridgeItemResponseSchema,
+  },
+  saveFridgeItemsBatch: {
+    method: 'POST',
+    path: '/v1/fridge-items/batch',
+    request: BatchFridgeItemsRequestSchema,
+    response: BatchFridgeItemsResponseSchema,
+  },
+  recognizeFridgeImage: {
+    method: 'POST',
+    path: '/v1/fridge/recognitions',
+    response: CreateFridgeRecognitionResponseSchema,
+  },
+  regenerateNutrition: {
+    method: 'POST',
+    path: '/v1/nutrition/:date/regenerate',
+    params: DateParamsSchema,
+    response: RegenerateNutritionResponseSchema,
+  },
+  getReminderPreference: {
+    method: 'GET',
+    path: '/v1/reminders',
+    response: GetReminderResponseSchema,
+  },
+  saveReminderPreference: {
+    method: 'PUT',
+    path: '/v1/reminders',
+    request: PutReminderRequestSchema,
+    response: PutReminderResponseSchema,
   },
 } as const
