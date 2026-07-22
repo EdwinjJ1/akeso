@@ -88,6 +88,7 @@ interface FridgeItemRow {
 interface ReminderPreferenceRow {
   enabled: boolean
   check_in_time: string
+  timezone: string
 }
 
 interface NutritionPlanCacheRow {
@@ -435,13 +436,17 @@ export function createSupabaseRepos(): Repos {
         const row = unwrap<ReminderPreferenceRow>(
           await supabase
             .from('reminder_preference')
-            .select('enabled, check_in_time')
+            .select('enabled, check_in_time, timezone')
             .eq('user_id', userId)
             .maybeSingle(),
           'reminder_preference.get'
         )
         if (!row) return null
-        return { enabled: row.enabled, checkInTime: row.check_in_time }
+        return {
+          enabled: row.enabled,
+          checkInTime: row.check_in_time,
+          timezone: row.timezone,
+        }
       },
       async upsert(userId, pref: ReminderPreference) {
         unwrap(
@@ -450,6 +455,7 @@ export function createSupabaseRepos(): Repos {
               user_id: userId,
               enabled: pref.enabled,
               check_in_time: pref.checkInTime,
+              timezone: pref.timezone,
               // The column's default now() only fires on insert — without this
               // an updated row would keep its original timestamp forever.
               updated_at: new Date().toISOString(),

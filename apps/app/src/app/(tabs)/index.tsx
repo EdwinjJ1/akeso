@@ -9,6 +9,7 @@ import { EnergyCurve } from '@/components/energy/energy-curve'
 import { FactorRow } from '@/components/energy/factor-row'
 import { CheckInPrompt } from '@/components/home/checkin-prompt'
 import { NutritionSnapshot } from '@/components/home/nutrition-snapshot'
+import { ReminderCard } from '@/components/home/reminder-card'
 import { Mascot, type MascotState } from '@/components/mascot'
 import { Button } from '@/components/ui/buttons'
 import { Card } from '@/components/ui/card'
@@ -61,6 +62,10 @@ export default function Dashboard() {
             </Text>
           </View>
         </View>
+      </Reveal>
+
+      <Reveal delay={30}>
+        <ReminderCard />
       </Reveal>
 
       {dashboard.status === 'loading' ? (

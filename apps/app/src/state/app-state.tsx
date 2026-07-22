@@ -7,6 +7,7 @@ import type {
   FridgeItem,
   IngredientRecognitionResult,
   NutritionPlan,
+  ReminderPreference,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -14,6 +15,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -21,6 +23,7 @@ import {
 } from 'react'
 
 import { getService } from '@/services'
+import { syncReminderSchedule } from '@/services/notifications'
 import { todayISO } from '@/utils/dates'
 import { runSubmitCheckIn } from './checkin-flow'
 
@@ -33,6 +36,7 @@ interface AppState {
   nutrition: NutritionPlan | null
   fridge: FridgeItem[]
   coach: CoachReply | null
+  reminder: ReminderPreference | null
   loading: boolean
   error: string | null
   ancillaryDate: string | null
@@ -47,6 +51,7 @@ interface AppActions {
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
   refreshToday(): Promise<void>
   regeneratePlan(instruction?: string): Promise<void>
+  saveReminderPreference(pref: ReminderPreference): Promise<void>
   recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
   saveFridgeItems(items: FridgeItem[]): Promise<void>
   updateFridgeItem(item: FridgeItem): Promise<void>
@@ -63,6 +68,7 @@ const initialState: AppState = {
   nutrition: null,
   fridge: [],
   coach: null,
+  reminder: null,
   loading: false,
   error: null,
   ancillaryDate: null,
@@ -78,6 +84,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(initialState)
   const service = getService()
   const refreshRequestId = useRef(0)
+
+  /**
+   * Read inside submitCheckIn/saveReminderPreference without making those
+   * callbacks depend on (and be recreated by) every state change — both
+   * only need the latest values at the moment they run, not to react to
+   * changes in between.
+   */
+  const latestRef = useRef({ energy: state.energy, reminder: state.reminder })
+  useEffect(() => {
+    latestRef.current = { energy: state.energy, reminder: state.reminder }
+  }, [state.energy, state.reminder])
 
   const completeOnboarding = useCallback(
     async (profile: UserProfile) => {
@@ -116,10 +133,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       service.getNutritionPlan(date),
       service.getCoachReply(date),
       service.getFridgeItems(),
+      service.getReminderPreference(),
     ])
+    let loadedEnergy: EnergyResult | null = null
 
     try {
       const energy = await energyRequest
+      loadedEnergy = energy
       if (refreshRequestId.current !== requestId) return
       setState((prev) => ({
         ...prev,
@@ -140,7 +160,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }))
     }
 
-    const [tasksResult, planResult, nutritionResult, coachResult, fridgeResult] =
+    const [tasksResult, planResult, nutritionResult, coachResult, fridgeResult, reminderResult] =
       await ancillaryRequest
     if (refreshRequestId.current !== requestId) return
 
@@ -172,6 +192,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             ? prev.coach
             : null,
       fridge: fridgeResult.status === 'fulfilled' ? fridgeResult.value : prev.fridge,
+      reminder: reminderResult.status === 'fulfilled' ? reminderResult.value : prev.reminder,
       planLoading: false,
       planError:
         planResult.status === 'rejected'
@@ -183,14 +204,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       coachError:
         coachResult.status === 'rejected' ? "Could not load today's coaching note." : null,
     }))
+    if (reminderResult.status === 'fulfilled' && reminderResult.value) {
+      void syncReminderSchedule(reminderResult.value, loadedEnergy !== null)
+    }
   }, [service])
 
   const submitCheckIn = useCallback(
-    (input: CheckInInput) => {
+    async (input: CheckInInput) => {
       refreshRequestId.current += 1
-      return runSubmitCheckIn(service, input, (patch) =>
+      const energy = await runSubmitCheckIn(service, input, (patch) =>
         setState((prev) => ({ ...prev, ...patch }))
       )
+      // Today's check-in is now done — clears any pending reminder and
+      // schedules tomorrow's instead of leaving today's notification to fire.
+      const { reminder } = latestRef.current
+      if (reminder) {
+        await syncReminderSchedule(reminder, true)
+      }
+      return energy
     },
     [service]
   )
@@ -257,6 +288,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  const saveReminderPreference = useCallback(
+    async (pref: ReminderPreference) => {
+      const saved = await service.saveReminderPreference(pref)
+      setState((prev) => ({ ...prev, reminder: saved }))
+      await syncReminderSchedule(saved, latestRef.current.energy !== null)
+    },
+    [service]
+  )
+
   const value = useMemo(
     () => ({
       ...state,
@@ -264,6 +304,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       submitCheckIn,
       refreshToday,
       regeneratePlan,
+      saveReminderPreference,
       recognizeFridgeImage,
       saveFridgeItems,
       updateFridgeItem,
@@ -276,6 +317,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       submitCheckIn,
       refreshToday,
       regeneratePlan,
+      saveReminderPreference,
       recognizeFridgeImage,
       saveFridgeItems,
       updateFridgeItem,
