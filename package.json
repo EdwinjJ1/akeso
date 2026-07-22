@@ -11,7 +11,7 @@
     "app:web": "npm run web --workspace=apps/app",
     "api": "npm run dev --workspace=apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/vision-eval/tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run && npm run test --workspace=apps/app",
     "vision:eval": "tsx scripts/vision-eval/run.ts",
     "vision:eval:check": "tsx scripts/vision-eval/run.ts --dry-run"
   },

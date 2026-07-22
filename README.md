@@ -28,6 +28,7 @@ npm run app          # Expo dev server (scan QR with Expo Go for mobile)
 npm run api          # Express API dev server on http://localhost:3001
 npm run typecheck    # typecheck app + domain + api
 npm run test         # domain (schemas, EnergyEngine, PlannerService) + API route tests
+npm run test --workspace=apps/app  # Expo component and interaction tests
 ```
 
 Copy `apps/api/.env.example` to `apps/api/.env` before running `npm run api`.

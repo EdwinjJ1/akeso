@@ -31,6 +31,8 @@ export {
   ReminderPreferenceSchema as reminderPreferenceSchema,
   Scale1to5Schema as scale1to5Schema,
   SleepDurationSchema as sleepDurationSchema,
+  UpdatePlanBlockInputSchema as updatePlanBlockInputSchema,
+  UpdatePlanBlockParamsSchema as updatePlanBlockParamsSchema,
   UserGoalSchema as userGoalSchema,
   UserProfileSchema as userProfileSchema,
 } from '@akeso/contracts'

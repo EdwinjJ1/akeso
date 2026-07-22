@@ -11,6 +11,7 @@ import type {
   NutritionPlan,
   ReminderPreference,
   Task,
+  UpdatePlanBlockInput,
   UserProfile,
 } from '@akeso/domain'
 import { Platform } from 'react-native'
@@ -160,6 +161,18 @@ export class ApiService implements AkesoService {
 
   getTodayPlan(date: string): Promise<DayPlan | null> {
     return this.request('GET', `/v1/plan/${encodeURIComponent(date)}`)
+  }
+
+  updatePlanBlock(
+    date: string,
+    blockId: string,
+    input: UpdatePlanBlockInput
+  ): Promise<DayPlan> {
+    return this.request(
+      'PATCH',
+      `/v1/plan/${encodeURIComponent(date)}/blocks/${encodeURIComponent(blockId)}`,
+      input
+    )
   }
 
   regeneratePlan(

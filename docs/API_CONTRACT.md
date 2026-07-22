@@ -40,6 +40,7 @@
 | `getTodayEnergy(date)` | `GET /v1/energy/:date` | — | `EnergyResult \| null` | Dashboard |
 | `getTasks(date)` | `GET /v1/tasks?date=` | — | `Task[]` | Plan |
 | `getTodayPlan(date)` | `GET /v1/plan/:date` | — | `DayPlan \| null` | Plan / Dashboard |
+| `updatePlanBlock(date, blockId, input)` | `PATCH /v1/plan/:date/blocks/:blockId` | `{ title, start, end, status }` | `DayPlan` | Plan |
 | `regeneratePlan(date, instruction?)` | `POST /v1/plan/:date/regenerate` | `{ "instruction"?: string }` | `{ plan: DayPlan, coach: CoachReply }` | Plan |
 | `getNutritionPlan(date)` | `GET /v1/nutrition/:date` | — | `NutritionPlan \| null` | Nutrition / Dashboard |
 | `regenerateNutrition(date)` | `POST /v1/nutrition/:date/regenerate` | — | `NutritionPlan` | Nutrition |
@@ -58,6 +59,8 @@
 
 - `GET /v1/energy/:date` 在**未签到**时返回 `data: null`(HTTP 200),App 以此判断是否显示 Check-in 引导;`getTodayPlan` 同理;
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
+- `PATCH /v1/plan/:date/blocks/:blockId` 只允许修改标题、开始/结束时间与完成状态；首次更新保存原始建议，重叠时段返回 `VALIDATION_ERROR`，且不得修改 Energy score、预测能量或推荐理由；
+- `POST /v1/plan/:date/regenerate` 保留 `source: "user"` 的块，并移除与其重复或重叠的新建议；
 - `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
@@ -159,7 +162,7 @@ sleep_duration / last_meal / hydration = possible_context, no impact
 | Welcome / Onboarding | `saveProfile` |
 | Daily Check-in | `submitCheckIn(CheckInInput) → EnergyResult` |
 | Dashboard(主页) | `EnergyResult`(score/band/headline/factors/curve/peak/dip)+ `NutritionPlan`(needs 前 2 + meals[0])+ `CoachReply`(compact) |
-| Today's Plan | `DayPlan.blocks[]` + `Task[]` + `CoachReply` + `regeneratePlan` |
+| Today's Plan | `DayPlan.blocks[]` + `CoachReply` + `updatePlanBlock` + `regeneratePlan` |
 | Nutrition | `NutritionPlan`(needs/fridge/meals/rationale) |
 
 ## 后端待办(从契约出发)

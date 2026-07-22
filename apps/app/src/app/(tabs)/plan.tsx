@@ -1,12 +1,20 @@
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+
+import type {
+  CoachReply,
+  DayPlan,
+  EnergyResult,
+  PlanBlock,
+  UpdatePlanBlockInput,
+} from '@akeso/domain'
 
 import { CoachCard } from '@/components/coach-card'
 import { Mascot } from '@/components/mascot'
 import { PlanBlockCard } from '@/components/plan/plan-block-card'
-import { TaskRow } from '@/components/plan/task-row'
+import { PlanBlockUpdateSheet } from '@/components/plan/plan-block-update-sheet'
 import { Button } from '@/components/ui/buttons'
 import { Card } from '@/components/ui/card'
 import { Screen } from '@/components/ui/screen'
@@ -20,28 +28,108 @@ export default function Plan() {
   const {
     energy,
     plan,
-    tasks,
     coach,
+    loading,
+    error,
     planLoading,
     planError,
     refreshToday,
     regeneratePlan,
+    updatePlanBlock,
   } = useAppState()
-  const [regenerating, setRegenerating] = useState(false)
+
+  useEffect(() => {
+    void refreshToday()
+  }, [refreshToday])
+
   const today = todayISO()
-  const todayEnergy = energy?.date === today ? energy : null
-  const todayPlan = plan?.date === today ? plan : null
+  return (
+    <PlanView
+      energy={energy?.date === today ? energy : null}
+      plan={plan?.date === today ? plan : null}
+      coach={coach}
+      loading={loading}
+      error={error}
+      planLoading={planLoading}
+      planError={planError}
+      onRefresh={refreshToday}
+      onRegenerate={() => regeneratePlan()}
+      onUpdateBlock={updatePlanBlock}
+    />
+  )
+}
+
+interface PlanViewProps {
+  energy: EnergyResult | null
+  plan: DayPlan | null
+  coach: CoachReply | null
+  loading: boolean
+  error: string | null
+  planLoading: boolean
+  planError: string | null
+  onRefresh: () => void | Promise<void>
+  onRegenerate: () => Promise<void>
+  onUpdateBlock: (
+    blockId: string,
+    input: UpdatePlanBlockInput
+  ) => Promise<void>
+}
+
+export function PlanView({
+  energy,
+  plan,
+  coach,
+  loading,
+  error,
+  planLoading,
+  planError,
+  onRefresh,
+  onRegenerate,
+  onUpdateBlock,
+}: PlanViewProps) {
+  const [regenerating, setRegenerating] = useState(false)
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+  const [selectedBlock, setSelectedBlock] = useState<PlanBlock | null>(null)
 
   const regenerate = async () => {
     setRegenerating(true)
+    setRegenerateError(null)
     try {
-      await regeneratePlan()
+      await onRegenerate()
+    } catch {
+      setRegenerateError('Couldn’t regenerate suggestions. Please retry.')
     } finally {
       setRegenerating(false)
     }
   }
 
-  if (!todayEnergy) {
+  if (loading && !plan) {
+    return (
+      <Screen tabbed>
+        <SectionHeader title="Today’s plan" subtitle={todayLabel()} />
+        <View style={styles.loading}>
+          <Mascot state="steady" size={120} />
+          <ActivityIndicator color={colors.text} />
+          <Text style={styles.loadingText}>Reading today’s plan…</Text>
+        </View>
+      </Screen>
+    )
+  }
+
+  if (error && !plan) {
+    return (
+      <Screen tabbed>
+        <SectionHeader title="Today’s plan" subtitle={todayLabel()} />
+        <Card tone="coral" style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>Couldn’t load today’s plan</Text>
+          <Text style={styles.emptyText}>{error}</Text>
+          <Button label="Retry" onPress={() => void onRefresh()} variant="cta" />
+        </Card>
+      </Screen>
+    )
+  }
+
+  if (!energy) {
     return (
       <Screen tabbed>
         <SectionHeader title="Today’s plan" subtitle={todayLabel()} />
@@ -60,35 +148,35 @@ export default function Plan() {
     )
   }
 
-  if (!todayPlan) {
+  if (!plan || plan.blocks.length === 0) {
     return (
       <Screen tabbed>
-        <SectionHeader title="Today's plan" subtitle={todayLabel()} />
+        <SectionHeader title="Today’s plan" subtitle={todayLabel()} />
         <Card style={styles.emptyCard}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="cloud-offline-outline" size={26} color={colors.primaryDark} />
+            <Ionicons name="sparkles-outline" size={26} color={colors.primaryDark} />
           </View>
           <Text style={styles.emptyTitle}>
-            {planLoading ? 'Loading your plan' : "Today's plan is unavailable"}
+            {planLoading ? 'Loading your plan' : 'No suggestions yet'}
           </Text>
           <Text style={styles.emptyText}>
             {planLoading
               ? 'Your energy result is ready. We are still matching tasks to your best hours.'
-              : planError ?? 'Your energy result is safe. Try loading the plan again.'}
+              : planError ?? 'Akeso can rebuild a light, energy-matched set of suggestions for today.'}
           </Text>
           <Button
-            label={planLoading ? 'Loading plan…' : 'Retry plan'}
-            onPress={refreshToday}
-            disabled={planLoading}
+            label={planLoading ? 'Loading plan…' : 'Regenerate suggestions'}
+            onPress={planLoading ? () => void onRefresh() : regenerate}
+            loading={planLoading || regenerating}
             variant="cta"
           />
+          {regenerateError ? (
+            <Text style={styles.inlineError}>{regenerateError}</Text>
+          ) : null}
         </Card>
       </Screen>
     )
   }
-
-  const unscheduled = tasks.filter((task) => task.status === 'todo')
-  const scheduled = tasks.filter((task) => task.status !== 'todo')
 
   return (
     <Screen tabbed>
@@ -106,47 +194,45 @@ export default function Plan() {
       <Reveal delay={70}>
       <Card tone="yellow" style={styles.noteCard}>
         <Ionicons name="sparkles" size={16} color={colors.primaryDark} />
-        <Text style={styles.noteText}>{todayPlan.coachNote}</Text>
+        <Text style={styles.noteText}>{plan.coachNote}</Text>
       </Card>
       </Reveal>
 
       <Reveal delay={130} style={styles.timeline}>
-        {todayPlan.blocks.map((block, index) => (
+        {plan.blocks.map((block, index) => (
           <PlanBlockCard
             key={block.id}
             block={block}
-            isLast={index === todayPlan.blocks.length - 1}
+            isLast={index === plan.blocks.length - 1}
+            onUpdate={() => setSelectedBlock(block)}
           />
         ))}
       </Reveal>
 
       <View style={styles.regenerateWrap}>
       <Button
-        label="Regenerate with coach"
+        label="Regenerate suggestions"
         onPress={regenerate}
         loading={regenerating}
         variant="ghost"
       />
-      </View>
-
-      <View style={styles.tasksSection}>
-        <Text style={type.h2}>Tasks</Text>
-        <Card tone="quiet" style={styles.tasksCard}>
-          {scheduled.map((task) => (
-            <TaskRow key={task.id} task={task} />
-          ))}
-          {unscheduled.length > 0 ? (
-            <>
-              <Text style={styles.unscheduledLabel}>Not scheduled today</Text>
-              {unscheduled.map((task) => (
-                <TaskRow key={task.id} task={task} />
-              ))}
-            </>
-          ) : null}
-        </Card>
+      {regenerateError ? (
+        <Text style={styles.inlineError}>{regenerateError}</Text>
+      ) : null}
       </View>
 
       {coach ? <CoachCard coach={coach} /> : null}
+
+      <PlanBlockUpdateSheet
+        visible={selectedBlock !== null}
+        block={selectedBlock}
+        blocks={plan.blocks}
+        onClose={() => setSelectedBlock(null)}
+        onSave={(input) => {
+          if (!selectedBlock) return Promise.resolve()
+          return onUpdateBlock(selectedBlock.id, input)
+        }}
+      />
     </Screen>
   )
 }
@@ -194,6 +280,15 @@ const styles = StyleSheet.create({
     marginTop: sp(2),
     marginBottom: sp(5),
   },
+  loading: { paddingVertical: sp(10), alignItems: 'center', gap: sp(2) },
+  loadingText: { ...type.small, color: colors.text },
+  inlineError: {
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: sp(2),
+    textAlign: 'center',
+  },
   noteCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -210,15 +305,4 @@ const styles = StyleSheet.create({
     marginBottom: sp(4),
   },
   regenerateWrap: { marginBottom: sp(3) },
-  tasksSection: {
-    marginTop: sp(6),
-  },
-  tasksCard: {
-    marginTop: sp(3),
-  },
-  unscheduledLabel: {
-    ...type.label,
-    marginTop: sp(3),
-    marginBottom: sp(1),
-  },
 })

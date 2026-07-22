@@ -4,6 +4,7 @@ import {
   CoachReplySchema,
   DayPlanSchema,
   EnergyResultSchema,
+  UpdatePlanBlockResponseSchema,
   GetFridgeResponseSchema,
   GetNutritionResponseSchema,
   GetProfileResponseSchema,
@@ -100,6 +101,27 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
       true
     )
+  })
+
+  test('PATCH /v1/plan/:date/blocks/:blockId → updated DayPlan envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    const block = plan.body.data.blocks[0]
+    const response = await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${block.id}`)
+      .send({
+        title: 'Updated suggestion',
+        start: block.start,
+        end: block.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    const result = UpdatePlanBlockResponseSchema.safeParse(response.body)
+    expect(
+      result.success,
+      JSON.stringify(result.success ? null : result.error.issues)
+    ).toBe(true)
   })
 
   test('GET /v1/coach/:date → CoachReply envelope', async () => {

@@ -96,6 +96,19 @@ export function createMemoryRepos(): Repos {
         plans.set(dateKey(userId, plan.date), plan)
         return plan
       },
+      async updateBlock(userId, date, updatedBlock) {
+        const key = dateKey(userId, date)
+        const plan = plans.get(key)
+        if (!plan) throw new Error(`No plan exists for ${date}`)
+        plans.set(key, {
+          ...plan,
+          blocks: plan.blocks
+            .map((block) =>
+              block.id === updatedBlock.id ? updatedBlock : block
+            )
+            .sort((left, right) => left.start.localeCompare(right.start)),
+        })
+      },
     },
 
     fridge: {

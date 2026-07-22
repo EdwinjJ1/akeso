@@ -65,8 +65,85 @@ interface PlanBlockRow {
   type: PlanBlock['type']
   title: string
   task_id: string | null
+  status: PlanBlock['status']
+  source: PlanBlock['source']
+  original_title: string | null
+  original_start_time: string | null
+  original_end_time: string | null
   energy_level: PlanBlock['energyLevel']
   rationale: string
+}
+
+function planBlockFromRow(row: PlanBlockRow): PlanBlock {
+  const block = {
+    id: row.id,
+    start: row.start_time,
+    end: row.end_time,
+    type: row.type,
+    title: row.title,
+    taskId: row.task_id ?? undefined,
+    status: row.status,
+    energyLevel: row.energy_level,
+    rationale: row.rationale,
+  }
+
+  if (row.source === 'akeso') return { ...block, source: 'akeso' }
+  if (
+    !row.original_title ||
+    !row.original_start_time ||
+    !row.original_end_time
+  ) {
+    throw new Error(
+      `plan_block.get: user block ${row.id} is missing its original suggestion`
+    )
+  }
+  return {
+    ...block,
+    source: 'user',
+    originalSuggestion: {
+      title: row.original_title,
+      start: row.original_start_time,
+      end: row.original_end_time,
+    },
+  }
+}
+
+function originalSuggestionColumns(block: PlanBlock) {
+  return block.source === 'user'
+    ? {
+        original_title: block.originalSuggestion.title,
+        original_start_time: block.originalSuggestion.start,
+        original_end_time: block.originalSuggestion.end,
+      }
+    : {
+        original_title: null,
+        original_start_time: null,
+        original_end_time: null,
+      }
+}
+
+function editablePlanBlockColumns(block: PlanBlock) {
+  return {
+    start_time: block.start,
+    end_time: block.end,
+    title: block.title,
+    status: block.status,
+    source: block.source,
+    ...originalSuggestionColumns(block),
+  }
+}
+
+function planBlockInsertRow(userId: string, date: string, block: PlanBlock) {
+  return {
+    id: block.id,
+    user_id: userId,
+    date,
+    ...editablePlanBlockColumns(block),
+    type: block.type,
+    task_id: block.taskId ?? null,
+    energy_level: block.energyLevel,
+    rationale: block.rationale,
+  }
 }
 
 interface CheckinRow {
@@ -281,7 +358,9 @@ export function createSupabaseRepos(): Repos {
           unwrap<PlanBlockRow[]>(
             await supabase
               .from('plan_block')
-              .select('id, start_time, end_time, type, title, task_id, energy_level, rationale')
+              .select(
+                'id, start_time, end_time, type, title, task_id, status, source, original_title, original_start_time, original_end_time, energy_level, rationale'
+              )
               .eq('user_id', userId)
               .eq('date', date)
               .order('start_time', { ascending: true }),
@@ -290,16 +369,7 @@ export function createSupabaseRepos(): Repos {
 
         return {
           date,
-          blocks: blockRows.map((row) => ({
-            id: row.id,
-            start: row.start_time,
-            end: row.end_time,
-            type: row.type,
-            title: row.title,
-            taskId: row.task_id ?? undefined,
-            energyLevel: row.energy_level,
-            rationale: row.rationale,
-          })),
+          blocks: blockRows.map(planBlockFromRow),
           coachNote: dayPlanRow.coach_note,
           generatedAt: dayPlanRow.generated_at,
         }
@@ -334,24 +404,31 @@ export function createSupabaseRepos(): Repos {
         if (plan.blocks.length > 0) {
           unwrap(
             await supabase.from('plan_block').insert(
-              plan.blocks.map((block) => ({
-                id: block.id,
-                user_id: userId,
-                date: plan.date,
-                start_time: block.start,
-                end_time: block.end,
-                type: block.type,
-                title: block.title,
-                task_id: block.taskId ?? null,
-                energy_level: block.energyLevel,
-                rationale: block.rationale,
-              }))
+              plan.blocks.map((block) =>
+                planBlockInsertRow(userId, plan.date, block)
+              )
             ),
             'plan_block.insert'
           )
         }
 
         return plan
+      },
+      async updateBlock(userId, date, block) {
+        const row = unwrap<{ id: string }>(
+          await supabase
+            .from('plan_block')
+            .update(editablePlanBlockColumns(block))
+            .eq('user_id', userId)
+            .eq('date', date)
+            .eq('id', block.id)
+            .select('id')
+            .maybeSingle(),
+          'plan_block.update'
+        )
+        if (!row) {
+          throw new Error(`plan_block.update: block ${block.id} was not found`)
+        }
       },
     },
 

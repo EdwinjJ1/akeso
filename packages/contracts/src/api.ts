@@ -11,6 +11,7 @@ import {
   NutritionPlanSchema,
   ReminderPreferenceSchema,
   TaskSchema,
+  UpdatePlanBlockInputSchema,
   UserProfileSchema,
   type ApiError,
 } from './schemas'
@@ -71,6 +72,16 @@ export const TasksResponseSchema = apiResponseSchema(z.array(TaskSchema))
 
 /** `data: null` (HTTP 200) when no plan exists for that date yet. */
 export const GetPlanResponseSchema = apiResponseSchema(DayPlanSchema.nullable())
+
+// ── PATCH /v1/plan/:date/blocks/:blockId ───────────────────────────────────
+
+export const UpdatePlanBlockParamsSchema = DateParamsSchema.extend({
+  blockId: z.string().min(1),
+})
+export type UpdatePlanBlockParams = z.infer<typeof UpdatePlanBlockParamsSchema>
+
+export const UpdatePlanBlockRequestSchema = UpdatePlanBlockInputSchema
+export const UpdatePlanBlockResponseSchema = apiResponseSchema(DayPlanSchema)
 
 // ── POST /v1/plan/:date/regenerate ──────────────────────────────────────────
 
@@ -192,6 +203,13 @@ export const apiContract = {
     path: '/v1/plan/:date',
     params: DateParamsSchema,
     response: GetPlanResponseSchema,
+  },
+  updatePlanBlock: {
+    method: 'PATCH',
+    path: '/v1/plan/:date/blocks/:blockId',
+    params: UpdatePlanBlockParamsSchema,
+    request: UpdatePlanBlockRequestSchema,
+    response: UpdatePlanBlockResponseSchema,
   },
   regeneratePlan: {
     method: 'POST',

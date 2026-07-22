@@ -245,27 +245,75 @@ export const PlanBlockTypeSchema = z.enum([
 ])
 export type PlanBlockType = z.infer<typeof PlanBlockTypeSchema>
 
-export const PlanBlockSchema = z
+export const PlanBlockStatusSchema = z.enum(['planned', 'completed'])
+export type PlanBlockStatus = z.infer<typeof PlanBlockStatusSchema>
+
+export const PlanBlockSourceSchema = z.enum(['akeso', 'user'])
+export type PlanBlockSource = z.infer<typeof PlanBlockSourceSchema>
+
+export const OriginalPlanBlockSuggestionSchema = z
   .object({
-    id: z.string().min(1),
+    title: z.string().min(1),
     start: TimeStringSchema,
     end: TimeStringSchema,
-    type: PlanBlockTypeSchema,
-    title: z.string().min(1),
-    taskId: z.string().min(1).optional(),
-    /** Predicted energy band during this block. */
-    energyLevel: EnergyBandSchema,
-    /** Why the planner put it here — always evidence-based. */
-    rationale: z.string().min(1),
   })
+  .strict()
+export type OriginalPlanBlockSuggestion = z.infer<
+  typeof OriginalPlanBlockSuggestionSchema
+>
+
+const PlanBlockFields = {
+  id: z.string().min(1),
+  start: TimeStringSchema,
+  end: TimeStringSchema,
+  type: PlanBlockTypeSchema,
+  title: z.string().min(1),
+  taskId: z.string().min(1).optional(),
+  status: PlanBlockStatusSchema,
+  /** Predicted energy band during this block. */
+  energyLevel: EnergyBandSchema,
+  /** Why the planner put it here — always evidence-based. */
+  rationale: z.string().min(1),
+} as const
+
+export const PlanBlockSchema = z
+  .discriminatedUnion('source', [
+    z
+      .object({
+        ...PlanBlockFields,
+        source: z.literal('akeso'),
+        originalSuggestion: z.never().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        ...PlanBlockFields,
+        source: z.literal('user'),
+        originalSuggestion: OriginalPlanBlockSuggestionSchema,
+      })
+      .strict(),
+  ])
   // Zero-padded HH:mm compares correctly as a string. Blocks stay within one
   // local day — overnight blocks are out of scope for the demo.
   .refine((b) => b.end > b.start, { message: 'end must be after start' })
 export type PlanBlock = z.infer<typeof PlanBlockSchema>
 
+export const UpdatePlanBlockInputSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    start: TimeStringSchema,
+    end: TimeStringSchema,
+    status: PlanBlockStatusSchema,
+  })
+  .strict()
+  .refine((input) => input.end > input.start, {
+    message: 'end must be after start',
+  })
+export type UpdatePlanBlockInput = z.infer<typeof UpdatePlanBlockInputSchema>
+
 export const DayPlanSchema = z.object({
   date: DateStringSchema,
-  blocks: z.array(PlanBlockSchema).min(1),
+  blocks: z.array(PlanBlockSchema),
   coachNote: z.string().min(1),
   generatedAt: IsoDateTimeSchema,
 })

@@ -8,6 +8,7 @@ import type {
   NutritionPlan,
   ReminderPreference,
   Task,
+  UpdatePlanBlockInput,
   UserProfile,
 } from './types'
 
@@ -39,6 +40,12 @@ export interface AkesoService {
   getTasks(date: string): Promise<Task[]>
   /** GET /v1/plan/:date — null until an energy result exists */
   getTodayPlan(date: string): Promise<DayPlan | null>
+  /** PATCH /v1/plan/:date/blocks/:blockId — updates only user-editable fields */
+  updatePlanBlock(
+    date: string,
+    blockId: string,
+    input: UpdatePlanBlockInput
+  ): Promise<DayPlan>
   /** POST /v1/plan/:date/regenerate — optional free-text instruction to the coach */
   regeneratePlan(
     date: string,

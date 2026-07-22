@@ -2,11 +2,12 @@ import { EnergyEngine } from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
 import type { AiServices } from './services/types'
 import request from 'supertest'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { createApp } from './app'
 import { env } from './env'
 import { createMemoryRepos } from './repos/memory'
+import type { Repos } from './repos/types'
 
 const validCheckIn: CheckInInput = {
   date: '2026-07-21',
@@ -17,6 +18,7 @@ const validCheckIn: CheckInInput = {
 }
 
 let app: ReturnType<typeof createApp>
+let repos: Repos
 
 const fakeAiServices: AiServices = {
   async recognizeIngredients() {
@@ -61,7 +63,8 @@ const fakeAiServices: AiServices = {
 
 beforeEach(() => {
   // Fresh in-memory repos per test so state never leaks across cases.
-  app = createApp(createMemoryRepos(), fakeAiServices)
+  repos = createMemoryRepos()
+  app = createApp(repos, fakeAiServices)
 })
 
 describe('POST /v1/checkins', () => {
@@ -149,6 +152,139 @@ describe('GET /v1/plan/:date', () => {
   })
 })
 
+describe('PATCH /v1/plan/:date/blocks/:blockId', () => {
+  test('persists one block without rewriting the entire day', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const originalPlan = await request(app)
+      .get('/v1/plan/2026-07-21')
+      .expect(200)
+    const original = originalPlan.body.data.blocks[0]
+    const wholePlanUpsert = vi.spyOn(repos.plans, 'upsert')
+    const updateBlock = vi.spyOn(repos.plans, 'updateBlock')
+
+    await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${original.id}`)
+      .send({
+        title: 'Atomic block update',
+        start: original.start,
+        end: original.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    expect(updateBlock).toHaveBeenCalledWith(
+      expect.any(String),
+      '2026-07-21',
+      expect.objectContaining({
+        id: original.id,
+        title: 'Atomic block update',
+        status: 'completed',
+        source: 'user',
+      })
+    )
+    expect(wholePlanUpsert).not.toHaveBeenCalled()
+  })
+
+  test('persists editable fields while leaving energy and rationale unchanged', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const energyBefore = await request(app)
+      .get('/v1/energy/2026-07-21')
+      .expect(200)
+    const originalPlan = await request(app)
+      .get('/v1/plan/2026-07-21')
+      .expect(200)
+    const original = originalPlan.body.data.blocks[0]
+
+    const response = await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${original.id}`)
+      .send({
+        title: 'My updated morning block',
+        start: original.start,
+        end: original.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    const updated = response.body.data.blocks.find(
+      (block: { id: string }) => block.id === original.id
+    )
+    expect(updated).toMatchObject({
+      title: 'My updated morning block',
+      status: 'completed',
+      source: 'user',
+      energyLevel: original.energyLevel,
+      rationale: original.rationale,
+      originalSuggestion: {
+        title: original.title,
+        start: original.start,
+        end: original.end,
+      },
+    })
+
+    const refreshed = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    expect(refreshed.body.data).toEqual(response.body.data)
+    const energyAfter = await request(app)
+      .get('/v1/energy/2026-07-21')
+      .expect(200)
+    expect(energyAfter.body).toEqual(energyBefore.body)
+  })
+
+  test('rejects overlaps and immutable fields', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    const [first, second] = plan.body.data.blocks
+
+    const overlap = await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${first.id}`)
+      .send({
+        title: first.title,
+        start: second.start,
+        end: second.end,
+        status: 'planned',
+      })
+      .expect(400)
+    expect(overlap.body.error.code).toBe('VALIDATION_ERROR')
+
+    const immutable = await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${first.id}`)
+      .send({
+        title: first.title,
+        start: first.start,
+        end: first.end,
+        status: 'planned',
+        energyLevel: 'low',
+      })
+      .expect(400)
+    expect(immutable.body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  test('returns 404 when the plan or block does not exist', async () => {
+    const noPlan = await request(app)
+      .patch('/v1/plan/2026-07-21/blocks/block-1')
+      .send({
+        title: 'Missing',
+        start: '09:00',
+        end: '10:00',
+        status: 'planned',
+      })
+      .expect(404)
+    expect(noPlan.body.error.code).toBe('NOT_FOUND')
+
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    await request(app).get('/v1/plan/2026-07-21').expect(200)
+    const noBlock = await request(app)
+      .patch('/v1/plan/2026-07-21/blocks/missing-block')
+      .send({
+        title: 'Missing',
+        start: '09:00',
+        end: '10:00',
+        status: 'planned',
+      })
+      .expect(404)
+    expect(noBlock.body.error.code).toBe('NOT_FOUND')
+  })
+})
+
 describe('POST /v1/plan/:date/regenerate', () => {
   test('404s when there is no check-in yet', async () => {
     const response = await request(app)
@@ -167,6 +303,38 @@ describe('POST /v1/plan/:date/regenerate', () => {
 
     expect(response.body.data.plan.coachNote).toContain('more rest')
     expect(response.body.data.coach.disclaimer).toBeTruthy()
+  })
+
+  test('preserves user-updated blocks during regeneration', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const originalPlan = await request(app)
+      .get('/v1/plan/2026-07-21')
+      .expect(200)
+    const original = originalPlan.body.data.blocks[0]
+    await request(app)
+      .patch(`/v1/plan/2026-07-21/blocks/${original.id}`)
+      .send({
+        title: 'Keep my morning edit',
+        start: original.start,
+        end: original.end,
+        status: 'completed',
+      })
+      .expect(200)
+
+    const response = await request(app)
+      .post('/v1/plan/2026-07-21/regenerate')
+      .send({})
+      .expect(200)
+
+    expect(
+      response.body.data.plan.blocks.find(
+        (block: { id: string }) => block.id === original.id
+      )
+    ).toMatchObject({
+      title: 'Keep my morning edit',
+      status: 'completed',
+      source: 'user',
+    })
   })
 })
 
