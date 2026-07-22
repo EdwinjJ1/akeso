@@ -4,6 +4,8 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   NutritionPlan,
   ReminderPreference,
   Task,
@@ -51,6 +53,13 @@ export function createMemoryRepos(): Repos {
   const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
   const reminders = createBoundedMap<string, ReminderPreference>(limit)
   const nutritionPlans = createBoundedMap<string, NutritionPlan>(limit)
+  const reportsByUser = createBoundedMap<string, Map<string, HealthReport>>(limit)
+  // Per-user cacheKey → recommendation set, so recommendations stay scoped to
+  // their owner and can be swept by report id when a report is deleted.
+  const reportRecommendationsByUser = createBoundedMap<
+    string,
+    Map<string, HealthRecommendationSet>
+  >(limit)
 
   return {
     profile: {
@@ -142,6 +151,47 @@ export function createMemoryRepos(): Repos {
       async upsert(userId, pref) {
         reminders.set(userId, pref)
         return pref
+      },
+    },
+
+    reports: {
+      async list(userId) {
+        return Array.from((reportsByUser.get(userId) ?? new Map()).values()).sort(
+          (left, right) => right.createdAt.localeCompare(left.createdAt)
+        )
+      },
+      async get(userId, id) {
+        return reportsByUser.get(userId)?.get(id) ?? null
+      },
+      async upsert(userId, report) {
+        const reports =
+          reportsByUser.get(userId) ?? new Map<string, HealthReport>()
+        reports.set(report.id, report)
+        reportsByUser.set(userId, reports)
+        return report
+      },
+      async remove(userId, id) {
+        reportsByUser.get(userId)?.delete(id)
+      },
+    },
+
+    reportRecommendationCache: {
+      async get(userId, cacheKey) {
+        return reportRecommendationsByUser.get(userId)?.get(cacheKey) ?? null
+      },
+      async upsert(userId, cacheKey, recommendations) {
+        const cache =
+          reportRecommendationsByUser.get(userId) ??
+          new Map<string, HealthRecommendationSet>()
+        cache.set(cacheKey, recommendations)
+        reportRecommendationsByUser.set(userId, cache)
+      },
+      async removeByReport(userId, reportId) {
+        const cache = reportRecommendationsByUser.get(userId)
+        if (!cache) return
+        for (const [cacheKey, set] of cache) {
+          if (set.reportId === reportId) cache.delete(cacheKey)
+        }
       },
     },
   }

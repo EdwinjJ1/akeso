@@ -28,33 +28,42 @@ export default function TabsLayout() {
           tabBarActiveBackgroundColor: colors.text,
         }}
       >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Today',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="pulse" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="plan"
-        options={{
-          title: 'Plan',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: 'Nutrition',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="nutrition" size={size} color={color} />
-          ),
-        }}
-      />
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Today',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="pulse" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="plan"
+          options={{
+            title: 'Plan',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="nutrition"
+          options={{
+            title: 'Nutrition',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="nutrition" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="more"
+          options={{
+            title: 'More',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="ellipsis-horizontal" size={size} color={color} />
+            ),
+          }}
+        />
       </Tabs>
       <CoachFab />
     </>

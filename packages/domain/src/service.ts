@@ -4,9 +4,13 @@ import type {
   DayPlan,
   EnergyResult,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportExtractionResult,
+  ReportMetric,
   Task,
   UpdatePlanBlockInput,
   UserProfile,
@@ -16,6 +20,13 @@ export interface FridgeImageUpload {
   uri: string
   filename: string
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+}
+
+/** Report uploads are JPEG/PNG only for the MVP (no PDF). */
+export interface ReportImageUpload {
+  uri: string
+  filename: string
+  mimeType: 'image/jpeg' | 'image/png'
 }
 
 /**
@@ -69,6 +80,20 @@ export interface AkesoService {
   deleteFridgeItem(id: string): Promise<void>
   saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]>
   recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
+
+  /**
+   * Health reports (More tab). Extraction returns editable candidates only —
+   * nothing is stored until saveReport persists the metrics the user
+   * confirmed. Recommendations reference confirmed metric ids only and always
+   * carry a non-diagnostic disclaimer.
+   */
+  extractReportMetrics(image: ReportImageUpload): Promise<ReportExtractionResult>
+  getReports(): Promise<HealthReport[]>
+  /** POST /v1/reports — server assigns the id and recomputes each status. */
+  saveReport(metrics: ReportMetric[]): Promise<HealthReport>
+  deleteReport(id: string): Promise<void>
+  getReportRecommendations(id: string): Promise<HealthRecommendationSet>
+  regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
 
   /** GET /v1/reminders — null until the user has set a preference */
   getReminderPreference(): Promise<ReminderPreference | null>

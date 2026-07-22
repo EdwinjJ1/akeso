@@ -7,9 +7,13 @@ import {
   DayPlanSchema,
   EnergyResultSchema,
   FridgeItemSchema,
+  HealthReportSchema,
+  HealthRecommendationSetSchema,
   IngredientRecognitionResultSchema,
   NutritionPlanSchema,
   ReminderPreferenceSchema,
+  ReportExtractionResultSchema,
+  ReportMetricSchema,
   TaskSchema,
   UpdatePlanBlockInputSchema,
   UserProfileSchema,
@@ -150,6 +154,41 @@ export const RegenerateNutritionResponseSchema = apiResponseSchema(
   NutritionPlanSchema
 )
 
+// ── Health reports ──────────────────────────────────────────────────────────
+
+export const ReportParamsSchema = z.object({ id: z.string().min(1) })
+export type ReportParams = z.infer<typeof ReportParamsSchema>
+
+/** POST /v1/reports/extractions (multipart image) — never persists anything. */
+export const CreateReportExtractionResponseSchema = apiResponseSchema(
+  ReportExtractionResultSchema
+)
+
+/** GET /v1/reports */
+export const GetReportsResponseSchema = apiResponseSchema(
+  z.array(HealthReportSchema)
+)
+
+/** POST /v1/reports — the client sends only metrics the user confirmed. */
+export const CreateReportRequestSchema = z
+  .object({ metrics: z.array(ReportMetricSchema).min(1).max(50) })
+  .strict()
+export type CreateReportRequest = z.infer<typeof CreateReportRequestSchema>
+export const CreateReportResponseSchema = apiResponseSchema(HealthReportSchema)
+
+/** DELETE /v1/reports/:id */
+export const DeleteReportResponseSchema = apiResponseSchema(z.null())
+
+/** GET /v1/reports/:id/recommendations — a safe fallback set when none cached. */
+export const GetReportRecommendationsResponseSchema = apiResponseSchema(
+  HealthRecommendationSetSchema
+)
+
+/** POST /v1/reports/:id/recommendations/regenerate (the AI-calling path). */
+export const RegenerateReportRecommendationsResponseSchema = apiResponseSchema(
+  HealthRecommendationSetSchema
+)
+
 // ── GET /v1/reminders · PUT /v1/reminders ───────────────────────────────────
 
 /** `data: null` until the user has set a preference. */
@@ -264,6 +303,40 @@ export const apiContract = {
     path: '/v1/nutrition/:date/regenerate',
     params: DateParamsSchema,
     response: RegenerateNutritionResponseSchema,
+  },
+  createReportExtraction: {
+    method: 'POST',
+    path: '/v1/reports/extractions',
+    response: CreateReportExtractionResponseSchema,
+  },
+  getReports: {
+    method: 'GET',
+    path: '/v1/reports',
+    response: GetReportsResponseSchema,
+  },
+  createReport: {
+    method: 'POST',
+    path: '/v1/reports',
+    request: CreateReportRequestSchema,
+    response: CreateReportResponseSchema,
+  },
+  deleteReport: {
+    method: 'DELETE',
+    path: '/v1/reports/:id',
+    params: ReportParamsSchema,
+    response: DeleteReportResponseSchema,
+  },
+  getReportRecommendations: {
+    method: 'GET',
+    path: '/v1/reports/:id/recommendations',
+    params: ReportParamsSchema,
+    response: GetReportRecommendationsResponseSchema,
+  },
+  regenerateReportRecommendations: {
+    method: 'POST',
+    path: '/v1/reports/:id/recommendations/regenerate',
+    params: ReportParamsSchema,
+    response: RegenerateReportRecommendationsResponseSchema,
   },
   getReminderPreference: {
     method: 'GET',

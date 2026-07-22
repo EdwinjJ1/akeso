@@ -4,6 +4,8 @@ import type {
   EnergyResult,
   PlanBlock,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   NutritionPlan,
   ReminderPreference,
   Task,
@@ -48,6 +50,30 @@ export interface ReminderRepo {
   upsert(userId: string, pref: ReminderPreference): Promise<ReminderPreference>
 }
 
+export interface ReportRepo {
+  /** Newest first. */
+  list(userId: string): Promise<HealthReport[]>
+  get(userId: string, id: string): Promise<HealthReport | null>
+  upsert(userId: string, report: HealthReport): Promise<HealthReport>
+  /** Idempotent: removing an id that doesn't exist is not an error. */
+  remove(userId: string, id: string): Promise<void>
+}
+
+export interface ReportRecommendationCacheRepo {
+  get(userId: string, cacheKey: string): Promise<HealthRecommendationSet | null>
+  upsert(
+    userId: string,
+    cacheKey: string,
+    recommendations: HealthRecommendationSet
+  ): Promise<void>
+  /**
+   * Remove every cached recommendation for a report (all prompt/model
+   * versions). Called when the report is deleted so no derived health data
+   * lingers. Idempotent: removing entries that don't exist is not an error.
+   */
+  removeByReport(userId: string, reportId: string): Promise<void>
+}
+
 export interface NutritionPlanCacheRepo {
   get(userId: string, cacheKey: string): Promise<NutritionPlan | null>
   upsert(userId: string, cacheKey: string, plan: NutritionPlan): Promise<void>
@@ -62,4 +88,6 @@ export interface Repos {
   fridge: FridgeRepo
   nutritionPlanCache: NutritionPlanCacheRepo
   reminders: ReminderRepo
+  reports: ReportRepo
+  reportRecommendationCache: ReportRecommendationCacheRepo
 }
