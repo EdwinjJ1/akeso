@@ -469,7 +469,7 @@ describe('nutrition and coach', () => {
         goal: 'academic',
         typicalWake: '07:30',
         typicalSleep: '23:30',
-        dietaryPreference: 'none',
+        dietaryPreference: 'vegan',
         dietarySafety: {
           allergens: ['milk'],
           avoidIngredients: [],
@@ -487,6 +487,21 @@ describe('nutrition and coach', () => {
 
     const response = await request(app).get('/v1/nutrition/2026-08-01').expect(200)
     expect(response.body.data.meals).toEqual([])
+  })
+
+  test('GET /v1/nutrition/:date counts hydration from the same-day check-in', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+
+    const sameDay = await request(app).get('/v1/nutrition/2026-07-21').expect(200)
+    const hydration = sameDay.body.data.needs.find(
+      (need: { key: string }) => need.key === 'hydration'
+    )
+    expect(hydration.current).toBe(1)
+
+    const otherDay = await request(app).get('/v1/nutrition/2026-07-22').expect(200)
+    expect(
+      otherDay.body.data.needs.find((need: { key: string }) => need.key === 'hydration').current
+    ).toBe(0)
   })
 
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {

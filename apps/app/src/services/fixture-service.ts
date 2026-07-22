@@ -33,6 +33,7 @@ const energyEngine = new EnergyEngine()
 export class FixtureService implements AkesoService {
   private profile: UserProfile | null = null
   private energy: EnergyResult | null = null
+  private latestCheckIn: CheckInInput | null = null
   private fridge = new Map<string, FridgeItem>()
   private reminder: ReminderPreference | null = null
 
@@ -49,6 +50,7 @@ export class FixtureService implements AkesoService {
 
   async submitCheckIn(input: CheckInInput): Promise<EnergyResult> {
     await wait(LATENCY_MS * 2)
+    this.latestCheckIn = input
     this.energy = energyEngine.evaluate(input)
     return this.energy
   }

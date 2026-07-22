@@ -1,5 +1,5 @@
 import { FIXTURE_DATE } from '@akeso/contracts'
-import type { UserProfile } from './types'
+import type { FridgeItem, UserProfile } from './types'
 
 /**
  * Demo fixture data. Entirely fictional (see TEAM_CONTRACT §4.4) — no real
@@ -32,3 +32,22 @@ export const fixtureProfile: UserProfile = {
     avoidIngredients: [],
   },
 }
+
+/**
+ * Item names are deliberately specific enough to identify one AFCD food
+ * profile each (see nutrition-data.ts alias policy): a generic "Spinach" or
+ * "Capsicum" would be rejected as ambiguous by the nutrition engine.
+ */
+export const fixtureFridge: FridgeItem[] = [
+  { id: 'fridge-1', name: 'Eggs', category: 'protein', allergenTags: ['eggs'] },
+  { id: 'fridge-2', name: 'Baby spinach', category: 'vegetable', allergenTags: [] },
+  { id: 'fridge-3', name: 'Salmon fillet', category: 'protein', allergenTags: ['fish'] },
+  { id: 'fridge-4', name: 'Natural yogurt', category: 'dairy', allergenTags: ['milk'] },
+  { id: 'fridge-5', name: 'Oats', category: 'grain', allergenTags: ['wheat_gluten'] },
+  { id: 'fridge-6', name: 'Blueberries', category: 'fruit', allergenTags: [] },
+  { id: 'fridge-7', name: 'Brown rice', category: 'grain', allergenTags: [] },
+  { id: 'fridge-8', name: 'Red capsicum', category: 'vegetable', allergenTags: [] },
+]
+
+// The previous hand-written fixtureNutritionPlan was removed: nothing
+// consumes it, and it carried a second, divergent set of targets and meal
