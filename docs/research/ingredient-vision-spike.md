@@ -26,7 +26,7 @@ The shared contract distinguishes:
 | --- | --- | --- | --- |
 | Xiaomi MiMo domestic | `mimo-v2.5` | native image/audio/video/text understanding; OpenAI-compatible image input and JSON object response mode | enabled for benchmark; final output is revalidated by shared Zod schema |
 | OpenAI | `gpt-5.6-luna` | image input and structured outputs | enabled for benchmark |
-| Gemini | `gemini-3.1-flash-lite` | image input and structured outputs | enabled for benchmark |
+| Gemini | `gemini-3.5-flash-lite` | image input and structured outputs | enabled for benchmark |
 | MiniMax domestic | `MiniMax-M2.7` | official AI SDK compatibility table marks image/file inputs unsupported | hard-blocked before network; text-only nutrition candidate |
 
 Sources:
@@ -34,7 +34,7 @@ Sources:
 - [MiMo OpenAI Chat Completions compatibility](https://mimo.mi.com/docs/zh-CN/api/chat/openai-api)
 - [MiMo V2.5 capability and pricing](https://mimo.mi.com/docs/zh-CN/usage-guide/multimodal-understanding/image-understanding)
 - [OpenAI gpt-5.6-luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
-- [Gemini 3.1 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite)
+- [Gemini models](https://ai.google.dev/gemini-api/docs/models)
 - [MiniMax domestic AI SDK compatibility](https://platform.minimaxi.com/docs/api-reference/text-ai-sdk)
 
 ## Evaluation set

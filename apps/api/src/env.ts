@@ -69,9 +69,11 @@ export const env = {
   memoryRepoLimit: parsePositiveInt(process.env.MEMORY_REPO_LIMIT, 1000),
   vision: {
     enabled: process.env.VISION_FEATURE_ENABLED !== 'false',
-    provider: process.env.VISION_PROVIDER ?? 'mimo',
+    provider: process.env.VISION_PROVIDER ?? '',
     mimoApiKey: process.env.MIMO_API_KEY,
     mimoModel: process.env.MIMO_VISION_MODEL ?? 'mimo-v2.5',
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    geminiModel: process.env.GEMINI_VISION_MODEL ?? 'gemini-3.5-flash-lite',
   },
   rateLimit: {
     windowMs: parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 60_000),

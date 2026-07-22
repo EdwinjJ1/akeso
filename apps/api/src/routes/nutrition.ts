@@ -17,7 +17,10 @@ import { Router, type RequestHandler } from 'express'
 import { env } from '../env'
 import { ok } from '../http'
 import type { Repos } from '../repos'
-import { NUTRITION_PROMPT_VERSION } from '../services/mimo'
+import {
+  getSelectedVisionIdentity,
+  NUTRITION_PROMPT_VERSION,
+} from '../services/ai'
 import type { AiServices } from '../services/types'
 
 /**
@@ -59,8 +62,7 @@ export function createNutritionRouter(
       profile: input.profile,
       hydration: input.checkin?.hydration,
       fridge: [...input.fridge].sort((left, right) => left.id.localeCompare(right.id)),
-      provider: env.vision.provider,
-      model: env.vision.mimoModel,
+      ...getSelectedVisionIdentity(env.vision),
       promptVersion: NUTRITION_PROMPT_VERSION,
     })
     return createHash('sha256')

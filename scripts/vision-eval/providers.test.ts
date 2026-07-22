@@ -10,7 +10,22 @@ const image = {
   base64: 'aW1hZ2U=',
 } as const
 
+const collectObjectKeys = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(collectObjectKeys)
+  if (typeof value !== 'object' || value === null) return []
+  return Object.entries(value).flatMap(([key, child]) => [
+    key,
+    ...collectObjectKeys(child),
+  ])
+}
+
 describe('vision spike providers', () => {
+  it('uses the production Gemini 3.5 Flash-Lite model by default', () => {
+    expect(getVisionProviderCapability('gemini').model).toBe(
+      'gemini-3.5-flash-lite'
+    )
+  })
+
   it('maps MiMo V2.5 image input using the domestic OpenAI-compatible API', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       expect(url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
@@ -154,6 +169,20 @@ describe('vision spike providers', () => {
         data: 'aW1hZ2U=',
       })
       expect(body.generationConfig.responseMimeType).toBe('application/json')
+      const schema = body.generationConfig.responseJsonSchema
+      const statusSchemas = schema.oneOf.map(
+        (variant: { properties: { status: unknown } }) =>
+          variant.properties.status
+      )
+      expect(statusSchemas).toEqual([
+        { type: 'string', enum: ['ok'] },
+        { type: 'string', enum: ['empty'] },
+        { type: 'string', enum: ['refused'] },
+      ])
+      const schemaKeys = collectObjectKeys(schema)
+      expect(schemaKeys).not.toContain('const')
+      expect(schemaKeys).not.toContain('minLength')
+      expect(schemaKeys).not.toContain('maxLength')
 
       return new Response(
         JSON.stringify({

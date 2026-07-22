@@ -11,7 +11,7 @@ attribution, licenses, scene labels, and human ground truth.
 | --- | --- | --- | --- |
 | Xiaomi MiMo (domestic) | `mimo-v2.5` | supported | JSON object mode, then shared Zod validation |
 | OpenAI | `gpt-5.6-luna` | supported | strict JSON Schema, then shared Zod validation |
-| Gemini | `gemini-3.1-flash-lite` | supported | response JSON Schema, then shared Zod validation |
+| Gemini | `gemini-3.5-flash-lite` | supported | response JSON Schema, then shared Zod validation |
 | MiniMax (domestic) | `MiniMax-M2.7` | unsupported | blocked before a request is sent |
 
 MiMo V2/V2 Flash is intentionally not supported because Xiaomi retired the V2
@@ -34,7 +34,7 @@ file with `--env-file`. Supported configuration:
 
 - `MIMO_API_KEY`, `MIMO_VISION_MODEL` (default `mimo-v2.5`)
 - `OPENAI_API_KEY`, `OPENAI_VISION_MODEL` (default `gpt-5.6-luna`)
-- `GEMINI_API_KEY`, `GEMINI_VISION_MODEL` (default `gemini-3.1-flash-lite`)
+- `GEMINI_API_KEY`, `GEMINI_VISION_MODEL` (default `gemini-3.5-flash-lite`)
 - optional per-provider `*_INPUT_USD_PER_MTOK` and
   `*_OUTPUT_USD_PER_MTOK` overrides
 

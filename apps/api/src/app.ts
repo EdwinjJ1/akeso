@@ -16,7 +16,7 @@ import { createPlanRouter } from './routes/plan'
 import { createProfileRouter } from './routes/profile'
 import { createRemindersRouter } from './routes/reminders'
 import { createTasksRouter } from './routes/tasks'
-import { createAiServices } from './services/mimo'
+import { createAiServices } from './services/ai'
 import type { AiServices } from './services/types'
 
 export function createApp(

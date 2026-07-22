@@ -1,117 +1,73 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-const originalFetch = global.fetch
-const originalKey = process.env.MIMO_API_KEY
+import { createMimoAiServices } from './mimo'
+import type { NutritionGenerationInput, VisionConfig } from './types'
 
-const confirmedInventory = [
-  { id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] },
-]
-
-const hallucinatedResponsePayload = {
-  choices: [
-    {
-      message: {
-        content: JSON.stringify({
-          date: '2026-07-21',
-          needs: [],
-          // The model echoes an ingredient the user never confirmed.
-          fridge: [
-            { id: 'tomato', name: 'Tomato', category: 'vegetable' },
-            { id: 'ghost-ingredient', name: 'Ghost ingredient', category: 'other' },
-          ],
-          meals: [
-            {
-              id: 'meal-1',
-              slot: 'lunch',
-              title: 'Hallucinated meal',
-              description: 'Uses an ingredient the user never confirmed.',
-              usesFridgeItemIds: ['tomato', 'ghost-ingredient'],
-              boosts: [],
-              prepMinutes: 10,
-              tags: [],
-            },
-          ],
-          rationale: 'Uses your confirmed inventory.',
-        }),
-      },
-    },
-  ],
+const config: VisionConfig = {
+  enabled: true,
+  provider: 'mimo',
+  mimoApiKey: 'test-key',
+  mimoModel: 'mimo-test-model',
+  geminiApiKey: undefined,
+  geminiModel: 'gemini-test-model',
 }
 
-describe('generateNutritionWithMiMo confirmed-inventory guard', () => {
-  beforeEach(() => {
-    process.env.MIMO_API_KEY = 'test-key'
-    vi.resetModules()
-  })
+const input: NutritionGenerationInput = {
+  date: '2026-07-21',
+  fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable', allergenTags: [] }],
+  energy: null,
+  profile: null,
+}
 
-  afterEach(() => {
-    process.env.MIMO_API_KEY = originalKey
-    global.fetch = originalFetch
-    vi.restoreAllMocks()
-  })
+const response = (content: unknown) =>
+  new Response(
+    JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(content) } }],
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } }
+  )
 
-  it('never trusts the model-echoed fridge array; falls back when a meal references an unconfirmed item', async () => {
-    global.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => hallucinatedResponsePayload,
-    })) as unknown as typeof fetch
+const blueprint = (itemId: string) => ({
+  date: input.date,
+  needs: [],
+  meals: [
+    {
+      slot: 'snack',
+      itemIds: [itemId],
+      actions: [{ method: 'slice', itemIds: [itemId] }],
+      boosts: [],
+      prepMinutes: 5,
+    },
+  ],
+})
 
-    const { createAiServices } = await import('./mimo')
-    const plan = await createAiServices().generateNutrition({
-      date: '2026-07-21',
-      fridge: confirmedInventory,
-      energy: null,
-      profile: null,
+describe('MiMo grounded nutrition blueprint', () => {
+  it('falls back when a blueprint references an unconfirmed item id', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response(blueprint('ghost')))
+    const service = createMimoAiServices(config, fetchMock)
+
+    const plan = await service.generateNutrition(input)
+
+    expect(plan.fridge).toEqual(input.fridge)
+    expect(plan.meals).toHaveLength(1)
+    expect(plan.meals[0]).toMatchObject({
+      id: 'confirmed-fridge-1',
+      usesFridgeItemIds: ['tomato'],
     })
-
-    expect(plan.fridge).toEqual(confirmedInventory)
-    for (const meal of plan.meals) {
-      for (const id of meal.usesFridgeItemIds) {
-        expect(id).toBe('tomato')
-      }
-    }
+    expect(JSON.stringify(plan)).not.toContain('ghost')
   })
 
-  it('accepts a plan that only references confirmed inventory ids', async () => {
-    global.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                date: '2026-07-21',
-                needs: [],
-                fridge: confirmedInventory,
-                meals: [
-                  {
-                    id: 'meal-1',
-                    slot: 'lunch',
-                    title: 'Simple tomato snack',
-                    description: 'Uses only the confirmed tomato.',
-                    usesFridgeItemIds: ['tomato'],
-                    boosts: [],
-                    prepMinutes: 10,
-                    tags: [],
-                  },
-                ],
-                rationale: 'Uses your confirmed inventory.',
-              }),
-            },
-          },
-        ],
-      }),
-    })) as unknown as typeof fetch
+  it('renders safe actions using only confirmed inventory names', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response(blueprint('tomato')))
+    const service = createMimoAiServices(config, fetchMock)
 
-    const { createAiServices } = await import('./mimo')
-    const plan = await createAiServices().generateNutrition({
-      date: '2026-07-21',
-      fridge: confirmedInventory,
-      energy: null,
-      profile: null,
+    const plan = await service.generateNutrition(input)
+
+    expect(plan.fridge).toEqual(input.fridge)
+    expect(plan.meals[0]).toMatchObject({
+      title: 'Sliced Tomato',
+      description: 'Slice Tomato.',
+      usesFridgeItemIds: ['tomato'],
     })
-
-    expect(plan.meals[0].title).toBe('Simple tomato snack')
-    expect(plan.fridge).toEqual(confirmedInventory)
   })
 })

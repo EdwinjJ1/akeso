@@ -22,3 +22,12 @@ export interface AiServices {
   recognizeIngredients(image: UploadedImage): Promise<IngredientRecognitionResult>
   generateNutrition(input: NutritionGenerationInput): Promise<NutritionPlan>
 }
+
+export interface VisionConfig {
+  enabled: boolean
+  provider: string
+  mimoApiKey?: string
+  mimoModel: string
+  geminiApiKey?: string
+  geminiModel: string
+}
