@@ -250,6 +250,8 @@ export const fixtureCoachReply: CoachReply = {
  */
 export const fixtureHealthReport: HealthReport = {
   id: 'report-1',
+  name: 'General pathology report',
+  reportDate: FIXTURE_DATE,
   createdAt: `${FIXTURE_DATE}T09:15:00+10:00`,
   metrics: [
     {
@@ -260,6 +262,9 @@ export const fixtureHealthReport: HealthReport = {
       referenceLow: 30,
       referenceHigh: 100,
       status: 'low',
+      confidence: 0.91,
+      uncertaintyReason: null,
+      confirmed: true,
     },
     {
       id: 'hemoglobin',
@@ -269,6 +274,9 @@ export const fixtureHealthReport: HealthReport = {
       referenceLow: 13.5,
       referenceHigh: 17.5,
       status: 'normal',
+      confidence: 0.98,
+      uncertaintyReason: null,
+      confirmed: true,
     },
     {
       id: 'ferritin',
@@ -278,6 +286,9 @@ export const fixtureHealthReport: HealthReport = {
       referenceLow: null,
       referenceHigh: null,
       status: 'unknown',
+      confidence: 0.64,
+      uncertaintyReason: 'The printed reference range was unclear.',
+      confirmed: true,
     },
   ],
 }

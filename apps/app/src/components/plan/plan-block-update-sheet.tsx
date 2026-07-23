@@ -51,6 +51,8 @@ export function PlanBlockUpdateSheet({
 
   useEffect(() => {
     if (!block || !visible) return
+    // Opening a different block intentionally resets this local form draft.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTitle(block.title)
     setStart(block.start)
     setEnd(block.end)

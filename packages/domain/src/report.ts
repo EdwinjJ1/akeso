@@ -6,6 +6,7 @@ import type {
   HealthRecommendationSet,
   HealthReport,
   RecommendationActionCode,
+  ReportMetric,
   ReportMetricStatus,
   UserProfile,
 } from './types'
@@ -54,6 +55,29 @@ export function toHealthRecommendationProfileContext(
     typicalSleep: profile.typicalSleep,
     dietaryPreference: profile.dietaryPreference,
   })
+}
+
+/**
+ * Return the only metrics that are allowed to influence recommendations.
+ * Legacy MVP rows are normalized by the contract parser to `confirmed: true`;
+ * new recognition results keep their explicit confirmation state.
+ */
+export function confirmedReportMetrics(report: HealthReport): ReportMetric[] {
+  return report.metrics.filter((metric) => metric.confirmed)
+}
+
+/**
+ * Strip unconfirmed recognition results before crossing the AI boundary.
+ * A saved report is contractually required to contain at least one confirmed
+ * metric; the explicit guard keeps unsafe hand-built values from silently
+ * producing ungrounded guidance.
+ */
+export function reportWithConfirmedMetrics(report: HealthReport): HealthReport {
+  const metrics = confirmedReportMetrics(report)
+  if (metrics.length === 0) {
+    throw new Error('Cannot generate recommendations without confirmed metrics')
+  }
+  return { ...report, metrics }
 }
 
 interface RecommendationTemplate {
@@ -164,11 +188,14 @@ export function renderHealthRecommendationSet({
   blueprint: HealthRecommendationBlueprint
   profile?: HealthRecommendationProfileContext | null
 }): HealthRecommendationSet {
-  const confirmedIds = new Set(report.metrics.map((metric) => metric.id))
-  const allIds = report.metrics.map((metric) => metric.id)
+  const confirmedReport = reportWithConfirmedMetrics(report)
+  const confirmedIds = new Set(
+    confirmedReport.metrics.map((metric) => metric.id)
+  )
+  const allIds = confirmedReport.metrics.map((metric) => metric.id)
 
   const recommendations: HealthRecommendation[] = []
-  const needsProfessionalFollowUp = report.metrics
+  const needsProfessionalFollowUp = confirmedReport.metrics
     .filter((metric) => metric.status !== 'normal')
     .map((metric) => metric.id)
   if (needsProfessionalFollowUp.length > 0) {
@@ -184,7 +211,7 @@ export function renderHealthRecommendationSet({
   // Profile-selected actions are server-enforced. A valid provider response
   // cannot silently ignore the allowed profile context; if it returns the same
   // action, the server replaces it with the fully grounded deterministic item.
-  const profileItems = buildProfileRecommendationItems(report, profile)
+  const profileItems = buildProfileRecommendationItems(confirmedReport, profile)
   const profileActionCodes = new Set(profileItems.map((item) => item.actionCode))
   const effectiveItems = [
     ...blueprint.recommendations.filter(
@@ -224,7 +251,7 @@ export function renderHealthRecommendationSet({
 
   return {
     reportId: report.id,
-    metrics: report.metrics,
+    metrics: confirmedReport.metrics,
     recommendations,
     disclaimer: REPORT_RECOMMENDATION_DISCLAIMER,
   }
@@ -244,7 +271,8 @@ export function buildReportRecommendationBlueprint({
   report: HealthReport
   profile?: HealthRecommendationProfileContext | null
 }): HealthRecommendationBlueprint {
-  const needsFollowUp = report.metrics.filter(
+  const confirmedReport = reportWithConfirmedMetrics(report)
+  const needsFollowUp = confirmedReport.metrics.filter(
     (metric) =>
       metric.status === 'low' ||
       metric.status === 'high' ||
@@ -265,7 +293,7 @@ export function buildReportRecommendationBlueprint({
   recommendations.push(...buildProfileRecommendationItems(report, profile))
   recommendations.push({
     actionCode: 'general_wellbeing',
-    basedOnMetricIds: report.metrics.map((metric) => metric.id),
+    basedOnMetricIds: confirmedReport.metrics.map((metric) => metric.id),
   })
   return { recommendations }
 }

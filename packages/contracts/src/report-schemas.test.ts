@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DetectedReportMetricSchema,
+  HealthReportSchema,
   HealthRecommendationBlueprintSchema,
   HealthRecommendationProfileContextSchema,
   HealthRecommendationSetSchema,
   RecommendationActionCodeSchema,
   ReportExtractionResultSchema,
+  ReportMetricSchema,
 } from './schemas'
 import { fixtureHealthRecommendationSet, fixtureHealthReport } from './fixtures'
+import { CreateReportRequestSchema } from './api'
 
 describe('HealthRecommendationProfileContextSchema', () => {
   it('accepts only the structured profile fields allowed for report advice', () => {
@@ -191,6 +194,82 @@ describe('DetectedReportMetricSchema', () => {
     ).toBe(false)
     expect(
       DetectedReportMetricSchema.safeParse({ ...valid, status: 'high' }).success
+    ).toBe(false)
+  })
+})
+
+describe('saved report review metadata', () => {
+  const legacyMetric = {
+    id: 'hemoglobin',
+    name: 'Hemoglobin',
+    value: 14.2,
+    unit: 'g/dL',
+    referenceLow: 13.5,
+    referenceHigh: 17.5,
+    status: 'normal',
+  }
+
+  it('applies safe defaults when reading an existing MVP metric', () => {
+    const parsed = ReportMetricSchema.parse(legacyMetric)
+    expect(parsed).toMatchObject({
+      confidence: null,
+      uncertaintyReason: null,
+      confirmed: true,
+    })
+  })
+
+  it('keeps unconfirmed and low-confidence fields in a saved report', () => {
+    const report = HealthReportSchema.parse({
+      id: 'legacy-report',
+      createdAt: '2026-07-22T09:00:00Z',
+      metrics: [
+        legacyMetric,
+        {
+          ...legacyMetric,
+          id: 'uncertain',
+          name: 'Uncertain field',
+          confidence: 0.25,
+          uncertaintyReason: 'The print was faint.',
+          confirmed: false,
+        },
+      ],
+    })
+    expect(report.name).toBe('Health report')
+    expect(report.reportDate).toBeNull()
+    expect(report.metrics[1]).toMatchObject({
+      confidence: 0.25,
+      confirmed: false,
+    })
+  })
+
+  it('rejects a saved report with no confirmed metric', () => {
+    expect(
+      HealthReportSchema.safeParse({
+        id: 'unsafe-report',
+        createdAt: '2026-07-22T09:00:00Z',
+        metrics: [{ ...legacyMetric, confirmed: false }],
+      }).success
+    ).toBe(false)
+  })
+
+  it('rejects inverted reference ranges and duplicate reviewed fields', () => {
+    expect(
+      ReportMetricSchema.safeParse({
+        ...legacyMetric,
+        referenceLow: 20,
+        referenceHigh: 10,
+      }).success
+    ).toBe(false)
+
+    expect(
+      CreateReportRequestSchema.safeParse({
+        name: 'Duplicate fields',
+        reportDate: null,
+        metrics: [
+          legacyMetric,
+          { ...legacyMetric, id: 'second', name: '  HEMOGLOBIN  ' },
+        ],
+      }).success
     ).toBe(false)
   })
 })

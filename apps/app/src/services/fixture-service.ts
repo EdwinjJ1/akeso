@@ -13,6 +13,7 @@ import {
   type AkesoService,
   type CheckInInput,
   type CoachReply,
+  type CreateReportRequest,
   type DayPlan,
   type EnergyResult,
   type FridgeImageUpload,
@@ -24,9 +25,10 @@ import {
   type ReminderPreference,
   type ReportExtractionResult,
   type ReportImageUpload,
-  type ReportMetric,
   type Task,
   type UpdatePlanBlockInput,
+  type UpdateReportMetricsRequest,
+  type UpdateReportRequest,
   type UserProfile,
   userProfileSchema,
 } from '@akeso/domain'
@@ -224,31 +226,70 @@ export class FixtureService implements AkesoService {
     )
   }
 
-  async saveReport(metrics: ReportMetric[]): Promise<HealthReport> {
+  async getReport(id: string): Promise<HealthReport> {
+    await wait(LATENCY_MS / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    return report
+  }
+
+  async saveReport(input: CreateReportRequest): Promise<HealthReport> {
     await wait(LATENCY_MS)
-    const byId = new Map<string, ReportMetric>()
-    for (const metric of metrics) {
-      byId.set(metric.id, {
-        ...metric,
-        status: computeMetricStatus(
-          metric.value,
-          metric.referenceLow,
-          metric.referenceHigh
-        ),
-      })
-    }
+    const metrics = input.metrics.map((metric) => ({
+      ...metric,
+      status: computeMetricStatus(
+        metric.value,
+        metric.referenceLow,
+        metric.referenceHigh
+      ),
+    }))
     this.reportSequence += 1
     const report: HealthReport = {
       id: `report-${this.reportSequence}`,
+      name: input.name,
+      reportDate: input.reportDate,
       createdAt: new Date().toISOString(),
-      metrics: Array.from(byId.values()),
+      metrics,
     }
     this.reports.set(report.id, report)
     return report
   }
 
+  async updateReport(
+    id: string,
+    input: UpdateReportRequest
+  ): Promise<HealthReport> {
+    await wait(LATENCY_MS / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    const updated = { ...report, ...input }
+    this.reports.set(id, updated)
+    return updated
+  }
+
+  async updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport> {
+    await wait(LATENCY_MS / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    const metrics = input.metrics.map((metric) => ({
+      ...metric,
+      status: computeMetricStatus(
+        metric.value,
+        metric.referenceLow,
+        metric.referenceHigh
+      ),
+    }))
+    const updated = { ...report, metrics }
+    this.reports.set(id, updated)
+    return updated
+  }
+
   async deleteReport(id: string): Promise<void> {
     await wait(LATENCY_MS / 3)
+    if (!this.reports.has(id)) throw new Error('Report not found.')
     this.reports.delete(id)
   }
 

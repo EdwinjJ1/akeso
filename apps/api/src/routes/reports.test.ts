@@ -45,6 +45,9 @@ const submittedMetric: ReportMetric = {
   referenceLow: 30,
   referenceHigh: 100,
   status: 'normal',
+  confidence: 0.9,
+  uncertaintyReason: null,
+  confirmed: true,
 }
 
 const savedProfile = {
@@ -143,14 +146,135 @@ describe('POST /v1/reports', () => {
     await request(app).post('/v1/reports').send({ metrics: [] }).expect(400)
   })
 
-  test('deduplicates by id, keeping the last occurrence', async () => {
-    const res = await saveReport([
-      { ...submittedMetric, value: 18 },
-      { ...submittedMetric, value: 120 },
-    ])
-    expect(res.body.data.metrics).toHaveLength(1)
-    expect(res.body.data.metrics[0].value).toBe(120)
-    expect(res.body.data.metrics[0].status).toBe('high')
+  test('rejects duplicate ids or names instead of silently dropping a field', async () => {
+    await request(app)
+      .post('/v1/reports')
+      .send({
+        metrics: [
+          { ...submittedMetric, value: 18 },
+          { ...submittedMetric, value: 120 },
+        ],
+      })
+      .expect(400)
+    await request(app)
+      .post('/v1/reports')
+      .send({
+        metrics: [
+          submittedMetric,
+          { ...submittedMetric, id: 'duplicate-name', name: ' vitamin d (25-oh) ' },
+        ],
+      })
+      .expect(400)
+  })
+
+  test('persists report metadata and unconfirmed low-confidence fields', async () => {
+    const res = await request(app)
+      .post('/v1/reports')
+      .send({
+        name: 'Northern Labs panel',
+        reportDate: '2026-07-20',
+        metrics: [
+          submittedMetric,
+          {
+            ...submittedMetric,
+            id: 'ferritin',
+            name: 'Ferritin',
+            confidence: 0.42,
+            uncertaintyReason: 'The result was faint.',
+            confirmed: false,
+          },
+        ],
+      })
+      .expect(201)
+
+    expect(res.body.data).toMatchObject({
+      name: 'Northern Labs panel',
+      reportDate: '2026-07-20',
+    })
+    expect(res.body.data.metrics[1]).toMatchObject({
+      id: 'ferritin',
+      confidence: 0.42,
+      uncertaintyReason: 'The result was faint.',
+      confirmed: false,
+    })
+  })
+
+  test('requires at least one confirmed metric', async () => {
+    await request(app)
+      .post('/v1/reports')
+      .send({ metrics: [{ ...submittedMetric, confirmed: false }] })
+      .expect(400)
+  })
+})
+
+describe('GET and PATCH /v1/reports/:id', () => {
+  test('loads one report and updates metadata without changing upload time', async () => {
+    const saved = await saveReport()
+    const id = saved.body.data.id
+
+    const detail = await request(app).get(`/v1/reports/${id}`).expect(200)
+    expect(detail.body.data.id).toBe(id)
+
+    const updated = await request(app)
+      .patch(`/v1/reports/${id}`)
+      .send({ name: 'Updated pathology panel', reportDate: '2026-07-21' })
+      .expect(200)
+    expect(updated.body.data).toMatchObject({
+      id,
+      name: 'Updated pathology panel',
+      reportDate: '2026-07-21',
+      createdAt: saved.body.data.createdAt,
+    })
+  })
+
+  test('returns 404 for unknown detail and metadata updates', async () => {
+    await request(app).get('/v1/reports/missing').expect(404)
+    await request(app)
+      .patch('/v1/reports/missing')
+      .send({ name: 'No access' })
+      .expect(404)
+  })
+
+  test('replaces reviewed metrics, recomputes status, and clears old advice', async () => {
+    const saved = await saveReport()
+    const id = saved.body.data.id
+    await request(app)
+      .post(`/v1/reports/${id}/recommendations/regenerate`)
+      .expect(200)
+    const removeSpy = vi.spyOn(repos.reportRecommendationCache, 'removeByReport')
+
+    const updated = await request(app)
+      .patch(`/v1/reports/${id}/metrics`)
+      .send({
+        metrics: [
+          {
+            ...submittedMetric,
+            value: 55,
+            status: 'low',
+            confirmed: true,
+          },
+          {
+            ...submittedMetric,
+            id: 'uncertain-field',
+            name: 'Uncertain field',
+            confirmed: false,
+            confidence: 0.3,
+          },
+        ],
+      })
+      .expect(200)
+
+    expect(updated.body.data.metrics[0].status).toBe('normal')
+    expect(updated.body.data.metrics[1].confirmed).toBe(false)
+    expect(removeSpy).toHaveBeenCalledWith(expect.any(String), id)
+  })
+
+  test('rejects metric replacement with no confirmed fields', async () => {
+    const saved = await saveReport()
+    await request(app)
+      .patch(`/v1/reports/${saved.body.data.id}/metrics`)
+      .send({ metrics: [{ ...submittedMetric, confirmed: false }] })
+      .expect(400)
   })
 })
 
@@ -162,9 +286,9 @@ describe('DELETE /v1/reports/:id', () => {
     expect(list.body.data).toEqual([])
   })
 
-  test('deleting an id that never existed is a no-op', async () => {
-    const res = await request(app).delete('/v1/reports/never').expect(200)
-    expect(res.body).toEqual({ success: true, data: null })
+  test('does not reveal or silently accept an unknown report id', async () => {
+    const res = await request(app).delete('/v1/reports/never').expect(404)
+    expect(res.body.error.code).toBe('NOT_FOUND')
   })
 
   test('also sweeps the report\'s cached recommendations', async () => {
@@ -178,6 +302,10 @@ describe('DELETE /v1/reports/:id', () => {
     const removeSpy = vi.spyOn(repos.reportRecommendationCache, 'removeByReport')
     await request(app).delete(`/v1/reports/${reportId}`).expect(200)
     expect(removeSpy).toHaveBeenCalledWith(expect.any(String), reportId)
+    await request(app).get(`/v1/reports/${reportId}`).expect(404)
+    await request(app)
+      .get(`/v1/reports/${reportId}/recommendations`)
+      .expect(404)
   })
 })
 
@@ -332,7 +460,46 @@ describe('POST /v1/reports/:id/recommendations/regenerate', () => {
     )
   })
 
-  test('does not publish advice generated for a report changed mid-flight', async () => {
+  test('never sends an unconfirmed saved field to generation or citations', async () => {
+    const saved = await request(app)
+      .post('/v1/reports')
+      .send({
+        metrics: [
+          submittedMetric,
+          {
+            ...submittedMetric,
+            id: 'uncertain',
+            name: 'Uncertain field',
+            confirmed: false,
+            confidence: 0.2,
+          },
+        ],
+      })
+      .expect(201)
+
+    ai.generateHealthRecommendations = async ({ report }) => {
+      expect(report.metrics.map((metric) => metric.id)).toEqual(['vitamin-d'])
+      return buildReportRecommendationBlueprint({ report })
+    }
+    const response = await request(app)
+      .post(`/v1/reports/${saved.body.data.id}/recommendations/regenerate`)
+      .expect(200)
+
+    expect(response.body.data.metrics.map((metric: ReportMetric) => metric.id)).toEqual([
+      'vitamin-d',
+    ])
+    expect(response.body.data.metrics).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'uncertain' })])
+    )
+    expect(
+      response.body.data.recommendations.flatMap(
+        (recommendation: HealthRecommendationSet['recommendations'][number]) =>
+          recommendation.basedOnMetricIds
+      )
+    ).not.toContain('uncertain')
+  })
+
+  test('does not publish advice generated for a metric snapshot corrected mid-flight', async () => {
     const saved = await saveReport()
     const reportId = saved.body.data.id
     let started!: () => void
@@ -353,15 +520,23 @@ describe('POST /v1/reports/:id/recommendations/regenerate', () => {
       .post(`/v1/reports/${reportId}/recommendations/regenerate`)
       .then((response) => response)
     await generationStarted
-    await repos.reports.upsert('demo-user', {
-      ...sourceReport,
-      metrics: [{ ...sourceReport.metrics[0], value: 35, status: 'normal' }],
-    })
+
+    await request(app)
+      .patch(`/v1/reports/${reportId}/metrics`)
+      .send({ metrics: [{ ...submittedMetric, value: 35 }] })
+      .expect(200)
     release(buildReportRecommendationBlueprint({ report: sourceReport }))
 
     const generation = await pendingGeneration
     expect(generation.status).toBe(409)
     expect(generation.body.error.code).toBe('REPORT_CHANGED')
+
+    const current = await request(app)
+      .get(`/v1/reports/${reportId}/recommendations`)
+      .expect(200)
+    expect(current.body.data.metrics).toEqual([
+      expect.objectContaining({ id: 'vitamin-d', value: 35, confirmed: true }),
+    ])
   })
 
   test('does not publish advice generated for a profile changed mid-flight', async () => {
@@ -544,8 +719,20 @@ describe('report repository user isolation', () => {
   test('one user never sees or deletes another user\'s reports', async () => {
     const isolated = createMemoryRepos()
     const a: ReportMetric = { ...submittedMetric, status: 'low' }
-    const reportA = { id: 'ra', createdAt: '2026-07-22T09:00:00Z', metrics: [a] }
-    const reportB = { id: 'rb', createdAt: '2026-07-22T09:00:00Z', metrics: [a] }
+    const reportA = {
+      id: 'ra',
+      name: 'A',
+      reportDate: null,
+      createdAt: '2026-07-22T09:00:00Z',
+      metrics: [a],
+    }
+    const reportB = {
+      id: 'rb',
+      name: 'B',
+      reportDate: null,
+      createdAt: '2026-07-22T09:00:00Z',
+      metrics: [a],
+    }
 
     await isolated.reports.upsert('user-a', reportA)
     await isolated.reports.upsert('user-b', reportB)
@@ -563,6 +750,8 @@ describe('report repository user isolation', () => {
     const set = buildReportRecommendationsFallback({
       report: {
         id: 'ra',
+        name: 'A',
+        reportDate: null,
         createdAt: '2026-07-22T09:00:00Z',
         metrics: [{ ...submittedMetric, status: 'low' }],
       },
@@ -578,6 +767,8 @@ describe('report repository user isolation', () => {
       buildReportRecommendationsFallback({
         report: {
           id: reportId,
+          name: reportId,
+          reportDate: null,
           createdAt: '2026-07-22T09:00:00Z',
           metrics: [{ ...submittedMetric, status: 'low' }],
         },

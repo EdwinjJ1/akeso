@@ -41,6 +41,8 @@ const validRecognition = {
 
 const confirmedReport: HealthReport = {
   id: 'report-1',
+  name: 'Fixture pathology report',
+  reportDate: '2026-07-22',
   createdAt: '2026-07-22T09:00:00.000Z',
   metrics: [
     {
@@ -51,6 +53,9 @@ const confirmedReport: HealthReport = {
       referenceLow: 30,
       referenceHigh: 100,
       status: 'low',
+      confidence: 0.99,
+      uncertaintyReason: null,
+      confirmed: true,
     },
   ],
 }

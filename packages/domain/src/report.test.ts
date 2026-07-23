@@ -28,11 +28,16 @@ const metric = (over: Partial<ReportMetric>): ReportMetric => ({
   referenceLow: null,
   referenceHigh: null,
   status: 'unknown',
+  confidence: null,
+  uncertaintyReason: null,
+  confirmed: true,
   ...over,
 })
 
 const report = (metrics: ReportMetric[]): HealthReport => ({
   id: 'report-1',
+  name: 'General pathology report',
+  reportDate: '2026-07-21',
   createdAt: '2026-07-22T09:00:00+10:00',
   metrics,
 })
@@ -175,6 +180,26 @@ describe('buildReportRecommendationsFallback', () => {
     }
     // The schema's superRefine independently rejects any ungrounded citation.
     expect(() => HealthRecommendationSetSchema.parse(set)).not.toThrow()
+  })
+
+  it('never exposes an unconfirmed saved recognition result to advice', () => {
+    const set = buildReportRecommendationsFallback({
+      report: report([
+        metric({ id: 'confirmed', confirmed: true, status: 'normal' }),
+        metric({
+          id: 'unconfirmed',
+          confirmed: false,
+          confidence: 0.2,
+          status: 'high',
+        }),
+      ]),
+    })
+
+    expect(set.metrics.map((item) => item.id)).toEqual(['confirmed'])
+    expect(JSON.stringify(set)).not.toContain('unconfirmed')
+    for (const recommendation of set.recommendations) {
+      expect(recommendation.basedOnMetricIds).toEqual(['confirmed'])
+    }
   })
 
   it('always carries the non-diagnostic disclaimer', () => {
@@ -367,6 +392,9 @@ describe('ReportMetricSchema', () => {
       referenceLow: null,
       referenceHigh: null,
       status: 'normal',
+      confidence: null,
+      uncertaintyReason: null,
+      confirmed: true,
       injected: 'high',
     })
     expect(result.success).toBe(false)

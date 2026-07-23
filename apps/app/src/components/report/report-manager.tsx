@@ -1,19 +1,17 @@
-import {
-  buildReportRecommendationsFallback,
-  toHealthRecommendationProfileContext,
-  type HealthRecommendationProfileContext,
-  type HealthRecommendationSet,
-  type HealthReport,
-  type ReportExtractionResult,
-  type ReportImageUpload,
-  type ReportMetric,
-  type ReportMetricStatus,
+import type {
+  HealthReport,
+  ReportExtractionResult,
+  ReportImageUpload,
+  ReportMetric,
+  ReportMetricStatus,
 } from '@akeso/domain'
+import { createReportRequestSchema } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import * as DocumentPicker from 'expo-document-picker'
 import * as ImageManipulator from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
@@ -29,18 +27,21 @@ import { Card } from '@/components/ui/card'
 import { useAppState } from '@/state/app-state'
 import { resizeForRecognition } from '@/state/fridge-image'
 import {
-  addManualMetricCandidate,
+  addBlankManualMetricCandidate,
   candidateStatus,
   candidatesFromExtraction,
   editMetricCandidate,
   hasInvalidConfirmedCandidates,
+  hasDuplicateReportCandidates,
+  hasInvalidReportCandidates,
   parseRequiredMetricNumber,
   removeMetricCandidate,
-  toConfirmedReportMetrics,
+  toReviewedReportMetrics,
   toggleMetricCandidate,
   type ReportMetricCandidate,
 } from '@/state/report-flow'
 import { colors, radius, sp, type } from '@/theme/tokens'
+import { todayISO } from '@/utils/dates'
 
 import { demoReportExtraction } from './report-demo'
 
@@ -87,7 +88,7 @@ const toNullableNumber = (text: string): number | null => {
   const trimmed = text.trim()
   if (trimmed === '') return null
   const value = Number(trimmed)
-  return Number.isFinite(value) ? value : null
+  return Number.isFinite(value) ? value : Number.NaN
 }
 
 const formatBytes = (bytes?: number | null) => {
@@ -102,14 +103,11 @@ const wait = (ms: number) =>
   })
 
 export function ReportManager() {
+  const router = useRouter()
   const {
-    profile,
     extractReportMetrics,
     getReports,
     saveReport,
-    deleteReport,
-    getReportRecommendations,
-    regenerateReportRecommendations,
   } = useAppState()
 
   const [reports, setReports] = useState<HealthReport[]>([])
@@ -123,12 +121,10 @@ export function ReportManager() {
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [reportName, setReportName] = useState('Blood test report')
-  const [reportDate, setReportDate] = useState('2026-07-18')
+  const [reportDate, setReportDate] = useState(todayISO())
   const [savedNotice, setSavedNotice] = useState(false)
-  const recommendationProfile = useMemo(
-    () => toHealthRecommendationProfileContext(profile),
-    [profile]
-  )
+  const [candidateSession, setCandidateSession] = useState(0)
+  const extractionBusy = useRef(false)
 
   const refreshReports = useCallback(async () => {
     setLoadingReports(true)
@@ -144,13 +140,14 @@ export function ReportManager() {
     }
   }, [getReports])
 
-  useEffect(() => {
-    // This effect intentionally bootstraps remote report data on mount.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refreshReports()
-  }, [refreshReports])
+  useFocusEffect(
+    useCallback(() => {
+      void refreshReports()
+    }, [refreshReports])
+  )
 
   const applyExtractionResult = (result: ReportExtractionResult) => {
+    setCandidateSession((session) => session + 1)
     setCandidates(candidatesFromExtraction(result))
     setSavedNotice(false)
     if (result.status === 'empty') {
@@ -168,6 +165,18 @@ export function ReportManager() {
         'Review every field. Nothing is saved or used for advice until you confirm it.'
       )
     }
+  }
+
+  const beginExtraction = () => {
+    if (extractionBusy.current || working) return false
+    extractionBusy.current = true
+    setWorking(true)
+    return true
+  }
+
+  const endExtraction = () => {
+    extractionBusy.current = false
+    setWorking(false)
   }
 
   const extractProcessedImage = async (image: ReportImageUpload) => {
@@ -189,10 +198,10 @@ export function ReportManager() {
     asset: ImagePicker.ImagePickerAsset,
     source: 'camera' | 'photo'
   ) => {
-    setWorking(true)
     setMessage(null)
     setRetryImage(null)
     setSavedNotice(false)
+    setCandidates([])
     setSelectedFile({
       name: asset.fileName ?? `health-report-${Date.now()}.jpg`,
       source,
@@ -216,23 +225,21 @@ export function ReportManager() {
       setMessage(
         error instanceof Error ? error.message : 'Could not process the image.'
       )
-    } finally {
-      setWorking(false)
     }
   }
 
   const retryExtraction = async () => {
-    if (!retryImage) return
-    setWorking(true)
+    if (!retryImage || !beginExtraction()) return
     setMessage(null)
     try {
       await extractProcessedImage(retryImage)
     } finally {
-      setWorking(false)
+      endExtraction()
     }
   }
 
   const openCamera = async () => {
+    if (!beginExtraction()) return
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync()
       if (!permission.granted) {
@@ -250,10 +257,13 @@ export function ReportManager() {
       setMessage(
         error instanceof Error ? error.message : 'Could not open the camera.'
       )
+    } finally {
+      endExtraction()
     }
   }
 
   const openLibrary = async () => {
+    if (!beginExtraction()) return
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -265,10 +275,13 @@ export function ReportManager() {
       setMessage(
         error instanceof Error ? error.message : 'Could not open photos.'
       )
+    } finally {
+      endExtraction()
     }
   }
 
   const openPdf = async () => {
+    if (!beginExtraction()) return
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
@@ -286,7 +299,7 @@ export function ReportManager() {
       setPreviewUri(null)
       setRetryImage(null)
       setSavedNotice(false)
-      setWorking(true)
+      setCandidates([])
       setMessage('PDF selected. Showing the local UI preview for this MVP.')
       await wait(700)
       applyExtractionResult(demoReportExtraction)
@@ -295,11 +308,12 @@ export function ReportManager() {
         error instanceof Error ? error.message : 'Could not open the PDF picker.'
       )
     } finally {
-      setWorking(false)
+      endExtraction()
     }
   }
 
   const showDemo = async () => {
+    if (!beginExtraction()) return
     setSelectedFile({
       name: 'sample-pathology-report.pdf',
       source: 'pdf',
@@ -309,23 +323,18 @@ export function ReportManager() {
     setPreviewUri(null)
     setRetryImage(null)
     setSavedNotice(false)
-    setWorking(true)
+    setCandidates([])
     setMessage(null)
-    await wait(450)
-    applyExtractionResult(demoReportExtraction)
-    setWorking(false)
+    try {
+      await wait(450)
+      applyExtractionResult(demoReportExtraction)
+    } finally {
+      endExtraction()
+    }
   }
 
   const addManual = () => {
-    setCandidates((items) =>
-      addManualMetricCandidate(items, {
-        name: 'New metric',
-        value: 0,
-        unit: '',
-        referenceLow: null,
-        referenceHigh: null,
-      })
-    )
+    setCandidates(addBlankManualMetricCandidate)
     setMessage(
       'Manual metric added. Edit every field, then confirm it before saving.'
     )
@@ -338,21 +347,38 @@ export function ReportManager() {
   }
 
   const saveConfirmed = async () => {
-    if (hasInvalidConfirmedCandidates(candidates)) {
-      setMessage('Every confirmed metric needs a name and a valid numeric value.')
+    if (hasInvalidConfirmedCandidates(candidates) || hasInvalidReportCandidates(candidates)) {
+      setMessage(
+        'Every metric needs a name, numeric result, valid reference bounds, and a low bound no greater than its high bound.'
+      )
       return
     }
-    const metrics = toConfirmedReportMetrics(candidates)
-    if (metrics.length === 0) {
+    if (hasDuplicateReportCandidates(candidates)) {
+      setMessage('Metric names must be unique. Rename or remove duplicates.')
+      return
+    }
+    const metrics = toReviewedReportMetrics(candidates)
+    if (!metrics.some((metric) => metric.confirmed)) {
       setMessage('Confirm at least one valid metric before saving this report.')
+      return
+    }
+    const request = createReportRequestSchema.safeParse({
+      name: reportName.trim(),
+      reportDate: reportDate.trim() || null,
+      metrics,
+    })
+    if (!request.success) {
+      setMessage('Check the report name, date, metric fields and reference ranges.')
       return
     }
     setWorking(true)
     try {
-      await saveReport(metrics)
+      await saveReport(request.data)
       setCandidates([])
       setPreviewUri(null)
       setSelectedFile(null)
+      setReportName('Blood test report')
+      setReportDate(todayISO())
       setSavedNotice(true)
       setMessage(null)
       await refreshReports()
@@ -389,7 +415,9 @@ export function ReportManager() {
         (total, report) =>
           total +
           report.metrics.filter(
-            (metric) => metric.status === 'high' || metric.status === 'low'
+            (metric) =>
+              metric.confirmed &&
+              (metric.status === 'high' || metric.status === 'low')
           ).length,
         0
       ),
@@ -406,8 +434,8 @@ export function ReportManager() {
           <View style={styles.flexBody}>
             <Text style={type.h3}>Report saved</Text>
             <Text style={styles.smallText}>
-              Only the metrics you confirmed were saved. Advice is now available
-              in report history.
+              All reviewed fields were saved. Advice uses only the metrics you
+              confirmed and is now available in report history.
             </Text>
           </View>
         </Card>
@@ -429,18 +457,20 @@ export function ReportManager() {
         </View>
 
         <View style={styles.actionGrid}>
-          <ActionButton icon="camera" label="Camera" detail="Take a photo" onPress={openCamera} />
-          <ActionButton icon="images" label="Photos" detail="JPG or PNG" onPress={openLibrary} />
+          <ActionButton icon="camera" label="Camera" detail="Take a photo" onPress={openCamera} disabled={working} />
+          <ActionButton icon="images" label="Photos" detail="JPG or PNG" onPress={openLibrary} disabled={working} />
           <ActionButton
             icon="document-text"
             label="Files"
             detail="PDF preview"
             onPress={openPdf}
+            disabled={working}
           />
         </View>
 
         <Pressable
           onPress={showDemo}
+          disabled={working}
           accessibilityRole="button"
           accessibilityLabel="Preview the full report flow with sample data"
           style={styles.demoLink}
@@ -492,7 +522,8 @@ export function ReportManager() {
               <Text style={type.h2}>Review the extracted details</Text>
               <Text style={styles.hint}>
                 Check the report information and every metric against the original
-                file. Unconfirmed values will not be saved or used for advice.
+                file. Unconfirmed values stay visible for later correction but are
+                never used for advice.
               </Text>
             </View>
             <View style={styles.countBadge}>
@@ -519,8 +550,7 @@ export function ReportManager() {
               />
             </View>
             <Text style={styles.futureNote}>
-              Report name and date are UI-only in this MVP and will be persisted
-              when the report metadata API is added.
+              These details are saved with the report and can be corrected later.
             </Text>
           </View>
 
@@ -547,7 +577,7 @@ export function ReportManager() {
 
           {candidates.map((candidate) => (
             <CandidateRow
-              key={candidate.localId}
+            key={`${candidateSession}:${candidate.localId}`}
               candidate={candidate}
               onToggle={() =>
                 setCandidates((items) =>
@@ -592,7 +622,7 @@ export function ReportManager() {
               onPress={saveConfirmed}
               disabled={working || confirmedCount === 0}
               accessibilityRole="button"
-              accessibilityLabel="Save confirmed metrics and continue"
+              accessibilityLabel="Save reviewed metrics and continue"
               accessibilityState={{
                 disabled: working || confirmedCount === 0,
               }}
@@ -649,22 +679,12 @@ export function ReportManager() {
       ) : null}
 
       {reports.map((report) => (
-        <SavedReportCard
+        <ReportHistoryCard
           key={report.id}
           report={report}
-          recommendationProfile={recommendationProfile}
-          getRecommendations={getReportRecommendations}
-          regenerate={regenerateReportRecommendations}
-          onDeleted={async () => {
-            try {
-              await deleteReport(report.id)
-              await refreshReports()
-            } catch (error) {
-              setListError(
-                error instanceof Error ? error.message : 'Delete failed.'
-              )
-            }
-          }}
+          onOpen={() =>
+            router.push({ pathname: '/report/[id]', params: { id: report.id } })
+          }
         />
       ))}
     </>
@@ -717,18 +737,26 @@ function ActionButton({
   label,
   detail,
   onPress,
+  disabled = false,
 }: {
   icon: 'camera' | 'images' | 'document-text'
   label: string
   detail: string
   onPress: () => void
+  disabled?: boolean
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.actionButton,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={`${label}, ${detail}`}
+      accessibilityState={{ disabled }}
     >
       <View style={styles.actionIcon}>
         <Ionicons name={icon} size={21} color={colors.text} />
@@ -785,7 +813,7 @@ function ParsingProgress({ fileName }: { fileName: string }) {
   )
 }
 
-function CandidateRow({
+export function CandidateRow({
   candidate,
   onToggle,
   onChange,
@@ -803,13 +831,19 @@ function CandidateRow({
   onRemove: () => void
 }) {
   const [name, setName] = useState(candidate.name)
-  const [value, setValue] = useState(String(candidate.value))
+  const [value, setValue] = useState(
+    Number.isFinite(candidate.value) ? String(candidate.value) : ''
+  )
   const [unit, setUnit] = useState(candidate.unit)
   const [low, setLow] = useState(
-    candidate.referenceLow === null ? '' : String(candidate.referenceLow)
+    candidate.referenceLow === null || !Number.isFinite(candidate.referenceLow)
+      ? ''
+      : String(candidate.referenceLow)
   )
   const [high, setHigh] = useState(
-    candidate.referenceHigh === null ? '' : String(candidate.referenceHigh)
+    candidate.referenceHigh === null || !Number.isFinite(candidate.referenceHigh)
+      ? ''
+      : String(candidate.referenceHigh)
   )
 
   const commit = (patch: {
@@ -832,6 +866,7 @@ function CandidateRow({
   const status = candidateStatus(candidate)
   const lowConfidence =
     candidate.confidence !== null && candidate.confidence < 0.7
+  const candidateLabel = candidate.name || 'new metric'
 
   return (
     <View
@@ -845,7 +880,7 @@ function CandidateRow({
         <Pressable
           onPress={onToggle}
           accessibilityRole="checkbox"
-          accessibilityLabel={`Confirm ${candidate.name}`}
+          accessibilityLabel={`Confirm ${candidateLabel}`}
           accessibilityState={{ checked: candidate.confirmed }}
           style={styles.confirmToggle}
         >
@@ -867,7 +902,7 @@ function CandidateRow({
         <Pressable
           onPress={onRemove}
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${candidate.name}`}
+          accessibilityLabel={`Remove ${candidateLabel}`}
           style={styles.removeButton}
         >
           <Ionicons name="trash-outline" size={19} color={colors.danger} />
@@ -876,7 +911,7 @@ function CandidateRow({
 
       <LabeledInput
         label="Metric name"
-        accessibilityLabel={`Metric name for ${candidate.name}`}
+        accessibilityLabel={`Metric name for ${candidateLabel}`}
         value={name}
         onChangeText={(text) => {
           setName(text)
@@ -886,7 +921,7 @@ function CandidateRow({
       <View style={styles.fieldRow}>
         <LabeledInput
           label="Result"
-          accessibilityLabel={`Result for ${candidate.name}`}
+          accessibilityLabel={`Result for ${candidateLabel}`}
           value={value}
           onChangeText={(text) => {
             setValue(text)
@@ -896,7 +931,7 @@ function CandidateRow({
         />
         <LabeledInput
           label="Unit"
-          accessibilityLabel={`Unit for ${candidate.name}`}
+          accessibilityLabel={`Unit for ${candidateLabel}`}
           value={unit}
           onChangeText={(text) => {
             setUnit(text)
@@ -907,7 +942,7 @@ function CandidateRow({
       <View style={styles.fieldRow}>
         <LabeledInput
           label="Reference low"
-          accessibilityLabel={`Reference low for ${candidate.name}`}
+          accessibilityLabel={`Reference low for ${candidateLabel}`}
           value={low}
           onChangeText={(text) => {
             setLow(text)
@@ -917,7 +952,7 @@ function CandidateRow({
         />
         <LabeledInput
           label="Reference high"
-          accessibilityLabel={`Reference high for ${candidate.name}`}
+          accessibilityLabel={`Reference high for ${candidateLabel}`}
           value={high}
           onChangeText={(text) => {
             setHigh(text)
@@ -953,7 +988,7 @@ function CandidateRow({
   )
 }
 
-function LabeledInput({
+export function LabeledInput({
   label,
   accessibilityLabel,
   value,
@@ -981,87 +1016,22 @@ function LabeledInput({
   )
 }
 
-function SavedReportCard({
+function ReportHistoryCard({
   report,
-  recommendationProfile,
-  getRecommendations,
-  regenerate,
-  onDeleted,
+  onOpen,
 }: {
   report: HealthReport
-  recommendationProfile: HealthRecommendationProfileContext | null
-  getRecommendations: (id: string) => Promise<HealthRecommendationSet>
-  regenerate: (id: string) => Promise<HealthRecommendationSet>
-  onDeleted: () => void
+  onOpen: () => void
 }) {
-  const isDemo = report.id === 'demo-health-report'
-  const [recommendations, setRecommendations] =
-    useState<HealthRecommendationSet | null>(null)
-  const [expanded, setExpanded] = useState(isDemo)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const load = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setRecommendations(await getRecommendations(report.id))
-      setExpanded(true)
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not load recommendations.'
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const runRegenerate = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setRecommendations(await regenerate(report.id))
-      setExpanded(true)
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Could not regenerate recommendations.'
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const created = report.createdAt.slice(0, 10)
-  const needsReview = report.metrics.filter(
-    (metric) => metric.status !== 'normal'
+  const displayedDate = report.reportDate ?? report.createdAt.slice(0, 10)
+  const confirmed = report.metrics.filter((metric) => metric.confirmed)
+  const unconfirmed = report.metrics.length - confirmed.length
+  const flagged = confirmed.filter(
+    (metric) => metric.status === 'low' || metric.status === 'high'
   ).length
-  const displayedRecommendations = useMemo(
-    () =>
-      recommendations ??
-      (isDemo
-        ? buildReportRecommendationsFallback({
-            report,
-            profile: recommendationProfile,
-          })
-        : null),
-    [isDemo, recommendationProfile, recommendations, report]
-  )
-  const groundedRecommendations = useMemo(() => {
-    const metricById = new Map(
-      (displayedRecommendations?.metrics ?? []).map((metric) => [metric.id, metric])
-    )
-    return (displayedRecommendations?.recommendations ?? []).flatMap((recommendation) => {
-      const evidence = recommendation.basedOnMetricIds
-        .map((id) => metricById.get(id))
-        .filter((metric): metric is ReportMetric => Boolean(metric))
-      return evidence.length > 0 ? [{ recommendation, evidence }] : []
-    })
-  }, [displayedRecommendations])
+  const lowConfidence = report.metrics.filter(
+    (metric) => metric.confidence !== null && metric.confidence < 0.7
+  ).length
 
   return (
     <Card style={styles.reportCard}>
@@ -1070,195 +1040,67 @@ function SavedReportCard({
           <Ionicons name="document-text" size={22} color={colors.text} />
         </View>
         <View style={styles.flexBody}>
-          <Text style={styles.reportTitle}>
-            {isDemo ? 'General pathology report' : 'Health report'}
-          </Text>
+          <Text style={styles.reportTitle}>{report.name}</Text>
           <Text style={styles.reportMeta}>
-            {created} · {report.metrics.length} confirmed metrics
+            {displayedDate} · {report.metrics.length} total metrics
           </Text>
         </View>
-        <Pressable
-          onPress={() => setExpanded((value) => !value)}
-          accessibilityRole="button"
-          accessibilityLabel={expanded ? 'Collapse report details' : 'View report details'}
-          style={styles.expandButton}
-        >
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={colors.text}
-          />
-        </Pressable>
+        <Ionicons name="chevron-forward" size={20} color={colors.text} />
       </View>
 
       <View style={styles.summaryBadges}>
         <View style={styles.summaryBadge}>
           <Ionicons name="checkmark-circle" size={15} color={colors.primaryDark} />
-          <Text style={styles.summaryText}>{report.metrics.length} confirmed</Text>
+          <Text style={styles.summaryText}>{confirmed.length} confirmed</Text>
         </View>
-        <View style={[styles.summaryBadge, needsReview > 0 && styles.flaggedBadge]}>
+        {unconfirmed > 0 ? (
+          <View style={[styles.summaryBadge, styles.flaggedBadge]}>
+            <Ionicons name="help-circle" size={15} color={colors.warning} />
+            <Text style={styles.summaryText}>{unconfirmed} unconfirmed</Text>
+          </View>
+        ) : null}
+        {lowConfidence > 0 ? (
+          <View style={[styles.summaryBadge, styles.flaggedBadge]}>
+            <Ionicons name="warning" size={15} color={colors.warning} />
+            <Text style={styles.summaryText}>{lowConfidence} low confidence</Text>
+          </View>
+        ) : null}
+        <View style={[styles.summaryBadge, flagged > 0 && styles.flaggedBadge]}>
           <Ionicons
-            name={needsReview > 0 ? 'warning' : 'shield-checkmark'}
+            name={flagged > 0 ? 'warning' : 'shield-checkmark'}
             size={15}
-            color={needsReview > 0 ? colors.warning : colors.primaryDark}
+            color={flagged > 0 ? colors.warning : colors.primaryDark}
           />
           <Text style={styles.summaryText}>
-            {needsReview > 0 ? `${needsReview} need review` : 'No flagged results'}
+            {flagged > 0 ? `${flagged} outside range` : 'No confirmed flags'}
           </Text>
         </View>
       </View>
 
-      {expanded ? (
-        <View style={styles.reportDetail}>
-          <View style={styles.subsectionHeader}>
-            <Text style={styles.panelLabel}>Confirmed results</Text>
-            <Text style={styles.verifiedLabel}>User verified</Text>
-          </View>
-          {report.metrics.map((metric) => (
-            <MetricRow key={metric.id} metric={metric} />
-          ))}
-
-          <View style={styles.adviceHeader}>
-            <View>
-              <Text style={type.h3}>Lifestyle guidance</Text>
-              <Text style={styles.adviceSubtitle}>
-                {recommendationProfile
-                  ? 'Personalised using your saved goal and dietary preference; grounded only in confirmed metrics'
-                  : 'Safe suggestions grounded only in confirmed metrics'}
-              </Text>
-            </View>
-            <Ionicons name="sparkles" size={19} color={colors.primaryDark} />
-          </View>
-
-          {displayedRecommendations ? (
-            <View style={styles.recBlock}>
-              {groundedRecommendations.length > 0 ? (
-                groundedRecommendations.map(({ recommendation, evidence }) => (
-                  <View key={recommendation.id} style={styles.rec}>
-                    <View style={styles.recIcon}>
-                      <Ionicons
-                        name={
-                          recommendation.category === 'follow_up'
-                            ? 'medical'
-                            : recommendation.category === 'hydration'
-                              ? 'water'
-                              : 'leaf'
-                        }
-                        size={18}
-                        color={colors.text}
-                      />
-                    </View>
-                    <View style={styles.flexBody}>
-                      <Text style={styles.recTitle}>{recommendation.title}</Text>
-                      <Text style={styles.recDetail}>{recommendation.detail}</Text>
-                      <View style={styles.evidenceBox}>
-                        <Text style={styles.evidenceLabel}>
-                          ADVICE BASIS — CONFIRMED METRICS
-                        </Text>
-                        <View style={styles.evidenceList}>
-                          {evidence.map((metric) => (
-                            <View key={metric.id} style={styles.evidenceChip}>
-                              <Text style={styles.evidenceText}>
-                                {metric.name}: {metric.value}
-                                {metric.unit ? ` ${metric.unit}` : ''}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.adviceLocked}>
-                  <Ionicons name="shield-outline" size={20} color={colors.textMuted} />
-                  <Text style={styles.adviceLockedText}>
-                    Advice is unavailable because no confirmed metric basis was returned.
-                  </Text>
-                </View>
-              )}
-              <View style={styles.disclaimerCard}>
-                <Ionicons name="medkit-outline" size={18} color={colors.primaryDark} />
-                <View style={styles.flexBody}>
-                  <Text style={styles.disclaimerTitle}>Not a medical diagnosis</Text>
-                  <Text style={styles.disclaimerText}>
-                    {displayedRecommendations.disclaimer}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.adviceLocked}>
-              <Ionicons name="lock-closed" size={20} color={colors.textMuted} />
-              <Text style={styles.adviceLockedText}>
-                Advice will appear here after confirmed metrics are loaded.
-              </Text>
-            </View>
-          )}
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <View style={styles.recActions}>
-            <Pressable
-              style={[styles.recButton, busy && styles.disabled]}
-              onPress={load}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel="View report recommendations"
-            >
-              {busy ? <ActivityIndicator color={colors.text} /> : null}
-              <Text style={styles.recButtonText}>
-                {busy
-                  ? 'Working…'
-                  : displayedRecommendations
-                    ? 'Refresh advice'
-                    : 'View recommendations'}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.recButtonDark, busy && styles.disabled]}
-              onPress={runRegenerate}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel="Regenerate report recommendations"
-            >
-              <Ionicons name="sparkles" size={15} color={colors.textOnColor} />
-              <Text style={styles.recButtonDarkText}>Regenerate</Text>
-            </Pressable>
-          </View>
-
-          <Pressable
-            onPress={() => setConfirmDelete(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Delete this health report"
-            style={styles.deleteLink}
-          >
-            <Ionicons name="trash-outline" size={17} color={colors.danger} />
-            <Text style={styles.deleteText}>Delete report</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      <DeleteReportModal
-        visible={confirmDelete}
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          setConfirmDelete(false)
-          onDeleted()
-        }}
-      />
+      <Pressable
+        style={styles.recButtonDark}
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={`View details for ${report.name}`}
+      >
+        <Text style={styles.recButtonDarkText}>View report details</Text>
+        <Ionicons name="arrow-forward" size={16} color={colors.textOnColor} />
+      </Pressable>
     </Card>
   )
 }
 
-function DeleteReportModal({
+
+export function DeleteReportModal({
   visible,
   onCancel,
   onConfirm,
+  working = false,
 }: {
   visible: boolean
   onCancel: () => void
   onConfirm: () => void
+  working?: boolean
 }) {
   return (
     <Modal
@@ -1274,12 +1116,13 @@ function DeleteReportModal({
           </View>
           <Text style={type.h2}>Delete this report?</Text>
           <Text style={styles.modalCopy}>
-            This removes the report, confirmed metrics and generated advice. This
+            This removes the report, all of its metrics and generated advice. This
             action cannot be undone.
           </Text>
           <View style={styles.modalActions}>
             <Pressable
               onPress={onCancel}
+              disabled={working}
               accessibilityRole="button"
               accessibilityLabel="Cancel report deletion"
               style={styles.modalCancel}
@@ -1288,11 +1131,16 @@ function DeleteReportModal({
             </Pressable>
             <Pressable
               onPress={onConfirm}
+              disabled={working}
               accessibilityRole="button"
               accessibilityLabel="Confirm delete report"
-              style={styles.modalDelete}
+              style={[styles.modalDelete, working && styles.disabled]}
             >
-              <Text style={styles.modalDeleteText}>Delete</Text>
+              {working ? (
+                <ActivityIndicator color={colors.textOnColor} />
+              ) : (
+                <Text style={styles.modalDeleteText}>Delete</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -1301,7 +1149,7 @@ function DeleteReportModal({
   )
 }
 
-function MetricRow({ metric }: { metric: ReportMetric }) {
+export function MetricRow({ metric }: { metric: ReportMetric }) {
   const range =
     metric.referenceLow !== null && metric.referenceHigh !== null
       ? `${metric.referenceLow}–${metric.referenceHigh}`
@@ -1313,13 +1161,24 @@ function MetricRow({ metric }: { metric: ReportMetric }) {
   return (
     <View style={styles.metricRow}>
       <Ionicons
-        name={statusIcon[metric.status]}
+        name={metric.confirmed ? statusIcon[metric.status] : 'ellipse-outline'}
         size={20}
-        color={statusColors[metric.status]}
+        color={metric.confirmed ? statusColors[metric.status] : colors.warning}
       />
       <View style={styles.metricBody}>
         <Text style={styles.metricName}>{metric.name}</Text>
         <Text style={styles.metricRange}>Report range: {range}</Text>
+        {!metric.confirmed ? (
+          <Text style={styles.warning}>Unconfirmed — not used for advice</Text>
+        ) : null}
+        {metric.confidence !== null && metric.confidence < 0.7 ? (
+          <Text style={styles.warning}>
+            Low confidence ({Math.round(metric.confidence * 100)}%) — check carefully
+          </Text>
+        ) : null}
+        {metric.uncertaintyReason ? (
+          <Text style={styles.metricRange}>{metric.uncertaintyReason}</Text>
+        ) : null}
       </View>
       <View style={styles.metricValueBlock}>
         <Text style={styles.metricValue}>
@@ -1327,7 +1186,7 @@ function MetricRow({ metric }: { metric: ReportMetric }) {
           {metric.unit ? ` ${metric.unit}` : ''}
         </Text>
         <Text style={[styles.metricStatus, { color: statusColors[metric.status] }]}>
-          {statusLabel[metric.status]}
+          {metric.confirmed ? statusLabel[metric.status] : 'Needs confirmation'}
         </Text>
       </View>
     </View>

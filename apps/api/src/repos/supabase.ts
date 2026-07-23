@@ -1,3 +1,4 @@
+import { healthReportSchema } from '@akeso/domain'
 import type {
   CheckInInput,
   DayPlan,
@@ -8,7 +9,6 @@ import type {
   NutritionPlan,
   PlanBlock,
   ReminderPreference,
-  ReportMetric,
   Task,
   UserProfile,
 } from '@akeso/domain'
@@ -177,8 +177,10 @@ interface NutritionPlanCacheRow {
 
 interface HealthReportRow {
   id: string
+  name: string
+  report_date: string | null
   created_at: string
-  metrics: ReportMetric[]
+  metrics: unknown
 }
 
 interface ReportRecommendationCacheRow {
@@ -564,29 +566,39 @@ export function createSupabaseRepos(): Repos {
           unwrap<HealthReportRow[]>(
             await supabase
               .from('health_report')
-              .select('id, created_at, metrics')
+              .select('id, name, report_date, created_at, metrics')
               .eq('user_id', userId)
               .order('created_at', { ascending: false }),
             'health_report.list'
           ) ?? []
-        return rows.map((row) => ({
-          id: row.id,
-          createdAt: row.created_at,
-          metrics: row.metrics,
-        }))
+        return rows.map((row) =>
+          healthReportSchema.parse({
+            id: row.id,
+            name: row.name,
+            reportDate: row.report_date,
+            createdAt: row.created_at,
+            metrics: row.metrics,
+          })
+        )
       },
       async get(userId, id) {
         const row = unwrap<HealthReportRow>(
           await supabase
             .from('health_report')
-            .select('id, created_at, metrics')
+            .select('id, name, report_date, created_at, metrics')
             .eq('user_id', userId)
             .eq('id', id)
             .maybeSingle(),
           'health_report.get'
         )
         if (!row) return null
-        return { id: row.id, createdAt: row.created_at, metrics: row.metrics }
+        return healthReportSchema.parse({
+          id: row.id,
+          name: row.name,
+          reportDate: row.report_date,
+          createdAt: row.created_at,
+          metrics: row.metrics,
+        })
       },
       async upsert(userId, report: HealthReport) {
         unwrap(
@@ -594,6 +606,8 @@ export function createSupabaseRepos(): Repos {
             {
               id: report.id,
               user_id: userId,
+              name: report.name,
+              report_date: report.reportDate,
               created_at: report.createdAt,
               metrics: report.metrics,
             },

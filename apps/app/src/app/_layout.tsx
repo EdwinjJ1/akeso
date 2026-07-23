@@ -22,6 +22,7 @@ export default function RootLayout() {
         <Stack.Screen name="account" />
         <Stack.Screen name="coach" options={{ presentation: 'modal' }} />
         <Stack.Screen name="reports" />
+        <Stack.Screen name="report/[id]" />
       </Stack>
     </AppStateProvider>
   )

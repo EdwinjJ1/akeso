@@ -3,13 +3,18 @@ import type { ReportExtractionResult } from '@akeso/domain'
 
 import {
   addManualMetricCandidate,
+  addBlankManualMetricCandidate,
   candidateStatus,
   candidatesFromExtraction,
+  candidatesFromReportMetrics,
   editMetricCandidate,
   hasInvalidConfirmedCandidates,
+  hasDuplicateReportCandidates,
+  hasInvalidReportCandidates,
   parseRequiredMetricNumber,
   removeMetricCandidate,
   toConfirmedReportMetrics,
+  toReviewedReportMetrics,
   toggleMetricCandidate,
   type ReportMetricCandidate,
 } from './report-flow'
@@ -116,6 +121,98 @@ describe('toConfirmedReportMetrics', () => {
   })
 })
 
+describe('saved report correction', () => {
+  const savedMetric = {
+    id: 'stable-vitamin-d-id',
+    name: 'Vitamin D',
+    value: 18,
+    unit: 'ng/mL',
+    referenceLow: 30,
+    referenceHigh: 100,
+    status: 'low' as const,
+    confidence: 0.55,
+    uncertaintyReason: 'The result was faint.',
+    confirmed: true,
+  }
+
+  test('rehydrates confidence and confirmation, retaining unconfirmed rows', () => {
+    const candidates = candidatesFromReportMetrics([
+      savedMetric,
+      {
+        ...savedMetric,
+        id: 'uncertain',
+        name: 'Uncertain field',
+        confirmed: false,
+      },
+    ])
+
+    expect(candidates[0]).toMatchObject({
+      persistedId: 'stable-vitamin-d-id',
+      confidence: 0.55,
+      confirmed: true,
+    })
+    expect(toReviewedReportMetrics(candidates).map((metric) => metric.id)).toEqual([
+      'stable-vitamin-d-id',
+      'uncertain',
+    ])
+    expect(toConfirmedReportMetrics(candidates).map((metric) => metric.id)).toEqual([
+      'stable-vitamin-d-id',
+    ])
+  })
+
+  test('editing a saved confirmed result requires explicit re-confirmation', () => {
+    const [candidate] = candidatesFromReportMetrics([savedMetric])
+    const [edited] = editMetricCandidate([candidate], candidate.localId, {
+      name: 'Vitamin D corrected',
+      value: 25,
+      unit: 'ng/mL',
+      referenceLow: 30,
+      referenceHigh: 100,
+    })
+
+    expect(edited.confirmed).toBe(false)
+    const [reconfirmed] = toggleMetricCandidate([edited], edited.localId)
+    const [persisted] = toReviewedReportMetrics([reconfirmed])
+    expect(persisted).toMatchObject({
+      id: 'stable-vitamin-d-id',
+      name: 'Vitamin D corrected',
+      value: 25,
+      confirmed: true,
+      status: 'low',
+    })
+  })
+
+  test('manual ids stay unique after deleting and adding rows', () => {
+    let candidates = addManualMetricCandidate([], {
+      name: 'A',
+      value: 1,
+      unit: '',
+      referenceLow: null,
+      referenceHigh: null,
+    })
+    candidates = addManualMetricCandidate(candidates, {
+      name: 'B',
+      value: 2,
+      unit: '',
+      referenceLow: null,
+      referenceHigh: null,
+    })
+    candidates = removeMetricCandidate(candidates, 'manual-1')
+    candidates = addManualMetricCandidate(candidates, {
+      name: 'C',
+      value: 3,
+      unit: '',
+      referenceLow: null,
+      referenceHigh: null,
+    })
+
+    expect(candidates.map((candidate) => candidate.localId)).toEqual([
+      'manual-2',
+      'manual-1',
+    ])
+  })
+})
+
 describe('manual entry and removal', () => {
   test('manual metrics start unconfirmed', () => {
     const candidates = addManualMetricCandidate([], {
@@ -168,6 +265,35 @@ describe('manual entry and removal', () => {
         referenceHigh: null,
       })
     ).toEqual([])
+  })
+
+  test('blank manual drafts and invalid or inverted bounds block persistence', () => {
+    const [draft] = addBlankManualMetricCandidate([])
+    expect(draft.name).toBe('')
+    expect(Number.isNaN(draft.value)).toBe(true)
+    expect(hasInvalidReportCandidates([draft])).toBe(true)
+
+    const [candidate] = candidatesFromExtraction(extraction)
+    expect(
+      hasInvalidReportCandidates([
+        { ...candidate, referenceLow: Number.NaN },
+      ])
+    ).toBe(true)
+    expect(
+      hasInvalidReportCandidates([
+        { ...candidate, referenceLow: 100, referenceHigh: 30 },
+      ])
+    ).toBe(true)
+  })
+
+  test('duplicate metric names are detected before conversion can drop a row', () => {
+    const [candidate] = candidatesFromExtraction(extraction)
+    expect(
+      hasDuplicateReportCandidates([
+        candidate,
+        { ...candidate, localId: 'duplicate', name: `  ${candidate.name.toUpperCase()} ` },
+      ])
+    ).toBe(true)
   })
 
   test('removeMetricCandidate drops the targeted candidate', () => {

@@ -12,6 +12,7 @@ import {
   IngredientRecognitionResultSchema,
   NutritionPlanSchema,
   ReminderPreferenceSchema,
+  ReportNameSchema,
   ReportExtractionResultSchema,
   ReportMetricSchema,
   TaskSchema,
@@ -169,12 +170,82 @@ export const GetReportsResponseSchema = apiResponseSchema(
   z.array(HealthReportSchema)
 )
 
-/** POST /v1/reports — the client sends only metrics the user confirmed. */
+const reportMetricsInputSchema = z
+  .array(ReportMetricSchema)
+  .min(1)
+  .max(50)
+  .superRefine((metrics, context) => {
+    if (!metrics.some((metric) => metric.confirmed)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'At least one report metric must be confirmed',
+      })
+    }
+    const ids = new Set<string>()
+    const names = new Set<string>()
+    metrics.forEach((metric, index) => {
+      const normalizedName = metric.name.trim().toLocaleLowerCase()
+      if (ids.has(metric.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: 'Report metric ids must be unique',
+        })
+      }
+      if (names.has(normalizedName)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'name'],
+          message: 'Report metric names must be unique',
+        })
+      }
+      ids.add(metric.id)
+      names.add(normalizedName)
+    })
+  })
+
+/**
+ * POST /v1/reports — stores every reviewed recognition result so low
+ * confidence and unconfirmed fields remain visible after save. At least one
+ * metric must be explicitly confirmed before a report can be persisted.
+ */
 export const CreateReportRequestSchema = z
-  .object({ metrics: z.array(ReportMetricSchema).min(1).max(50) })
+  .object({
+    name: ReportNameSchema.default('Health report'),
+    reportDate: DateStringSchema.nullable().default(null),
+    metrics: reportMetricsInputSchema,
+  })
   .strict()
 export type CreateReportRequest = z.infer<typeof CreateReportRequestSchema>
 export const CreateReportResponseSchema = apiResponseSchema(HealthReportSchema)
+
+/** GET /v1/reports/:id */
+export const GetReportResponseSchema = apiResponseSchema(HealthReportSchema)
+
+/** PATCH /v1/reports/:id — metadata only; upload time is immutable. */
+export const UpdateReportRequestSchema = z
+  .object({
+    name: ReportNameSchema.optional(),
+    reportDate: DateStringSchema.nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (body) => body.name !== undefined || body.reportDate !== undefined,
+    { message: 'At least one report field is required' }
+  )
+export type UpdateReportRequest = z.infer<typeof UpdateReportRequestSchema>
+export const UpdateReportResponseSchema = apiResponseSchema(HealthReportSchema)
+
+/** PATCH /v1/reports/:id/metrics — complete reviewed metric replacement. */
+export const UpdateReportMetricsRequestSchema = z
+  .object({ metrics: reportMetricsInputSchema })
+  .strict()
+export type UpdateReportMetricsRequest = z.infer<
+  typeof UpdateReportMetricsRequestSchema
+>
+export const UpdateReportMetricsResponseSchema = apiResponseSchema(
+  HealthReportSchema
+)
 
 /** DELETE /v1/reports/:id */
 export const DeleteReportResponseSchema = apiResponseSchema(z.null())
@@ -319,6 +390,26 @@ export const apiContract = {
     path: '/v1/reports',
     request: CreateReportRequestSchema,
     response: CreateReportResponseSchema,
+  },
+  getReport: {
+    method: 'GET',
+    path: '/v1/reports/:id',
+    params: ReportParamsSchema,
+    response: GetReportResponseSchema,
+  },
+  updateReport: {
+    method: 'PATCH',
+    path: '/v1/reports/:id',
+    params: ReportParamsSchema,
+    request: UpdateReportRequestSchema,
+    response: UpdateReportResponseSchema,
+  },
+  updateReportMetrics: {
+    method: 'PATCH',
+    path: '/v1/reports/:id/metrics',
+    params: ReportParamsSchema,
+    request: UpdateReportMetricsRequestSchema,
+    response: UpdateReportMetricsResponseSchema,
   },
   deleteReport: {
     method: 'DELETE',

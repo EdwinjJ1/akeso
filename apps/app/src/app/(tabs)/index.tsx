@@ -270,7 +270,7 @@ function ReadyDashboard({
           <Text style={styles.fallbackTitle}>Protect your peak focus window</Text>
           <Text style={styles.fallbackText}>
             Put your most demanding task between {formatHour(energy.peakWindow.startHour)} and{' '}
-            {formatHour(energy.peakWindow.endHour)}. This uses today's energy curve while the
+            {formatHour(energy.peakWindow.endHour)}. This uses today’s energy curve while the
             coaching note is unavailable.
           </Text>
           {coachError ? <Text style={styles.fallbackError}>{coachError}</Text> : null}

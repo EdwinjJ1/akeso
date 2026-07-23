@@ -575,8 +575,27 @@ export const ReportMetricSchema = z
     referenceLow: z.number().finite().nullable(),
     referenceHigh: z.number().finite().nullable(),
     status: ReportMetricStatusSchema,
+    /** Recognition confidence is retained so saved reports remain reviewable. */
+    confidence: z.number().min(0).max(1).nullable().default(null),
+    /** Human-readable extraction uncertainty; never used to derive status. */
+    uncertaintyReason: z.string().trim().min(1).max(280).nullable().default(null),
+    /** Only confirmed metrics may ground recommendations. */
+    confirmed: z.boolean().default(true),
   })
   .strict()
+  .superRefine((metric, context) => {
+    if (
+      metric.referenceLow !== null &&
+      metric.referenceHigh !== null &&
+      metric.referenceLow > metric.referenceHigh
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['referenceHigh'],
+        message: 'Reference high must be greater than or equal to reference low',
+      })
+    }
+  })
 export type ReportMetric = z.infer<typeof ReportMetricSchema>
 
 /**
@@ -632,11 +651,30 @@ export const ReportExtractionResultSchema = z.discriminatedUnion('status', [
 ])
 export type ReportExtractionResult = z.infer<typeof ReportExtractionResultSchema>
 
-export const HealthReportSchema = z.object({
-  id: z.string().min(1),
-  createdAt: IsoDateTimeSchema,
-  metrics: z.array(ReportMetricSchema).min(1),
-})
+export const ReportNameSchema = z.string().trim().min(1).max(120)
+export type ReportName = z.infer<typeof ReportNameSchema>
+
+export const HealthReportSchema = z
+  .object({
+    id: z.string().min(1),
+    /** User-editable report or laboratory name. */
+    name: ReportNameSchema.default('Health report'),
+    /** Date printed on the report; null when the source did not provide one. */
+    reportDate: DateStringSchema.nullable().default(null),
+    /** Upload/save timestamp, assigned by the server and never client-editable. */
+    createdAt: IsoDateTimeSchema,
+    /** Includes both confirmed and still-unconfirmed recognition results. */
+    metrics: z.array(ReportMetricSchema).min(1),
+  })
+  .superRefine((report, context) => {
+    if (!report.metrics.some((metric) => metric.confirmed)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['metrics'],
+        message: 'At least one report metric must be confirmed',
+      })
+    }
+  })
 export type HealthReport = z.infer<typeof HealthReportSchema>
 
 export const HealthRecommendationCategorySchema = z.enum([
