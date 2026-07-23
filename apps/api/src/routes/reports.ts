@@ -6,6 +6,8 @@ import {
   healthRecommendationSetSchema,
   renderHealthRecommendationSet,
   reportParamsSchema,
+  toHealthRecommendationProfileContext,
+  type HealthRecommendationProfileContext,
   type HealthReport,
   type ReportMetric,
 } from '@akeso/domain'
@@ -72,19 +74,28 @@ export function createReportsRouter(
   ai: AiServices
 ): Router {
   const router = Router()
+  const recommendationModel =
+    env.vision.provider === 'gemini'
+      ? env.vision.geminiModel
+      : env.vision.mimoModel
 
-  // Recommendations depend only on the confirmed metrics (immutable once the
-  // report is saved) plus the provider/model/prompt version — no photo or raw
-  // report text is ever part of the key or the stored value.
-  const recommendationCacheKey = (userId: string, report: HealthReport) =>
+  // Recommendations depend only on the persisted confirmed metrics, the
+  // strict profile allowlist, and the provider/model/prompt version. No photo,
+  // raw report text, profile name, or profile free text crosses this boundary.
+  const recommendationCacheKey = (
+    userId: string,
+    report: HealthReport,
+    profile: HealthRecommendationProfileContext | null
+  ) =>
     createHash('sha256')
       .update(
         JSON.stringify({
           userId,
           reportId: report.id,
           metrics: report.metrics,
+          profile,
           provider: env.vision.provider,
-          model: env.vision.mimoModel,
+          model: recommendationModel,
           promptVersion: REPORT_RECOMMENDATION_PROMPT_VERSION,
         })
       )
@@ -95,6 +106,9 @@ export function createReportsRouter(
     if (!report) throw new HttpError(404, 'NOT_FOUND', 'Report not found.')
     return report
   }
+
+  const loadRecommendationProfile = async (userId: string) =>
+    toHealthRecommendationProfileContext(await repos.profile.get(userId))
 
   router.post(
     '/reports/extractions',
@@ -148,16 +162,17 @@ export function createReportsRouter(
   router.get('/reports/:id/recommendations', async (req, res) => {
     const { id } = reportParamsSchema.parse(req.params)
     const report = await loadReport(req.userId, id)
+    const profile = await loadRecommendationProfile(req.userId)
     const cached = await repos.reportRecommendationCache.get(
       req.userId,
-      recommendationCacheKey(req.userId, report)
+      recommendationCacheKey(req.userId, report, profile)
     )
     const parsed = cached ? healthRecommendationSetSchema.safeParse(cached) : null
     ok(
       res,
       parsed?.success
         ? parsed.data
-        : buildReportRecommendationsFallback({ report })
+        : buildReportRecommendationsFallback({ report, profile })
     )
   })
 
@@ -167,6 +182,8 @@ export function createReportsRouter(
     async (req, res) => {
       const { id } = reportParamsSchema.parse(req.params)
       const report = await loadReport(req.userId, id)
+      const profile = await loadRecommendationProfile(req.userId)
+      const sourceCacheKey = recommendationCacheKey(req.userId, report, profile)
       // The AI returns only a text-free blueprint (action codes + metric ids).
       // Validate its structure here (an AI fault is a 502, not a client 400),
       // then render the user-visible set from the persisted confirmed report:
@@ -175,7 +192,7 @@ export function createReportsRouter(
       // rendering, so a buggy service cannot smuggle phantom metrics or free
       // text into what we cache or return.
       const blueprint = healthRecommendationBlueprintSchema.safeParse(
-        await ai.generateHealthRecommendations({ report })
+        await ai.generateHealthRecommendations({ report, profile })
       )
       if (!blueprint.success) {
         throw new HttpError(
@@ -185,11 +202,32 @@ export function createReportsRouter(
         )
       }
       const recommendations = healthRecommendationSetSchema.parse(
-        renderHealthRecommendationSet({ report, blueprint: blueprint.data })
+        renderHealthRecommendationSet({
+          report,
+          blueprint: blueprint.data,
+          profile,
+        })
       )
+      // Generation can overlap a report replacement, deletion, or profile
+      // update. Re-read under the same owner and never publish advice for an
+      // older report/profile snapshot.
+      const [currentReport, currentProfile] = await Promise.all([
+        loadReport(req.userId, id),
+        loadRecommendationProfile(req.userId),
+      ])
+      if (
+        recommendationCacheKey(req.userId, currentReport, currentProfile) !==
+        sourceCacheKey
+      ) {
+        throw new HttpError(
+          409,
+          'REPORT_CHANGED',
+          'The report or profile changed while advice was being generated. Try again.'
+        )
+      }
       await repos.reportRecommendationCache.upsert(
         req.userId,
-        recommendationCacheKey(req.userId, report),
+        sourceCacheKey,
         recommendations
       )
       ok(res, recommendations)

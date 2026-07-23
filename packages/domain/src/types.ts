@@ -33,6 +33,7 @@ export type {
   HealthRecommendationBlueprint,
   HealthRecommendationBlueprintItem,
   HealthRecommendationCategory,
+  HealthRecommendationProfileContext,
   HealthRecommendationSet,
   RecommendationActionCode,
   HourWindow,

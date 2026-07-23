@@ -2,11 +2,14 @@ import type {
   HealthRecommendation,
   HealthRecommendationBlueprint,
   HealthRecommendationCategory,
+  HealthRecommendationProfileContext,
   HealthRecommendationSet,
   HealthReport,
   RecommendationActionCode,
   ReportMetricStatus,
+  UserProfile,
 } from './types'
+import { healthRecommendationProfileContextSchema } from './schemas'
 
 /**
  * The non-diagnostic disclaimer shown with every recommendation set. It must
@@ -33,6 +36,24 @@ export function computeMetricStatus(
   if (referenceLow !== null && value < referenceLow) return 'low'
   if (referenceHigh !== null && value > referenceHigh) return 'high'
   return 'normal'
+}
+
+/**
+ * Reduce the full persisted profile to the only structured fields report
+ * advice is allowed to use. Constructing a fresh object is intentional:
+ * runtime callers cannot smuggle display names, allergy notes, avoid lists,
+ * or unknown properties through a type assertion.
+ */
+export function toHealthRecommendationProfileContext(
+  profile: UserProfile | null
+): HealthRecommendationProfileContext | null {
+  if (!profile) return null
+  return healthRecommendationProfileContextSchema.parse({
+    goal: profile.goal,
+    typicalWake: profile.typicalWake,
+    typicalSleep: profile.typicalSleep,
+    dietaryPreference: profile.dietaryPreference,
+  })
 }
 
 interface RecommendationTemplate {
@@ -99,6 +120,29 @@ const RECOMMENDATION_TEMPLATES: Record<
   },
 }
 
+const buildProfileRecommendationItems = (
+  report: HealthReport,
+  profile: HealthRecommendationProfileContext | null
+): HealthRecommendationBlueprint['recommendations'] => {
+  if (!profile) return []
+  const actionCodes = new Set<RecommendationActionCode>()
+  actionCodes.add(
+    profile.goal === 'fitness'
+      ? 'support_gentle_movement'
+      : profile.goal === 'balance'
+        ? 'support_sleep'
+        : 'support_stress'
+  )
+  if (profile.dietaryPreference !== 'none') {
+    actionCodes.add('support_balanced_meals')
+  }
+  const metricIds = report.metrics.map((metric) => metric.id)
+  return Array.from(actionCodes, (actionCode) => ({
+    actionCode,
+    basedOnMetricIds: metricIds,
+  }))
+}
+
 /**
  * Render the final, user-visible recommendation set from a text-free blueprint
  * against the persisted confirmed report.
@@ -114,16 +158,48 @@ const RECOMMENDATION_TEMPLATES: Record<
 export function renderHealthRecommendationSet({
   report,
   blueprint,
+  profile = null,
 }: {
   report: HealthReport
   blueprint: HealthRecommendationBlueprint
+  profile?: HealthRecommendationProfileContext | null
 }): HealthRecommendationSet {
   const confirmedIds = new Set(report.metrics.map((metric) => metric.id))
   const allIds = report.metrics.map((metric) => metric.id)
 
   const recommendations: HealthRecommendation[] = []
-  for (const item of blueprint.recommendations) {
-    const grounded = item.basedOnMetricIds.filter((id) => confirmedIds.has(id))
+  const needsProfessionalFollowUp = report.metrics
+    .filter((metric) => metric.status !== 'normal')
+    .map((metric) => metric.id)
+  if (needsProfessionalFollowUp.length > 0) {
+    const template = RECOMMENDATION_TEMPLATES.professional_follow_up
+    recommendations.push({
+      id: 'rec-1',
+      category: template.category,
+      title: template.title,
+      detail: template.detail,
+      basedOnMetricIds: needsProfessionalFollowUp,
+    })
+  }
+  // Profile-selected actions are server-enforced. A valid provider response
+  // cannot silently ignore the allowed profile context; if it returns the same
+  // action, the server replaces it with the fully grounded deterministic item.
+  const profileItems = buildProfileRecommendationItems(report, profile)
+  const profileActionCodes = new Set(profileItems.map((item) => item.actionCode))
+  const effectiveItems = [
+    ...blueprint.recommendations.filter(
+      (item) => !profileActionCodes.has(item.actionCode)
+    ),
+    ...profileItems,
+  ]
+  for (const item of effectiveItems) {
+    // Follow-up is determined entirely from server-computed statuses above.
+    // A provider cannot omit it for a flagged/unknown metric or add an
+    // alarming follow-up for a report whose confirmed metrics are all normal.
+    if (item.actionCode === 'professional_follow_up') continue
+    const grounded = Array.from(
+      new Set(item.basedOnMetricIds.filter((id) => confirmedIds.has(id)))
+    )
     if (grounded.length === 0) continue
     const template = RECOMMENDATION_TEMPLATES[item.actionCode]
     recommendations.push({
@@ -163,8 +239,10 @@ export function renderHealthRecommendationSet({
  */
 export function buildReportRecommendationBlueprint({
   report,
+  profile = null,
 }: {
   report: HealthReport
+  profile?: HealthRecommendationProfileContext | null
 }): HealthRecommendationBlueprint {
   const needsFollowUp = report.metrics.filter(
     (metric) =>
@@ -179,6 +257,12 @@ export function buildReportRecommendationBlueprint({
       basedOnMetricIds: needsFollowUp.map((metric) => metric.id),
     })
   }
+
+  // Profile data can only select from the same closed, non-diagnostic action
+  // codes. It never changes copy and every selected action remains grounded in
+  // the report's confirmed metrics. Goal/diet mappings are intentionally
+  // conservative general-wellbeing priorities, not interpretations of a lab.
+  recommendations.push(...buildProfileRecommendationItems(report, profile))
   recommendations.push({
     actionCode: 'general_wellbeing',
     basedOnMetricIds: report.metrics.map((metric) => metric.id),
@@ -194,11 +278,14 @@ export function buildReportRecommendationBlueprint({
  */
 export function buildReportRecommendationsFallback({
   report,
+  profile = null,
 }: {
   report: HealthReport
+  profile?: HealthRecommendationProfileContext | null
 }): HealthRecommendationSet {
   return renderHealthRecommendationSet({
     report,
-    blueprint: buildReportRecommendationBlueprint({ report }),
+    blueprint: buildReportRecommendationBlueprint({ report, profile }),
+    profile,
   })
 }

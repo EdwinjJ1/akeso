@@ -30,7 +30,10 @@ const unavailableServices: AiServices = {
     throw unavailableError()
   },
   async generateHealthRecommendations(input) {
-    return buildReportRecommendationBlueprint({ report: input.report })
+    return buildReportRecommendationBlueprint({
+      report: input.report,
+      profile: input.profile,
+    })
   },
 }
 

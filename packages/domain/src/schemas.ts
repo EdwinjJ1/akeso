@@ -24,6 +24,7 @@ export {
   FridgeItemParamsSchema as fridgeItemParamsSchema,
   FridgeItemSchema as fridgeItemSchema,
   HealthReportSchema as healthReportSchema,
+  HealthRecommendationProfileContextSchema as healthRecommendationProfileContextSchema,
   HealthRecommendationSchema as healthRecommendationSchema,
   HealthRecommendationSetSchema as healthRecommendationSetSchema,
   HealthRecommendationBlueprintSchema as healthRecommendationBlueprintSchema,

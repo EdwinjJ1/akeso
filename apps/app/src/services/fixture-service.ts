@@ -8,6 +8,7 @@ import {
   computeMetricStatus,
   EnergyEngine,
   mergeRegeneratedPlan,
+  toHealthRecommendationProfileContext,
   updatePlanBlock as applyPlanBlockUpdate,
   type AkesoService,
   type CheckInInput,
@@ -266,7 +267,10 @@ export class FixtureService implements AkesoService {
   private recommendationsFor(id: string): HealthRecommendationSet {
     const report = this.reports.get(id)
     if (!report) throw new Error('Report not found.')
-    return buildReportRecommendationsFallback({ report })
+    return buildReportRecommendationsFallback({
+      report,
+      profile: toHealthRecommendationProfileContext(this.profile),
+    })
   }
 
   async getReminderPreference(): Promise<ReminderPreference | null> {

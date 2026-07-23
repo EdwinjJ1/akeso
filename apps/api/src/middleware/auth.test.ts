@@ -171,4 +171,62 @@ describe('cross-user isolation', () => {
       { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
     ])
   })
+
+  test('report advice uses only the report owner\'s profile', async () => {
+    const userIdByToken: Record<string, string> = {
+      'alice-token': 'alice-id',
+      'bob-token': 'bob-id',
+    }
+    const app = await buildRealModeApp(async (token) =>
+      userIdByToken[token]
+        ? { data: { user: { id: userIdByToken[token] } }, error: null }
+        : { data: { user: null }, error: { message: 'invalid' } }
+    )
+
+    await request(app)
+      .put('/v1/profile')
+      .set('Authorization', 'Bearer alice-token')
+      .send(validProfile)
+      .expect(200)
+    await request(app)
+      .put('/v1/profile')
+      .set('Authorization', 'Bearer bob-token')
+      .send({ ...validProfile, displayName: 'Bob', goal: 'fitness' })
+      .expect(200)
+
+    const created = await request(app)
+      .post('/v1/reports')
+      .set('Authorization', 'Bearer alice-token')
+      .send({
+        metrics: [
+          {
+            id: 'vitamin-d',
+            name: 'Vitamin D',
+            value: 18,
+            unit: 'ng/mL',
+            referenceLow: 30,
+            referenceHigh: 100,
+            status: 'normal',
+          },
+        ],
+      })
+      .expect(201)
+    const id = created.body.data.id
+
+    await request(app)
+      .get(`/v1/reports/${id}/recommendations`)
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+
+    const alicesAdvice = await request(app)
+      .get(`/v1/reports/${id}/recommendations`)
+      .set('Authorization', 'Bearer alice-token')
+      .expect(200)
+    expect(alicesAdvice.body.data.recommendations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: 'stress' })])
+    )
+    expect(alicesAdvice.body.data.recommendations).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: 'activity' })])
+    )
+  })
 })

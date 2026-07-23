@@ -1,10 +1,13 @@
-import type {
-  HealthRecommendationSet,
-  HealthReport,
-  ReportExtractionResult,
-  ReportImageUpload,
-  ReportMetric,
-  ReportMetricStatus,
+import {
+  buildReportRecommendationsFallback,
+  toHealthRecommendationProfileContext,
+  type HealthRecommendationProfileContext,
+  type HealthRecommendationSet,
+  type HealthReport,
+  type ReportExtractionResult,
+  type ReportImageUpload,
+  type ReportMetric,
+  type ReportMetricStatus,
 } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import * as DocumentPicker from 'expo-document-picker'
@@ -39,10 +42,7 @@ import {
 } from '@/state/report-flow'
 import { colors, radius, sp, type } from '@/theme/tokens'
 
-import {
-  demoRecommendations,
-  demoReportExtraction,
-} from './report-demo'
+import { demoReportExtraction } from './report-demo'
 
 type ReportSource = 'camera' | 'photo' | 'pdf'
 
@@ -103,6 +103,7 @@ const wait = (ms: number) =>
 
 export function ReportManager() {
   const {
+    profile,
     extractReportMetrics,
     getReports,
     saveReport,
@@ -124,6 +125,10 @@ export function ReportManager() {
   const [reportName, setReportName] = useState('Blood test report')
   const [reportDate, setReportDate] = useState('2026-07-18')
   const [savedNotice, setSavedNotice] = useState(false)
+  const recommendationProfile = useMemo(
+    () => toHealthRecommendationProfileContext(profile),
+    [profile]
+  )
 
   const refreshReports = useCallback(async () => {
     setLoadingReports(true)
@@ -140,6 +145,8 @@ export function ReportManager() {
   }, [getReports])
 
   useEffect(() => {
+    // This effect intentionally bootstraps remote report data on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshReports()
   }, [refreshReports])
 
@@ -645,6 +652,7 @@ export function ReportManager() {
         <SavedReportCard
           key={report.id}
           report={report}
+          recommendationProfile={recommendationProfile}
           getRecommendations={getReportRecommendations}
           regenerate={regenerateReportRecommendations}
           onDeleted={async () => {
@@ -975,18 +983,20 @@ function LabeledInput({
 
 function SavedReportCard({
   report,
+  recommendationProfile,
   getRecommendations,
   regenerate,
   onDeleted,
 }: {
   report: HealthReport
+  recommendationProfile: HealthRecommendationProfileContext | null
   getRecommendations: (id: string) => Promise<HealthRecommendationSet>
   regenerate: (id: string) => Promise<HealthRecommendationSet>
   onDeleted: () => void
 }) {
   const isDemo = report.id === 'demo-health-report'
   const [recommendations, setRecommendations] =
-    useState<HealthRecommendationSet | null>(isDemo ? demoRecommendations : null)
+    useState<HealthRecommendationSet | null>(null)
   const [expanded, setExpanded] = useState(isDemo)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1027,10 +1037,31 @@ function SavedReportCard({
   }
 
   const created = report.createdAt.slice(0, 10)
-  const flagged = report.metrics.filter(
-    (metric) => metric.status === 'low' || metric.status === 'high'
+  const needsReview = report.metrics.filter(
+    (metric) => metric.status !== 'normal'
   ).length
-  const metricById = new Map(report.metrics.map((metric) => [metric.id, metric]))
+  const displayedRecommendations = useMemo(
+    () =>
+      recommendations ??
+      (isDemo
+        ? buildReportRecommendationsFallback({
+            report,
+            profile: recommendationProfile,
+          })
+        : null),
+    [isDemo, recommendationProfile, recommendations, report]
+  )
+  const groundedRecommendations = useMemo(() => {
+    const metricById = new Map(
+      (displayedRecommendations?.metrics ?? []).map((metric) => [metric.id, metric])
+    )
+    return (displayedRecommendations?.recommendations ?? []).flatMap((recommendation) => {
+      const evidence = recommendation.basedOnMetricIds
+        .map((id) => metricById.get(id))
+        .filter((metric): metric is ReportMetric => Boolean(metric))
+      return evidence.length > 0 ? [{ recommendation, evidence }] : []
+    })
+  }, [displayedRecommendations])
 
   return (
     <Card style={styles.reportCard}>
@@ -1065,14 +1096,14 @@ function SavedReportCard({
           <Ionicons name="checkmark-circle" size={15} color={colors.primaryDark} />
           <Text style={styles.summaryText}>{report.metrics.length} confirmed</Text>
         </View>
-        <View style={[styles.summaryBadge, flagged > 0 && styles.flaggedBadge]}>
+        <View style={[styles.summaryBadge, needsReview > 0 && styles.flaggedBadge]}>
           <Ionicons
-            name={flagged > 0 ? 'warning' : 'shield-checkmark'}
+            name={needsReview > 0 ? 'warning' : 'shield-checkmark'}
             size={15}
-            color={flagged > 0 ? colors.warning : colors.primaryDark}
+            color={needsReview > 0 ? colors.warning : colors.primaryDark}
           />
           <Text style={styles.summaryText}>
-            {flagged > 0 ? `${flagged} outside range` : 'No flagged results'}
+            {needsReview > 0 ? `${needsReview} need review` : 'No flagged results'}
           </Text>
         </View>
       </View>
@@ -1091,26 +1122,25 @@ function SavedReportCard({
             <View>
               <Text style={type.h3}>Lifestyle guidance</Text>
               <Text style={styles.adviceSubtitle}>
-                Safe suggestions grounded in confirmed results
+                {recommendationProfile
+                  ? 'Personalised using your saved goal and dietary preference; grounded only in confirmed metrics'
+                  : 'Safe suggestions grounded only in confirmed metrics'}
               </Text>
             </View>
             <Ionicons name="sparkles" size={19} color={colors.primaryDark} />
           </View>
 
-          {recommendations ? (
+          {displayedRecommendations ? (
             <View style={styles.recBlock}>
-              {recommendations.recommendations.map((rec) => {
-                const evidence = rec.basedOnMetricIds
-                  .map((id) => metricById.get(id))
-                  .filter((metric): metric is ReportMetric => Boolean(metric))
-                return (
-                  <View key={rec.id} style={styles.rec}>
+              {groundedRecommendations.length > 0 ? (
+                groundedRecommendations.map(({ recommendation, evidence }) => (
+                  <View key={recommendation.id} style={styles.rec}>
                     <View style={styles.recIcon}>
                       <Ionicons
                         name={
-                          rec.category === 'follow_up'
+                          recommendation.category === 'follow_up'
                             ? 'medical'
-                            : rec.category === 'hydration'
+                            : recommendation.category === 'hydration'
                               ? 'water'
                               : 'leaf'
                         }
@@ -1119,10 +1149,12 @@ function SavedReportCard({
                       />
                     </View>
                     <View style={styles.flexBody}>
-                      <Text style={styles.recTitle}>{rec.title}</Text>
-                      <Text style={styles.recDetail}>{rec.detail}</Text>
+                      <Text style={styles.recTitle}>{recommendation.title}</Text>
+                      <Text style={styles.recDetail}>{recommendation.detail}</Text>
                       <View style={styles.evidenceBox}>
-                        <Text style={styles.evidenceLabel}>BASED ON CONFIRMED</Text>
+                        <Text style={styles.evidenceLabel}>
+                          ADVICE BASIS — CONFIRMED METRICS
+                        </Text>
                         <View style={styles.evidenceList}>
                           {evidence.map((metric) => (
                             <View key={metric.id} style={styles.evidenceChip}>
@@ -1136,14 +1168,21 @@ function SavedReportCard({
                       </View>
                     </View>
                   </View>
-                )
-              })}
+                ))
+              ) : (
+                <View style={styles.adviceLocked}>
+                  <Ionicons name="shield-outline" size={20} color={colors.textMuted} />
+                  <Text style={styles.adviceLockedText}>
+                    Advice is unavailable because no confirmed metric basis was returned.
+                  </Text>
+                </View>
+              )}
               <View style={styles.disclaimerCard}>
                 <Ionicons name="medkit-outline" size={18} color={colors.primaryDark} />
                 <View style={styles.flexBody}>
                   <Text style={styles.disclaimerTitle}>Not a medical diagnosis</Text>
                   <Text style={styles.disclaimerText}>
-                    {recommendations.disclaimer}
+                    {displayedRecommendations.disclaimer}
                   </Text>
                 </View>
               </View>
@@ -1171,7 +1210,7 @@ function SavedReportCard({
               <Text style={styles.recButtonText}>
                 {busy
                   ? 'Working…'
-                  : recommendations
+                  : displayedRecommendations
                     ? 'Refresh advice'
                     : 'View recommendations'}
               </Text>

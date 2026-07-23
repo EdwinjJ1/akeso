@@ -3,6 +3,7 @@ import type {
   FridgeItem,
   HealthReport,
   HealthRecommendationBlueprint,
+  HealthRecommendationProfileContext,
   IngredientRecognitionResult,
   NutritionPlan,
   ReportExtractionResult,
@@ -24,6 +25,8 @@ export interface NutritionGenerationInput {
 /** Recommendations are grounded only in a report the user already confirmed. */
 export interface HealthRecommendationInput {
   report: HealthReport
+  /** Strict structured allowlist; null when the user has no saved profile. */
+  profile: HealthRecommendationProfileContext | null
 }
 
 export interface AiServices {

@@ -67,6 +67,9 @@
 - `PUT /v1/fridge/:id` 以路径 `id` 为准做 upsert(同一 id 重复提交 = 覆盖,幂等);库存仅表达“有这个食物”,不含数量、单位、克数或到期日;
 - `POST /v1/fridge/recognitions` 只返回候选,绝不自动写库存;候选默认未确认,客户端只把用户最终勾选的项目发送到 batch 接口;
 - 图片只在内存中处理,限制 5 MiB,校验 JPEG/PNG/WebP 文件签名,不写 Supabase、磁盘或日志;
+- 已保存 `HealthReport.metrics` 只包含用户确认后的指标；报告建议不得读取识别候选、原始图片或任何未确认内容。每条建议至少引用一个同一响应 `metrics` 中的 ID，App 展示该服务端证据的指标名称、结果和单位;
+- 报告建议可读取的用户资料严格限定为 `goal`、`typicalWake`、`typicalSleep`、`dietaryPreference` 四个结构化字段。`displayName`、过敏备注、避免食材和其他自由文本不得进入建议 Prompt；资料上下文属于 cache key，资料或指标变化后旧缓存不得继续命中;
+- 建议 Provider 只能看到 `metric_1` 形式的不透明引用与服务端计算的 `status`，看不到真实指标 ID、名称、结果、单位或报告文本。Provider 只返回闭集 action code + 不透明引用；服务端映射回当前已确认 metric ID，并以固定模板渲染所有可见文案;
 - `GET /v1/nutrition/:date` 读取真实 profile、energy 和确认库存,返回匹配缓存或即时确定性 fallback;`regenerate` 才调用 AI。AI 与 fallback 都必须通过 `NutritionPlanSchema`,且餐食只能引用响应内真实库存 ID;
 
 AI nutrition providers return a private, text-free blueprint made from confirmed
@@ -76,7 +79,7 @@ client. Dietary filtering is deliberately conservative because `FridgeItem`
 stores only a broad category: it cannot distinguish plant from animal protein,
 gluten-free grains, halal-compliant protein, or the contents of `other` items.
 - `GET /v1/reminders` 在未设置时返回 `data: null`(HTTP 200);`ReminderPreference` 尚无消费方 UI,是提前持久化的数据层;
-- 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`INVALID_IMAGE`、`AI_UNAVAILABLE`、`AI_TIMEOUT`、`MALFORMED_AI_OUTPUT`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
+- 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`INVALID_IMAGE`、`AI_UNAVAILABLE`、`AI_TIMEOUT`、`MALFORMED_AI_OUTPUT`、`REPORT_CHANGED`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。`REPORT_CHANGED` 表示建议生成期间报告指标或允许使用的资料上下文已被修改，客户端应重新加载或重试生成。
 
 ## Energy Score 计算语义
 

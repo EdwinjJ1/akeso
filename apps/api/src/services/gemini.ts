@@ -164,7 +164,10 @@ export function createGeminiAiServices(
 
   const generateHealthRecommendations: AiServices['generateHealthRecommendations'] =
     async (input) =>
-      buildReportRecommendationBlueprint({ report: input.report })
+      buildReportRecommendationBlueprint({
+        report: input.report,
+        profile: input.profile,
+      })
 
   return {
     recognizeIngredients,

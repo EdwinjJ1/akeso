@@ -393,6 +393,24 @@ export const UserProfileSchema = z.object({
 })
 export type UserProfile = z.infer<typeof UserProfileSchema>
 
+/**
+ * The complete, deliberately small profile allowlist available to health-
+ * report recommendation generation. Every value is an enum or validated time
+ * string. Names, allergy notes, avoid lists, and every other free-text profile
+ * field are excluded so they cannot become prompt instructions or UI copy.
+ */
+export const HealthRecommendationProfileContextSchema = z
+  .object({
+    goal: UserGoalSchema,
+    typicalWake: TimeStringSchema,
+    typicalSleep: TimeStringSchema,
+    dietaryPreference: DietaryPreferenceSchema,
+  })
+  .strict()
+export type HealthRecommendationProfileContext = z.infer<
+  typeof HealthRecommendationProfileContextSchema
+>
+
 // ── Nutrition ───────────────────────────────────────────────────────────────
 
 export const NutrientKeySchema = z.enum([
@@ -640,7 +658,12 @@ export const HealthRecommendationSchema = z.object({
   title: z.string().min(1),
   detail: z.string().min(1),
   /** Confirmed metric ids this suggestion is grounded in — never empty. */
-  basedOnMetricIds: z.array(z.string().min(1)).min(1),
+  basedOnMetricIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: 'Recommendation metric ids must be unique',
+    }),
 })
 export type HealthRecommendation = z.infer<typeof HealthRecommendationSchema>
 
@@ -664,6 +687,13 @@ export const HealthRecommendationSetSchema = z
   })
   .superRefine((set, context) => {
     const metricIds = new Set(set.metrics.map((metric) => metric.id))
+    if (metricIds.size !== set.metrics.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['metrics'],
+        message: 'Recommendation evidence metric ids must be unique',
+      })
+    }
     set.recommendations.forEach((recommendation, recommendationIndex) => {
       recommendation.basedOnMetricIds.forEach((metricId, metricIdIndex) => {
         if (!metricIds.has(metricId)) {
