@@ -171,4 +171,94 @@ describe('cross-user isolation', () => {
       { id: 'milk', name: 'Milk', category: 'dairy', allergenTags: [] },
     ])
   })
+
+  test('isolates report reads, writes and profile-grounded advice by owner', async () => {
+    const userIdByToken: Record<string, string> = {
+      'alice-token': 'alice-id',
+      'bob-token': 'bob-id',
+    }
+    const app = await buildRealModeApp(async (token) =>
+      userIdByToken[token]
+        ? { data: { user: { id: userIdByToken[token] } }, error: null }
+        : { data: { user: null }, error: { message: 'invalid' } }
+    )
+
+    await request(app)
+      .put('/v1/profile')
+      .set('Authorization', 'Bearer alice-token')
+      .send(validProfile)
+      .expect(200)
+    await request(app)
+      .put('/v1/profile')
+      .set('Authorization', 'Bearer bob-token')
+      .send({ ...validProfile, displayName: 'Bob', goal: 'fitness' })
+      .expect(200)
+    const created = await request(app)
+      .post('/v1/reports')
+      .set('Authorization', 'Bearer alice-token')
+      .send({
+        name: 'Alice private panel',
+        reportDate: '2026-07-20',
+        metrics: [
+          {
+            id: 'vitamin-d',
+            name: 'Vitamin D',
+            value: 18,
+            unit: 'ng/mL',
+            referenceLow: 30,
+            referenceHigh: 100,
+            status: 'normal',
+            confidence: 0.9,
+            uncertaintyReason: null,
+            confirmed: true,
+          },
+        ],
+      })
+      .expect(201)
+    const id = created.body.data.id
+
+    await request(app)
+      .get(`/v1/reports/${id}`)
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+    await request(app)
+      .patch(`/v1/reports/${id}`)
+      .set('Authorization', 'Bearer bob-token')
+      .send({ name: 'Stolen' })
+      .expect(404)
+    await request(app)
+      .patch(`/v1/reports/${id}/metrics`)
+      .set('Authorization', 'Bearer bob-token')
+      .send({ metrics: created.body.data.metrics })
+      .expect(404)
+    await request(app)
+      .get(`/v1/reports/${id}/recommendations`)
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+    await request(app)
+      .post(`/v1/reports/${id}/recommendations/regenerate`)
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+    await request(app)
+      .delete(`/v1/reports/${id}`)
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+
+    const unchanged = await request(app)
+      .get(`/v1/reports/${id}`)
+      .set('Authorization', 'Bearer alice-token')
+      .expect(200)
+    expect(unchanged.body.data.name).toBe('Alice private panel')
+
+    const alicesAdvice = await request(app)
+      .get(`/v1/reports/${id}/recommendations`)
+      .set('Authorization', 'Bearer alice-token')
+      .expect(200)
+    expect(alicesAdvice.body.data.recommendations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: 'stress' })])
+    )
+    expect(alicesAdvice.body.data.recommendations).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ category: 'activity' })])
+    )
+  })
 })

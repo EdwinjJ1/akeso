@@ -1,0 +1,82 @@
+appId: com.edwinjj1.akeso
+name: Issue 53 Android report fixture journey
+tags:
+  - android
+  - issue-53
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- startRecording: issue-53-android
+
+# Complete the local onboarding so the flow works on a fresh emulator.
+- tapOn: "Get started"
+- tapOn: "Study & exams"
+- tapOn: "Continue"
+- scrollUntilVisible:
+    element:
+      text: "Start using Akeso"
+    direction: DOWN
+- tapOn: "Start using Akeso"
+
+# Enter reports from the app's normal navigation.
+- tapOn: "More"
+- tapOn: "Health reports"
+- scrollUntilVisible:
+    element:
+      text: "Load High & low flags report fixture"
+    direction: DOWN
+- tapOn: "Load High & low flags report fixture"
+- assertVisible: "Review the extracted details"
+- assertVisible: "Below report range"
+- assertVisible: "Above report range"
+- takeScreenshot: issue-53-android-review
+
+# Correct and confirm only the values that should ground advice.
+- tapOn: "Confirm Haemoglobin"
+- tapOn: "Result for Ferritin"
+- eraseText
+- inputText: "42"
+- hideKeyboard
+- tapOn: "Confirm Ferritin"
+- scrollUntilVisible:
+    element:
+      text: "Save reviewed metrics and continue"
+    direction: DOWN
+- tapOn: "Save reviewed metrics and continue"
+- assertVisible: "Report saved"
+- scrollUntilVisible:
+    element:
+      text: "View details for Flagged pathology fixture"
+    direction: DOWN
+- tapOn: "View details for Flagged pathology fixture"
+
+# A saved correction invalidates old advice and regenerates current advice.
+- assertVisible: "All metrics"
+- tapOn: "Edit report details and metrics"
+- tapOn: "Result for Ferritin"
+- eraseText
+- inputText: "18"
+- hideKeyboard
+- assertVisible: "Advice needs updating"
+- tapOn: "Confirm Ferritin"
+- scrollUntilVisible:
+    element:
+      text: "Save report changes and regenerate advice"
+    direction: DOWN
+- tapOn: "Save report changes and regenerate advice"
+- assertVisible: "Changes confirmed. Advice was regenerated from current metrics."
+- assertVisible: "Review these results with a professional"
+- takeScreenshot: issue-53-android-updated-advice
+
+# Delete the report and return to history.
+- scrollUntilVisible:
+    element:
+      text: "Delete this health report"
+    direction: DOWN
+- tapOn: "Delete this health report"
+- assertVisible: "Delete this report?"
+- tapOn: "Confirm delete report"
+- assertVisible: "Report history"
+- stopRecording

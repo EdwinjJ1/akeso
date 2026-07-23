@@ -1,8 +1,11 @@
+import { healthReportSchema } from '@akeso/domain'
 import type {
   CheckInInput,
   DayPlan,
   EnergyResult,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   NutritionPlan,
   PlanBlock,
   ReminderPreference,
@@ -170,6 +173,18 @@ interface ReminderPreferenceRow {
 
 interface NutritionPlanCacheRow {
   plan: NutritionPlan
+}
+
+interface HealthReportRow {
+  id: string
+  name: string
+  report_date: string | null
+  created_at: string
+  metrics: unknown
+}
+
+interface ReportRecommendationCacheRow {
+  recommendations: HealthRecommendationSet
 }
 
 /**
@@ -542,6 +557,118 @@ export function createSupabaseRepos(): Repos {
           'reminder_preference.upsert'
         )
         return pref
+      },
+    },
+
+    reports: {
+      async list(userId) {
+        const rows =
+          unwrap<HealthReportRow[]>(
+            await supabase
+              .from('health_report')
+              .select('id, name, report_date, created_at, metrics')
+              .eq('user_id', userId)
+              .order('created_at', { ascending: false }),
+            'health_report.list'
+          ) ?? []
+        return rows.map((row) =>
+          healthReportSchema.parse({
+            id: row.id,
+            name: row.name,
+            reportDate: row.report_date,
+            createdAt: row.created_at,
+            metrics: row.metrics,
+          })
+        )
+      },
+      async get(userId, id) {
+        const row = unwrap<HealthReportRow>(
+          await supabase
+            .from('health_report')
+            .select('id, name, report_date, created_at, metrics')
+            .eq('user_id', userId)
+            .eq('id', id)
+            .maybeSingle(),
+          'health_report.get'
+        )
+        if (!row) return null
+        return healthReportSchema.parse({
+          id: row.id,
+          name: row.name,
+          reportDate: row.report_date,
+          createdAt: row.created_at,
+          metrics: row.metrics,
+        })
+      },
+      async upsert(userId, report: HealthReport) {
+        unwrap(
+          await supabase.from('health_report').upsert(
+            {
+              id: report.id,
+              user_id: userId,
+              name: report.name,
+              report_date: report.reportDate,
+              created_at: report.createdAt,
+              metrics: report.metrics,
+            },
+            { onConflict: 'user_id,id' }
+          ),
+          'health_report.upsert'
+        )
+        return report
+      },
+      async remove(userId, id) {
+        unwrap(
+          await supabase
+            .from('health_report')
+            .delete()
+            .eq('user_id', userId)
+            .eq('id', id),
+          'health_report.remove'
+        )
+      },
+    },
+
+    reportRecommendationCache: {
+      async get(userId, cacheKey) {
+        const row = unwrap<ReportRecommendationCacheRow>(
+          await supabase
+            .from('report_recommendation_cache')
+            .select('recommendations')
+            .eq('user_id', userId)
+            .eq('cache_key', cacheKey)
+            .maybeSingle(),
+          'report_recommendation_cache.get'
+        )
+        return row?.recommendations ?? null
+      },
+      async upsert(userId, cacheKey, recommendations) {
+        unwrap(
+          await supabase.from('report_recommendation_cache').upsert(
+            {
+              user_id: userId,
+              cache_key: cacheKey,
+              report_id: recommendations.reportId,
+              recommendations,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,cache_key' }
+          ),
+          'report_recommendation_cache.upsert'
+        )
+      },
+      async removeByReport(userId, reportId) {
+        // Belt-and-suspenders with the composite FK's ON DELETE CASCADE: an
+        // explicit delete keeps the memory and Supabase paths identical and
+        // still cleans up if the report row was already gone.
+        unwrap(
+          await supabase
+            .from('report_recommendation_cache')
+            .delete()
+            .eq('user_id', userId)
+            .eq('report_id', reportId),
+          'report_recommendation_cache.removeByReport'
+        )
       },
     },
   }

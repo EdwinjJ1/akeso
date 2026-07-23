@@ -50,6 +50,15 @@
 | `deleteFridgeItem(id)` | `DELETE /v1/fridge/:id` | — | `null` | Nutrition |
 | `saveFridgeItemsBatch(items)` | `POST /v1/fridge-items/batch` | `{ items: FridgeItem[] }` | `FridgeItem[]` | Nutrition |
 | `recognizeFridgeImage(image)` | `POST /v1/fridge/recognitions` | multipart `image` | `IngredientRecognitionResult` | Nutrition |
+| `extractReportMetrics(image)` | `POST /v1/reports/extractions` | multipart `image` | `ReportExtractionResult` | Reports |
+| `getReports()` | `GET /v1/reports` | — | `HealthReport[]` | Reports |
+| `saveReport(input)` | `POST /v1/reports` | `CreateReportRequest` | `HealthReport` | Reports |
+| `getReport(id)` | `GET /v1/reports/:id` | — | `HealthReport` | Report detail |
+| `updateReport(id, input)` | `PATCH /v1/reports/:id` | `{ name?, reportDate? }` | `HealthReport` | Report detail |
+| `updateReportMetrics(id, input)` | `PATCH /v1/reports/:id/metrics` | `{ metrics: ReportMetric[] }` | `HealthReport` | Report detail |
+| `deleteReport(id)` | `DELETE /v1/reports/:id` | — | `null` | Report detail |
+| `getReportRecommendations(id)` | `GET /v1/reports/:id/recommendations` | — | `HealthRecommendationSet` | Report detail |
+| `regenerateReportRecommendations(id)` | `POST /v1/reports/:id/recommendations/regenerate` | — | `HealthRecommendationSet` | Report detail |
 | `getReminderPreference()` | `GET /v1/reminders` | — | `ReminderPreference \| null` | (无,持久化先行于 UI) |
 | `saveReminderPreference(p)` | `PUT /v1/reminders` | `ReminderPreference` | `ReminderPreference` | (无,持久化先行于 UI) |
 
@@ -67,6 +76,12 @@
 - `PUT /v1/fridge/:id` 以路径 `id` 为准做 upsert(同一 id 重复提交 = 覆盖,幂等);库存仅表达“有这个食物”,不含数量、单位、克数或到期日;
 - `POST /v1/fridge/recognitions` 只返回候选,绝不自动写库存;候选默认未确认,客户端只把用户最终勾选的项目发送到 batch 接口;
 - 图片只在内存中处理,限制 5 MiB,校验 JPEG/PNG/WebP 文件签名,不写 Supabase、磁盘或日志;
+- 报告识别图片同样只在内存中处理且不持久化；`HealthReport` 保存报告名称、报告日期以及全部已审阅指标（包括低置信度/未确认字段），从而支持保存后修正；至少一项指标必须确认;
+- `PATCH /v1/reports/:id/metrics` 是完整替换。API 不信任客户端 `status`，会按修正后的数值与该报告自身参考范围重新计算，并使旧建议缓存失效;
+- 报告建议只能接收当前 `confirmed: true` 的指标；未确认字段不得进入 AI 输入、fallback、引用 ID 或展示证据。每条建议至少引用一个同一响应 `metrics` 中的 ID，App 展示该服务端证据的指标名称、结果和单位;
+- 报告建议可读取的用户资料严格限定为 `goal`、`typicalWake`、`typicalSleep`、`dietaryPreference` 四个结构化字段。`displayName`、过敏备注、避免食材和其他自由文本不得进入建议 Prompt；资料上下文属于 cache key，资料或指标变化后旧缓存不得继续命中;
+- 建议 Provider 只能看到 `metric_1` 形式的不透明引用与服务端计算的 `status`，看不到真实指标 ID、名称、结果、单位或报告文本。Provider 只返回闭集 action code + 不透明引用；服务端映射回当前已确认 metric ID，并以固定模板渲染所有可见文案;
+- 所有按报告 id 的读取、修改、建议和删除操作均按当前认证用户查询；他人的 id 统一返回 `NOT_FOUND`。删除报告同时删除结构化指标与派生建议缓存。原始图片从未落盘，因此没有遗留文件对象;
 - `GET /v1/nutrition/:date` 读取真实 profile、energy 和确认库存,返回匹配缓存或即时确定性 fallback;`regenerate` 才调用 AI。AI 与 fallback 都必须通过 `NutritionPlanSchema`,且餐食只能引用响应内真实库存 ID;
 
 AI nutrition providers return a private, text-free blueprint made from confirmed
@@ -76,7 +91,7 @@ client. Dietary filtering is deliberately conservative because `FridgeItem`
 stores only a broad category: it cannot distinguish plant from animal protein,
 gluten-free grains, halal-compliant protein, or the contents of `other` items.
 - `GET /v1/reminders` 在未设置时返回 `data: null`(HTTP 200);`ReminderPreference` 尚无消费方 UI,是提前持久化的数据层;
-- 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`INVALID_IMAGE`、`AI_UNAVAILABLE`、`AI_TIMEOUT`、`MALFORMED_AI_OUTPUT`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。
+- 错误码:`UNAUTHORIZED`、`VALIDATION_ERROR`、`INVALID_IMAGE`、`AI_UNAVAILABLE`、`AI_TIMEOUT`、`MALFORMED_AI_OUTPUT`、`REPORT_CHANGED`、`NOT_FOUND`、`RATE_LIMITED`、`INTERNAL`。`REPORT_CHANGED` 表示建议生成期间报告指标或允许使用的资料上下文已被修改，客户端应重新加载或重试生成。
 
 ## Energy Score 计算语义
 

@@ -4,24 +4,40 @@ import {
   fixtureDayPlan,
   fixtureTasks,
   filterNutritionPlanForDietarySafety,
+  buildReportRecommendationsFallback,
+  computeMetricStatus,
   EnergyEngine,
   mergeRegeneratedPlan,
+  toHealthRecommendationProfileContext,
   updatePlanBlock as applyPlanBlockUpdate,
   type AkesoService,
   type CheckInInput,
   type CoachReply,
+  type CreateReportRequest,
   type DayPlan,
   type EnergyResult,
   type FridgeImageUpload,
   type FridgeItem,
+  type HealthReport,
+  type HealthRecommendationSet,
   type IngredientRecognitionResult,
   type NutritionPlan,
   type ReminderPreference,
+  type ReportExtractionResult,
+  type ReportImageUpload,
   type Task,
   type UpdatePlanBlockInput,
+  type UpdateReportMetricsRequest,
+  type UpdateReportRequest,
   type UserProfile,
   userProfileSchema,
 } from '@akeso/domain'
+
+import {
+  demoReportExtraction,
+  demoSavedReport,
+  getReportFixtureScenarioForUpload,
+} from '../components/report/report-demo'
 
 const LATENCY_MS = 450
 const PROFILE_STORAGE_KEY = 'akeso.demo.profile.v1'
@@ -31,7 +47,8 @@ interface ProfileStorage {
   setItem(key: string, value: string): Promise<void>
 }
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const wait = (ms: number) =>
+  ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Demo-only in-memory service.  It delegates all score calculation to the
@@ -51,6 +68,11 @@ export class FixtureService implements AkesoService {
   private latestCheckIn: CheckInInput | null = null
   private fridge = new Map<string, FridgeItem>()
   private reminder: ReminderPreference | null = null
+  private reports = new Map<string, HealthReport>([
+    [demoSavedReport.id, demoSavedReport],
+  ])
+  private pendingReportFixtureRetries = new Set<string>()
+  private reportSequence = 1
 
   async getProfile(): Promise<UserProfile | null> {
     await wait(this.latencyMs / 3)
@@ -142,7 +164,10 @@ export class FixtureService implements AkesoService {
       dietaryPreference: this.profile?.dietaryPreference ?? 'none',
       needs: [],
     })
-    return filterNutritionPlanForDietarySafety(plan, this.profile?.dietarySafety)
+    return filterNutritionPlanForDietarySafety(
+      plan,
+      this.profile?.dietarySafety
+    )
   }
 
   async getNutritionPlan(date: string): Promise<NutritionPlan | null> {
@@ -190,12 +215,126 @@ export class FixtureService implements AkesoService {
     )
   }
 
+  async extractReportMetrics(
+    image: ReportImageUpload
+  ): Promise<ReportExtractionResult> {
+    await wait(this.latencyMs * 2)
+    const fixture = getReportFixtureScenarioForUpload(image)
+    if (!fixture) return demoReportExtraction
+    if (
+      fixture.firstAttemptError &&
+      !this.pendingReportFixtureRetries.has(fixture.id)
+    ) {
+      this.pendingReportFixtureRetries.add(fixture.id)
+      throw new Error(fixture.firstAttemptError)
+    }
+    this.pendingReportFixtureRetries.delete(fixture.id)
+    return fixture.extraction
+  }
+
+  async getReports(): Promise<HealthReport[]> {
+    await wait(this.latencyMs / 3)
+    return Array.from(this.reports.values()).sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt)
+    )
+  }
+
+  async getReport(id: string): Promise<HealthReport> {
+    await wait(this.latencyMs / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    return report
+  }
+
+  async saveReport(input: CreateReportRequest): Promise<HealthReport> {
+    await wait(this.latencyMs)
+    const metrics = input.metrics.map((metric) => ({
+      ...metric,
+      status: computeMetricStatus(
+        metric.value,
+        metric.referenceLow,
+        metric.referenceHigh
+      ),
+    }))
+    this.reportSequence += 1
+    const report: HealthReport = {
+      id: `report-${this.reportSequence}`,
+      name: input.name,
+      reportDate: input.reportDate,
+      createdAt: new Date().toISOString(),
+      metrics,
+    }
+    this.reports.set(report.id, report)
+    return report
+  }
+
+  async updateReport(
+    id: string,
+    input: UpdateReportRequest
+  ): Promise<HealthReport> {
+    await wait(this.latencyMs / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    const updated = { ...report, ...input }
+    this.reports.set(id, updated)
+    return updated
+  }
+
+  async updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport> {
+    await wait(this.latencyMs / 3)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    const metrics = input.metrics.map((metric) => ({
+      ...metric,
+      status: computeMetricStatus(
+        metric.value,
+        metric.referenceLow,
+        metric.referenceHigh
+      ),
+    }))
+    const updated = { ...report, metrics }
+    this.reports.set(id, updated)
+    return updated
+  }
+
+  async deleteReport(id: string): Promise<void> {
+    await wait(this.latencyMs / 3)
+    if (!this.reports.has(id)) throw new Error('Report not found.')
+    this.reports.delete(id)
+  }
+
+  async getReportRecommendations(id: string): Promise<HealthRecommendationSet> {
+    await wait(this.latencyMs)
+    return this.recommendationsFor(id)
+  }
+
+  async regenerateReportRecommendations(
+    id: string
+  ): Promise<HealthRecommendationSet> {
+    await wait(this.latencyMs)
+    return this.recommendationsFor(id)
+  }
+
+  private recommendationsFor(id: string): HealthRecommendationSet {
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    return buildReportRecommendationsFallback({
+      report,
+      profile: toHealthRecommendationProfileContext(this.profile),
+    })
+  }
+
   async getReminderPreference(): Promise<ReminderPreference | null> {
     await wait(LATENCY_MS / 3)
     return this.reminder
   }
 
-  async saveReminderPreference(pref: ReminderPreference): Promise<ReminderPreference> {
+  async saveReminderPreference(
+    pref: ReminderPreference
+  ): Promise<ReminderPreference> {
     await wait(LATENCY_MS / 3)
     this.reminder = pref
     return pref

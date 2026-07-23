@@ -1,5 +1,10 @@
 # Superpowers brainstorm 临时缓存（截图/点击记录/pid，不应进仓库）
 .superpowers/
+.artifacts/
+playwright-report/
+test-results/
+.maestro/*.mp4
+.maestro/*.png
 
 # 依赖与构建产物
 node_modules/

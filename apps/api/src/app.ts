@@ -15,6 +15,7 @@ import { createNutritionRouter } from './routes/nutrition'
 import { createPlanRouter } from './routes/plan'
 import { createProfileRouter } from './routes/profile'
 import { createRemindersRouter } from './routes/reminders'
+import { createReportsRouter } from './routes/reports'
 import { createTasksRouter } from './routes/tasks'
 import { createAiServices } from './services/ai'
 import type { AiServices } from './services/types'
@@ -45,6 +46,7 @@ export function createApp(
   app.use('/v1', createNutritionRouter(repos, ai, writeRateLimiter))
   app.use('/v1', createCoachRouter())
   app.use('/v1', createFridgeRouter(repos, writeRateLimiter, ai))
+  app.use('/v1', createReportsRouter(repos, writeRateLimiter, ai))
   app.use('/v1', createRemindersRouter(repos, writeRateLimiter))
 
   app.use(notFoundHandler)

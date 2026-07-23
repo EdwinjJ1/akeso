@@ -1,4 +1,5 @@
 import { env } from '../env'
+import { buildReportRecommendationBlueprint } from '@akeso/domain'
 import { createGeminiAiServices } from './gemini'
 import { createMimoAiServices } from './mimo'
 import {
@@ -24,6 +25,15 @@ const unavailableServices: AiServices = {
   },
   async generateNutrition(input) {
     return fallbackNutrition(input)
+  },
+  async extractReportMetrics() {
+    throw unavailableError()
+  },
+  async generateHealthRecommendations(input) {
+    return buildReportRecommendationBlueprint({
+      report: input.report,
+      profile: input.profile,
+    })
   },
 }
 

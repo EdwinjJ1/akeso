@@ -3,15 +3,22 @@ import type {
   ApiResponse,
   CheckInInput,
   CoachReply,
+  CreateReportRequest,
   DayPlan,
   EnergyResult,
   FridgeImageUpload,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportExtractionResult,
+  ReportImageUpload,
   Task,
   UpdatePlanBlockInput,
+  UpdateReportMetricsRequest,
+  UpdateReportRequest,
   UserProfile,
 } from '@akeso/domain'
 import { Platform } from 'react-native'
@@ -224,6 +231,68 @@ export class ApiService implements AkesoService {
     image: FridgeImageUpload
   ): Promise<IngredientRecognitionResult> {
     return this.upload('/v1/fridge/recognitions', image)
+  }
+
+  extractReportMetrics(
+    image: ReportImageUpload
+  ): Promise<ReportExtractionResult> {
+    return this.upload('/v1/reports/extractions', image)
+  }
+
+  getReports(): Promise<HealthReport[]> {
+    return this.request('GET', '/v1/reports')
+  }
+
+  getReport(id: string): Promise<HealthReport> {
+    return this.request('GET', `/v1/reports/${encodeURIComponent(id)}`)
+  }
+
+  saveReport(input: CreateReportRequest): Promise<HealthReport> {
+    return this.request('POST', '/v1/reports', input)
+  }
+
+  updateReport(
+    id: string,
+    input: UpdateReportRequest
+  ): Promise<HealthReport> {
+    return this.request(
+      'PATCH',
+      `/v1/reports/${encodeURIComponent(id)}`,
+      input
+    )
+  }
+
+  updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport> {
+    return this.request(
+      'PATCH',
+      `/v1/reports/${encodeURIComponent(id)}/metrics`,
+      input
+    )
+  }
+
+  async deleteReport(id: string): Promise<void> {
+    await this.request('DELETE', `/v1/reports/${encodeURIComponent(id)}`)
+  }
+
+  getReportRecommendations(id: string): Promise<HealthRecommendationSet> {
+    return this.request(
+      'GET',
+      `/v1/reports/${encodeURIComponent(id)}/recommendations`
+    )
+  }
+
+  regenerateReportRecommendations(
+    id: string
+  ): Promise<HealthRecommendationSet> {
+    return this.request(
+      'POST',
+      `/v1/reports/${encodeURIComponent(id)}/recommendations/regenerate`,
+      undefined,
+      20_000
+    )
   }
 
   getReminderPreference(): Promise<ReminderPreference | null> {

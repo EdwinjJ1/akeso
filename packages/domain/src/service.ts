@@ -1,14 +1,20 @@
 import type {
   CheckInInput,
   CoachReply,
+  CreateReportRequest,
   DayPlan,
   EnergyResult,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportExtractionResult,
   Task,
   UpdatePlanBlockInput,
+  UpdateReportMetricsRequest,
+  UpdateReportRequest,
   UserProfile,
 } from './types'
 
@@ -16,6 +22,13 @@ export interface FridgeImageUpload {
   uri: string
   filename: string
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
+}
+
+/** Report uploads are JPEG/PNG only for the MVP (no PDF). */
+export interface ReportImageUpload {
+  uri: string
+  filename: string
+  mimeType: 'image/jpeg' | 'image/png'
 }
 
 /**
@@ -69,6 +82,28 @@ export interface AkesoService {
   deleteFridgeItem(id: string): Promise<void>
   saveFridgeItemsBatch(items: FridgeItem[]): Promise<FridgeItem[]>
   recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
+
+  /**
+   * Health reports (More tab). Extraction returns editable candidates only —
+   * nothing is stored until saveReport persists the reviewed fields. Saved
+   * unconfirmed fields remain correctable, while recommendations reference
+   * confirmed metric ids only and always carry a non-diagnostic disclaimer.
+   */
+  extractReportMetrics(image: ReportImageUpload): Promise<ReportExtractionResult>
+  getReports(): Promise<HealthReport[]>
+  getReport(id: string): Promise<HealthReport>
+  /** POST /v1/reports — server assigns the id and recomputes each status. */
+  saveReport(input: CreateReportRequest): Promise<HealthReport>
+  /** PATCH /v1/reports/:id — updates user-editable report metadata only. */
+  updateReport(id: string, input: UpdateReportRequest): Promise<HealthReport>
+  /** PATCH /v1/reports/:id/metrics — replaces the reviewed metric set. */
+  updateReportMetrics(
+    id: string,
+    input: UpdateReportMetricsRequest
+  ): Promise<HealthReport>
+  deleteReport(id: string): Promise<void>
+  getReportRecommendations(id: string): Promise<HealthRecommendationSet>
+  regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
 
   /** GET /v1/reminders — null until the user has set a preference */
   getReminderPreference(): Promise<ReminderPreference | null>

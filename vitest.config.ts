@@ -17,6 +17,7 @@ export default defineConfig({
       'packages/domain/src/schemas.test.ts',
       'packages/domain/src/planner.test.ts',
       'packages/domain/src/nutrition.test.ts',
+      'packages/domain/src/report.test.ts',
       'packages/domain/src/fixtures.test.ts',
       'packages/domain/src/nutrition-safety.test.ts',
       // apps/app ships its wizard/flow logic as RN-free pure modules
@@ -25,6 +26,7 @@ export default defineConfig({
       'apps/app/src/state/checkin.logic.test.ts',
       'apps/app/src/state/checkin-flow.test.ts',
       'apps/app/src/state/fridge-flow.test.ts',
+      'apps/app/src/state/report-flow.test.ts',
       'apps/app/src/state/dashboard-state.test.ts',
       'packages/domain/src/energy-engine.test.ts',
       'packages/domain/src/reminders.test.ts',

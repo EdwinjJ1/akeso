@@ -30,6 +30,8 @@ export function TimeGridPicker({
 
   useEffect(() => {
     const [nextHour, nextMinute] = value.split(':')
+    // The controlled value is the source of truth when the picker is reused.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHour(nextHour)
     setMinute(nextMinute)
   }, [value])
