@@ -13,8 +13,16 @@ import { fail } from '../http'
  * NOTE: behind a reverse proxy, set Express's `trust proxy` appropriately
  * or every client shares the proxy's IP bucket.
  */
+const ipKey = (req: Request) => (req.ip ? ipKeyGenerator(req.ip) : 'unknown')
+
+/**
+ * In demo mode every request carries the same fixed userId, so keying by
+ * user would collapse all clients into one shared bucket — one caller could
+ * exhaust the quota (and the paid vision budget) for everyone. Key by IP
+ * instead so each client keeps its own quota.
+ */
 const keyGenerator = (req: Request) =>
-  req.userId ?? (req.ip ? ipKeyGenerator(req.ip) : 'unknown')
+  env.demoMode ? ipKey(req) : (req.userId ?? ipKey(req))
 
 const rateLimitedHandler = (_req: Request, res: Response) => {
   fail(res, 429, 'RATE_LIMITED', 'Too many requests — please slow down.')
