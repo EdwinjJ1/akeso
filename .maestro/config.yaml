@@ -1,0 +1,7 @@
+flows:
+  - "issue-53-report-flow.yaml"
+testOutputDir: "../.artifacts/maestro"
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - issue-53-report-flow

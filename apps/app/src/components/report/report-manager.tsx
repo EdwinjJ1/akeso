@@ -43,7 +43,11 @@ import {
 import { colors, radius, sp, type } from '@/theme/tokens'
 import { todayISO } from '@/utils/dates'
 
-import { demoReportExtraction } from './report-demo'
+import {
+  demoReportExtraction,
+  reportFixtureScenarios,
+  type ReportFixtureScenario,
+} from './report-demo'
 
 type ReportSource = 'camera' | 'photo' | 'pdf'
 
@@ -101,6 +105,8 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms)
   })
+
+const reportFixtureMode = !process.env.EXPO_PUBLIC_API_URL
 
 export function ReportManager() {
   const router = useRouter()
@@ -203,7 +209,7 @@ export function ReportManager() {
     setSavedNotice(false)
     setCandidates([])
     setSelectedFile({
-      name: asset.fileName ?? `health-report-${Date.now()}.jpg`,
+      name: asset.fileName ?? 'health-report.jpg',
       source,
       sizeLabel: formatBytes(asset.fileSize),
       detail: 'JPG image · 1 page',
@@ -218,7 +224,7 @@ export function ReportManager() {
       setPreviewUri(processed.uri)
       await extractProcessedImage({
         uri: processed.uri,
-        filename: `report-${Date.now()}.jpg`,
+        filename: 'report.jpg',
         mimeType: 'image/jpeg',
       })
     } catch (error) {
@@ -312,22 +318,28 @@ export function ReportManager() {
     }
   }
 
-  const showDemo = async () => {
+  const showDemo = async (scenario: ReportFixtureScenario) => {
     if (!beginExtraction()) return
     setSelectedFile({
-      name: 'sample-pathology-report.pdf',
+      name: scenario.filename,
       source: 'pdf',
-      sizeLabel: '842 KB',
-      detail: 'PDF document · 2 pages',
+      sizeLabel: scenario.sizeLabel,
+      detail: scenario.pageLabel,
     })
+    setReportName(scenario.reportName)
+    setReportDate(scenario.reportDate)
     setPreviewUri(null)
     setRetryImage(null)
     setSavedNotice(false)
     setCandidates([])
     setMessage(null)
     try {
-      await wait(450)
-      applyExtractionResult(demoReportExtraction)
+      await wait(300)
+      await extractProcessedImage({
+        uri: `fixture-report://${scenario.id}`,
+        filename: scenario.filename,
+        mimeType: 'image/jpeg',
+      })
     } finally {
       endExtraction()
     }
@@ -347,7 +359,10 @@ export function ReportManager() {
   }
 
   const saveConfirmed = async () => {
-    if (hasInvalidConfirmedCandidates(candidates) || hasInvalidReportCandidates(candidates)) {
+    if (
+      hasInvalidConfirmedCandidates(candidates) ||
+      hasInvalidReportCandidates(candidates)
+    ) {
       setMessage(
         'Every metric needs a name, numeric result, valid reference bounds, and a low bound no greater than its high bound.'
       )
@@ -457,8 +472,20 @@ export function ReportManager() {
         </View>
 
         <View style={styles.actionGrid}>
-          <ActionButton icon="camera" label="Camera" detail="Take a photo" onPress={openCamera} disabled={working} />
-          <ActionButton icon="images" label="Photos" detail="JPG or PNG" onPress={openLibrary} disabled={working} />
+          <ActionButton
+            icon="camera"
+            label="Camera"
+            detail="Take a photo"
+            onPress={openCamera}
+            disabled={working}
+          />
+          <ActionButton
+            icon="images"
+            label="Photos"
+            detail="JPG or PNG"
+            onPress={openLibrary}
+            disabled={working}
+          />
           <ActionButton
             icon="document-text"
             label="Files"
@@ -468,16 +495,40 @@ export function ReportManager() {
           />
         </View>
 
-        <Pressable
-          onPress={showDemo}
-          disabled={working}
-          accessibilityRole="button"
-          accessibilityLabel="Preview the full report flow with sample data"
-          style={styles.demoLink}
-        >
-          <Ionicons name="sparkles" size={16} color={colors.primaryDark} />
-          <Text style={styles.demoLinkText}>Preview with a sample report</Text>
-        </Pressable>
+        {reportFixtureMode ? (
+          <View style={styles.fixturePanel}>
+            <View style={styles.fixtureHeadingRow}>
+              <Ionicons name="sparkles" size={18} color={colors.primaryDark} />
+              <View style={styles.flexBody}>
+                <Text style={styles.fixtureTitle}>Deterministic demo fixtures</Text>
+                <Text style={styles.fixtureSubtitle}>
+                  Runs locally without an AI key. Choose a safety or review case.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.fixtureGrid} testID="report-fixture-grid">
+              {reportFixtureScenarios.map((scenario) => (
+                <Pressable
+                  key={scenario.id}
+                  onPress={() => void showDemo(scenario)}
+                  disabled={working}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Load ${scenario.title} report fixture`}
+                  style={({ pressed }) => [
+                    styles.fixtureButton,
+                    pressed && styles.pressed,
+                    working && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.fixtureButtonTitle}>{scenario.title}</Text>
+                  <Text style={styles.fixtureButtonSummary}>
+                    {scenario.summary}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         <Text style={styles.fileRules}>
           JPG, PNG or PDF · up to 10 MB · printed laboratory reports work best
@@ -577,7 +628,7 @@ export function ReportManager() {
 
           {candidates.map((candidate) => (
             <CandidateRow
-            key={`${candidateSession}:${candidate.localId}`}
+              key={`${candidateSession}:${candidate.localId}`}
               candidate={candidate}
               onToggle={() =>
                 setCandidates((items) =>
@@ -1277,6 +1328,48 @@ const styles = StyleSheet.create({
     minHeight: 36,
   },
   demoLinkText: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
+  fixturePanel: {
+    marginTop: sp(4),
+    padding: sp(3),
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minWidth: 0,
+  },
+  fixtureHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: sp(2),
+  },
+  fixtureTitle: { color: colors.text, fontWeight: '900', fontSize: 14 },
+  fixtureSubtitle: { ...type.small, marginTop: 2 },
+  fixtureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: sp(2),
+    marginTop: sp(3),
+    minWidth: 0,
+  },
+  fixtureButton: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 150,
+    minWidth: 0,
+    minHeight: 74,
+    padding: sp(2.5),
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  fixtureButtonTitle: { color: colors.text, fontWeight: '900', fontSize: 12 },
+  fixtureButtonSummary: {
+    ...type.small,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3,
+  },
   fileRules: { ...type.small, textAlign: 'center', marginTop: sp(1) },
   selectedFile: {
     flexDirection: 'row',

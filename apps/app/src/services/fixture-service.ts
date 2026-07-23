@@ -36,6 +36,7 @@ import {
 import {
   demoReportExtraction,
   demoSavedReport,
+  getReportFixtureScenarioForUpload,
 } from '../components/report/report-demo'
 
 const LATENCY_MS = 450
@@ -46,7 +47,8 @@ interface ProfileStorage {
   setItem(key: string, value: string): Promise<void>
 }
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const wait = (ms: number) =>
+  ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Demo-only in-memory service.  It delegates all score calculation to the
@@ -69,6 +71,7 @@ export class FixtureService implements AkesoService {
   private reports = new Map<string, HealthReport>([
     [demoSavedReport.id, demoSavedReport],
   ])
+  private pendingReportFixtureRetries = new Set<string>()
   private reportSequence = 1
 
   async getProfile(): Promise<UserProfile | null> {
@@ -213,28 +216,38 @@ export class FixtureService implements AkesoService {
   }
 
   async extractReportMetrics(
-    _image: ReportImageUpload
+    image: ReportImageUpload
   ): Promise<ReportExtractionResult> {
     await wait(this.latencyMs * 2)
-    return demoReportExtraction
+    const fixture = getReportFixtureScenarioForUpload(image)
+    if (!fixture) return demoReportExtraction
+    if (
+      fixture.firstAttemptError &&
+      !this.pendingReportFixtureRetries.has(fixture.id)
+    ) {
+      this.pendingReportFixtureRetries.add(fixture.id)
+      throw new Error(fixture.firstAttemptError)
+    }
+    this.pendingReportFixtureRetries.delete(fixture.id)
+    return fixture.extraction
   }
 
   async getReports(): Promise<HealthReport[]> {
-    await wait(LATENCY_MS / 3)
+    await wait(this.latencyMs / 3)
     return Array.from(this.reports.values()).sort((left, right) =>
       right.createdAt.localeCompare(left.createdAt)
     )
   }
 
   async getReport(id: string): Promise<HealthReport> {
-    await wait(LATENCY_MS / 3)
+    await wait(this.latencyMs / 3)
     const report = this.reports.get(id)
     if (!report) throw new Error('Report not found.')
     return report
   }
 
   async saveReport(input: CreateReportRequest): Promise<HealthReport> {
-    await wait(LATENCY_MS)
+    await wait(this.latencyMs)
     const metrics = input.metrics.map((metric) => ({
       ...metric,
       status: computeMetricStatus(
@@ -259,7 +272,7 @@ export class FixtureService implements AkesoService {
     id: string,
     input: UpdateReportRequest
   ): Promise<HealthReport> {
-    await wait(LATENCY_MS / 3)
+    await wait(this.latencyMs / 3)
     const report = this.reports.get(id)
     if (!report) throw new Error('Report not found.')
     const updated = { ...report, ...input }
@@ -271,7 +284,7 @@ export class FixtureService implements AkesoService {
     id: string,
     input: UpdateReportMetricsRequest
   ): Promise<HealthReport> {
-    await wait(LATENCY_MS / 3)
+    await wait(this.latencyMs / 3)
     const report = this.reports.get(id)
     if (!report) throw new Error('Report not found.')
     const metrics = input.metrics.map((metric) => ({
@@ -288,20 +301,20 @@ export class FixtureService implements AkesoService {
   }
 
   async deleteReport(id: string): Promise<void> {
-    await wait(LATENCY_MS / 3)
+    await wait(this.latencyMs / 3)
     if (!this.reports.has(id)) throw new Error('Report not found.')
     this.reports.delete(id)
   }
 
   async getReportRecommendations(id: string): Promise<HealthRecommendationSet> {
-    await wait(LATENCY_MS)
+    await wait(this.latencyMs)
     return this.recommendationsFor(id)
   }
 
   async regenerateReportRecommendations(
     id: string
   ): Promise<HealthRecommendationSet> {
-    await wait(LATENCY_MS)
+    await wait(this.latencyMs)
     return this.recommendationsFor(id)
   }
 

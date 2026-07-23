@@ -1,15 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react-native'
 import { beforeEach, describe, expect, jest, test } from '@jest/globals'
-import {
-  fixtureProfile,
-  type HealthRecommendationSet,
-} from '@akeso/domain'
+import { fixtureProfile } from '@akeso/domain'
 
 import { useAppState } from '@/state/app-state'
 
 import {
   demoRecommendations,
   demoSavedReport,
+  getReportFixtureScenario,
 } from './report-demo'
 import { ReportManager } from './report-manager'
 
@@ -64,11 +62,50 @@ describe('ReportManager', () => {
     expect(screen.getByRole('button', { name: 'Camera, Take a photo' })).toBeOnTheScreen()
     expect(screen.getByRole('button', { name: 'Photos, JPG or PNG' })).toBeOnTheScreen()
     expect(screen.getByRole('button', { name: 'Files, PDF preview' })).toBeOnTheScreen()
+    for (const title of [
+      'Normal results',
+      'High & low flags',
+      'Low confidence',
+      'Failure & retry',
+      'Injection safety',
+    ]) {
+      expect(
+        screen.getByRole('button', {
+          name: `Load ${title} report fixture`,
+        })
+      ).toBeOnTheScreen()
+    }
 
     expect(await screen.findByText('General pathology report')).toBeOnTheScreen()
     expect(screen.getByText('2 confirmed')).toBeOnTheScreen()
     expect(screen.getByText('1 unconfirmed')).toBeOnTheScreen()
     expect(screen.getByText('1 low confidence')).toBeOnTheScreen()
+  })
+
+  test('keeps a failed fixture upload available and succeeds on retry', async () => {
+    const retryScenario = getReportFixtureScenario('retry')
+    const extractReportMetrics = jest
+      .fn()
+      .mockRejectedValueOnce(new Error(retryScenario.firstAttemptError))
+      .mockResolvedValueOnce(retryScenario.extraction)
+    mockAppState({ extractReportMetrics })
+
+    await render(<ReportManager />)
+    await fireEvent.press(
+      screen.getByRole('button', {
+        name: 'Load Failure & retry report fixture',
+      })
+    )
+
+    expect(
+      await screen.findByText(retryScenario.firstAttemptError!)
+    ).toBeOnTheScreen()
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Retry report extraction' })
+    )
+
+    expect(await screen.findByDisplayValue('Creatinine')).toBeOnTheScreen()
+    expect(extractReportMetrics).toHaveBeenCalledTimes(2)
   })
 
   test('opens a saved report on its independent detail route', async () => {

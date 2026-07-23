@@ -13,10 +13,14 @@
     "api": "npm run dev --workspace=apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/vision-eval/tsconfig.json",
     "test": "vitest run && npm run test --workspace=apps/app",
+    "e2e:web": "playwright test",
+    "e2e:web:install": "playwright install --with-deps chromium",
+    "e2e:android": "maestro test .maestro/issue-53-report-flow.yaml",
     "vision:eval": "tsx scripts/vision-eval/run.ts",
     "vision:eval:check": "tsx scripts/vision-eval/run.ts --dry-run"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "vitest": "^4.1.10"
   }
 }
