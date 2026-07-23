@@ -1,17 +1,44 @@
 # Release guide
 
-## Web: Vercel
+See `docs/ENV_VARS.md` for the full environment variable inventory (owner,
+purpose, exposure, Preview/Production scope) across both Vercel projects
+below.
+
+## API: Vercel (`akeso-api`)
+
+`apps/api` deploys as its own Vercel project, separate from the web app,
+since it's a long-running Express server rather than a static export.
+
+1. Import `EdwinjJ1/akeso` in Vercel as a second project (e.g.
+   `akeso-api`).
+2. In Project Settings → General, set **Root Directory** to `apps/api` and
+   enable "Include files outside of the Root Directory in the Build Step"
+   — the API depends on the npm workspace root (`packages/domain`,
+   `packages/contracts`, root `node_modules`).
+3. Add the required server-side Environment Variables to both Preview and
+   Production (never Development-only): `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGINS` (must include the deployed
+   web app's exact origin, not localhost), and the vision provider
+   credentials (`VISION_PROVIDER` plus the matching `MIMO_API_KEY` or
+   `GEMINI_API_KEY`).
+4. Deploy. `apps/api/api/index.ts` exports the Express app as a Vercel
+   Function; `apps/api/vercel.json` rewrites all paths to it.
+5. `apps/api/src/env.ts` fails fast (throws at import time) outside test
+   mode if `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing — there
+   is no silent fallback.
+
+## Web: Vercel (`akeso`)
 
 The root `vercel.json` exports the Expo Router web app to `apps/app/dist`.
 
 1. Import `EdwinjJ1/akeso` in Vercel, keeping the repository root as the Root Directory.
-2. Add these Vercel Production Environment Variables only when switching the app from its built-in fixture demo to the live API:
-   - `EXPO_PUBLIC_API_URL`
+2. Add these required Vercel Production **and Preview** Environment Variables:
+   - `EXPO_PUBLIC_API_URL` — point this at the deployed `akeso-api` URL, not `apps/api`'s local dev server
    - `EXPO_PUBLIC_SUPABASE_URL`
-   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY` (the publishable key — never the service role key)
 3. Deploy. The build command is `npm run app:export` and static output is `apps/app/dist`.
 
-The current app uses its fixture service unless `EXPO_PUBLIC_API_URL` is set. Do not set it to `http://localhost:3001` for a public deployment: a device or browser cannot reach the developer's local machine.
+The app fails fast when these variables are absent and never substitutes fixture data. Do not set `EXPO_PUBLIC_API_URL` to `http://localhost:3001` for a public deployment: a device or browser cannot reach the developer's local machine.
 
 ### Account persistence checklist
 
@@ -22,8 +49,6 @@ Cross-device account sync is enabled only when the app is connected to the produ
 3. Change the email sign-in and email-change templates to show the six-digit `{{ .Token }}` value. The app intentionally uses an entered OTP instead of a deep link so the same flow works on web, iOS, and Android.
 4. Add the deployed web and app redirect URLs to Supabase's URL configuration.
 5. Enable CAPTCHA or Cloudflare Turnstile for anonymous sign-ins and keep the existing API rate limits enabled before exposing the deployment publicly.
-
-The fixture demo persists onboarding profile data only in the current browser/device. It does not provide cross-device account recovery.
 
 ## Installable builds: EAS
 
