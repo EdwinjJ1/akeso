@@ -89,6 +89,43 @@ describe('FixtureService editable plan flow', () => {
   })
 })
 
+describe('FixtureService personalized energy parity', () => {
+  test('replays the exact stored algorithm version', async () => {
+    const service = new FixtureService(0)
+    const result = await service.submitCheckIn(fixtureCheckIn)
+
+    await expect(service.replayEnergy(fixtureCheckIn.date)).resolves.toEqual(
+      result
+    )
+    expect(result.algorithmVersion).toBe('energy-v2-multisignal')
+  })
+
+  test('later calibration affects future baseline but not the saved day', async () => {
+    const service = new FixtureService(0)
+    for (const [date, reportedEnergy] of [
+      ['2026-07-18', 2],
+      ['2026-07-19', 3],
+      ['2026-07-20', 4],
+    ] as const) {
+      await service.submitCheckIn({
+        ...fixtureCheckIn,
+        date,
+        reportedEnergy,
+      })
+    }
+    const savedBefore = await service.getTodayEnergy('2026-07-20')
+    await service.saveEnergyCalibration('2026-07-20', 5)
+    expect(await service.getTodayEnergy('2026-07-20')).toEqual(savedBefore)
+
+    const future = await service.submitCheckIn(fixtureCheckIn)
+    expect(future.personalBaseline).toEqual({
+      score: 75,
+      sampleSize: 3,
+      source: 'calibrated',
+    })
+  })
+})
+
 describe('FixtureService health-report demo flow', () => {
   test('serves every deterministic report scenario without an AI key', async () => {
     const service = new FixtureService(0)

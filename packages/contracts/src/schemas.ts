@@ -125,6 +125,13 @@ export const CheckInInputSchema = z
     /** Optional free-text description of the last meal (280-char cap, matches server). */
     lastMealDescription: z.string().max(280).optional(),
     hydration: HydrationSchema,
+    /**
+     * Local hour at the moment of the check-in. It is explicit input rather
+     * than read from a clock inside EnergyEngine, preserving deterministic
+     * replay. Optional for older clients; absence is neutral and lowers
+     * confidence.
+     */
+    localHour: z.number().int().min(0).max(23).optional(),
   })
   // Reject unknown keys rather than silently dropping them, so a stale UI
   // still sending legacy fields (sleepHours, caffeine, …) fails loudly during
@@ -146,6 +153,8 @@ export const EnergyFactorKeySchema = z.enum([
   'sleep_duration',
   'last_meal',
   'hydration',
+  'time_rhythm',
+  'personal_baseline',
 ])
 export type EnergyFactorKey = z.infer<typeof EnergyFactorKeySchema>
 
@@ -157,6 +166,7 @@ export type EnergyFactorKey = z.infer<typeof EnergyFactorKeySchema>
 export const EnergyFactorRoleSchema = z.enum([
   'reported_energy',
   'possible_context',
+  'scored_signal',
 ])
 export type EnergyFactorRole = z.infer<typeof EnergyFactorRoleSchema>
 
@@ -181,6 +191,16 @@ export const EnergyFactorSchema = z.discriminatedUnion('role', [
       explanation: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      key: EnergyFactorKeySchema,
+      label: z.string().min(1),
+      role: z.literal('scored_signal'),
+      /** Signed integer points this known signal contributed to the score. */
+      impact: FactorImpactSchema,
+      explanation: z.string().min(1),
+    })
+    .strict(),
 ])
 export type EnergyFactor = z.infer<typeof EnergyFactorSchema>
 
@@ -201,19 +221,80 @@ export const HourWindowSchema = z
   })
 export type HourWindow = z.infer<typeof HourWindowSchema>
 
-export const EnergyResultSchema = z.object({
-  date: DateStringSchema,
-  score: EnergyScoreSchema,
-  band: EnergyBandSchema,
-  /** One-line human summary, e.g. "Solid morning ahead — protect 9–11am." */
-  headline: z.string().min(1),
-  factors: z.array(EnergyFactorSchema).min(1),
-  curve: z.array(EnergyCurvePointSchema).min(2),
-  peakWindow: HourWindowSchema,
-  dipWindow: HourWindowSchema,
-  computedAt: IsoDateTimeSchema,
-})
+export const EnergyAlgorithmVersionSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9._-]*$/)
+export type EnergyAlgorithmVersion = z.infer<
+  typeof EnergyAlgorithmVersionSchema
+>
+
+export const EnergyConfidenceSchema = z.number().min(0).max(1)
+export type EnergyConfidence = z.infer<typeof EnergyConfidenceSchema>
+
+export const PersonalBaselineSchema = z
+  .object({
+    score: EnergyScoreSchema,
+    sampleSize: z.number().int().min(0).max(365),
+    source: z.enum(['cold_start', 'history', 'calibrated']),
+  })
+  .strict()
+export type PersonalBaseline = z.infer<typeof PersonalBaselineSchema>
+
+export const EnergyResultSchema = z
+  .object({
+    date: DateStringSchema,
+    score: EnergyScoreSchema,
+    band: EnergyBandSchema,
+    /** One-line human summary, e.g. "Solid morning ahead — protect 9–11am." */
+    headline: z.string().min(1),
+    /** Deterministic algorithm/config identity used for storage and replay. */
+    algorithmVersion: EnergyAlgorithmVersionSchema,
+    /** 0..1 evidence coverage, never presented as medical certainty. */
+    confidence: EnergyConfidenceSchema,
+    personalBaseline: PersonalBaselineSchema,
+    /** Today's score minus the personal baseline score. */
+    baselineDelta: z.number().int().min(-100).max(100),
+    baselineExplanation: z.string().min(1),
+    factors: z.array(EnergyFactorSchema).min(1),
+    curve: z.array(EnergyCurvePointSchema).min(2),
+    peakWindow: HourWindowSchema,
+    dipWindow: HourWindowSchema,
+    computedAt: IsoDateTimeSchema,
+  })
+  .strict()
 export type EnergyResult = z.infer<typeof EnergyResultSchema>
+
+/**
+ * A user's later 1..5 reflection for one day. This calibrates future
+ * baselines only; it never rewrites the historical score that was shown.
+ */
+export const EnergyCalibrationSchema = z
+  .object({
+    date: DateStringSchema,
+    actualEnergy: Scale1to5Schema,
+    recordedAt: IsoDateTimeSchema,
+  })
+  .strict()
+export type EnergyCalibration = z.infer<typeof EnergyCalibrationSchema>
+
+export const SaveEnergyCalibrationInputSchema = z
+  .object({ actualEnergy: Scale1to5Schema })
+  .strict()
+export type SaveEnergyCalibrationInput = z.infer<
+  typeof SaveEnergyCalibrationInputSchema
+>
+
+/** Minimal owner-scoped historical input consumed by EnergyEngine. */
+export const EnergyHistorySampleSchema = z
+  .object({
+    date: DateStringSchema,
+    reportedEnergy: Scale1to5Schema,
+    calibratedEnergy: Scale1to5Schema.optional(),
+  })
+  .strict()
+export type EnergyHistorySample = z.infer<typeof EnergyHistorySampleSchema>
 
 // ── Tasks & plan ────────────────────────────────────────────────────────────
 

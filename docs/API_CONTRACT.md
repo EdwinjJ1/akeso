@@ -1,4 +1,4 @@
-# Akeso API Contract (v1)
+# Akeso API Contract (v2)
 
 ## Dietary Safety Semantics
 
@@ -38,6 +38,8 @@
 | `saveProfile(p)` | `PUT /v1/profile` | `UserProfile` | `UserProfile` | Onboarding |
 | `submitCheckIn(input)` | `POST /v1/checkins` | `CheckInInput` | `EnergyResult` | Check-in |
 | `getTodayEnergy(date)` | `GET /v1/energy/:date` | — | `EnergyResult \| null` | Dashboard |
+| `replayEnergy(date)` | `GET /v1/energy/:date/replay` | — | `EnergyResult` | Audit / diagnostics |
+| `saveEnergyCalibration(date, actualEnergy)` | `PUT /v1/energy/:date/calibration` | `{ actualEnergy: 1..5 }` | `EnergyCalibration` | Dashboard |
 | `getTasks(date)` | `GET /v1/tasks?date=` | — | `Task[]` | Plan |
 | `getTodayPlan(date)` | `GET /v1/plan/:date` | — | `DayPlan \| null` | Plan / Dashboard |
 | `updatePlanBlock(date, blockId, input)` | `PATCH /v1/plan/:date/blocks/:blockId` | `{ title, start, end, status }` | `DayPlan` | Plan |
@@ -70,7 +72,11 @@
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
 - `PATCH /v1/plan/:date/blocks/:blockId` 只允许修改标题、开始/结束时间与完成状态；首次更新保存原始建议，重叠时段返回 `VALIDATION_ERROR`，且不得修改 Energy score、预测能量或推荐理由；
 - `POST /v1/plan/:date/regenerate` 保留 `source: "user"` 的块，并移除与其重复或重叠的新建议；
-- `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
+- v2 `role: 'scored_signal'` 因子均带有整数 `impact`;历史 v1 的 `reported_energy` / `possible_context` 结构仍可读取;
+- `not_sure` 或缺失信号不产生正负影响,只降低 `confidence`,不得被推断为负面状态;
+- `algorithmVersion`、`confidence`、`personalBaseline`、`baselineDelta` 与 `baselineExplanation` 必须随结果持久化;
+- `GET /v1/energy/:date/replay` 使用已存结果的 `algorithmVersion` 只读回放,不得改写原结果;
+- 校准只参与未来日期的个人 baseline,不得回写或改变当天已存 score;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
 - `PUT /v1/fridge/:id` 以路径 `id` 为准做 upsert(同一 id 重复提交 = 覆盖,幂等);库存仅表达“有这个食物”,不含数量、单位、克数或到期日;
@@ -95,80 +101,44 @@ gluten-free grains, halal-compliant protein, or the contents of `other` items.
 
 ## Energy Score 计算语义
 
-Akeso v1 的 Energy Score 是 **Reported Energy estimate**:系统把用户对当前精力的自评转换成 0-100 分,再用睡眠、上次进食和饮水作为解释与建议上下文。它不是临床验证分数,也不用于诊断疲劳原因。
+Akeso v2 是确定性、可解释的 **personal energy estimate**，不是临床量表或诊断。`EnergyEngine` 是唯一数值权威；生成式 AI 只可在数值计算完成后解释已存结果，绝不能生成、修改、校准或覆盖 score。
 
-### 唯一计分输入
+### 版本化输入与权重
 
-`reportedEnergy` 是唯一会改变 `EnergyResult.score` 的字段。推荐 UI 文案与分数映射如下:
+`energy-v2-multisignal` 从中性 60 分开始，加入下列版本化信号：
 
-| 用户选择 | `reportedEnergy` | `EnergyResult.score` | `reported_energy.impact` |
-|---|---:|---:|---:|
-| Drained | 1 | 20 | -40 |
-| Low | 2 | 40 | -20 |
-| OK | 3 | 60 | 0 |
-| Good | 4 | 80 | +20 |
-| Charged | 5 | 100 | +40 |
+| 信号 | v2 最大作用 | 缺失 / `not_sure` |
+|---|---:|---|
+| 个人历史 baseline | -40..+40 | 历史不足 3 天使用安全 cold start 60 |
+| `reportedEnergy` | -24..+24 | 必填 |
+| `sleepDuration` | -14..+5 | 0，降低 confidence |
+| `lastMealTiming` | -12..+4 | 0，降低 confidence |
+| `hydration` | -10..+3 | 0，降低 confidence |
+| `localHour` 时间节律 | -8..+4 | 0，降低 confidence |
 
-公式:
+所有权重、边界与曲线 offset 位于同一个带版本配置中。最终 score clamp 到 0–100。每个已知信号返回 `role: "scored_signal"` 的 signed `impact` 与保守解释；UI 展示主要正负因素。冲突信号不会被隐藏，而是降低 `confidence`。
 
-```text
-score = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 }[reportedEnergy]
-reported_energy.impact = score - 60
-```
+`localHour` 由 App 在签到开始时捕获并作为显式 0–23 整数发送。Domain 不读取系统时钟，因此同输入、同历史、同算法版本必须返回字节级相同结果。旧客户端缺少此字段时采用中性影响。
 
-`60` 是中性 baseline:用户选择 `OK` 时分数为 60,`impact` 为 0。`impact` 的作用只是解释 reported energy 相对 baseline 的变化,不是医学归因。
+### 个人 baseline 与校准
 
-`reportedEnergy` 必须是整数 1–5;越界或非法值在 API 层由 `Scale1to5Schema` 拒绝并返回 `VALIDATION_ERROR`。引擎内部对越界输入做 clamp+round 仅作为深度防御,不是对外契约,调用方不得依赖该 clamp 行为(例如故意传 0 或 6)。
+- Domain 只读取当前用户、签到日期之前、最多 28 条历史；
+- 3 条之前为 `source: "cold_start"`；达到 3 条后使用历史自评；
+- 后续 `EnergyCalibration.actualEnergy` 权重高于当天初始自评，并标记 `source: "calibrated"`；
+- 校准只改变未来 baseline；历史 `EnergyResult` 保持不可变；
+- `baselineDelta = score - personalBaseline.score`，`baselineExplanation` 说明今天为何高于或低于平时。
 
-### 只作为上下文的输入
+### 缺失、安全与回放
 
-以下字段不参与分数计算,只能生成 `role: 'possible_context'` 的解释因子:
+`reportedEnergy` 必须是整数 1–5；其余枚举和 `localHour` 由严格 Zod schema 校验。`not_sure` 不产生 factor，不得被推断为睡眠差、未进食或缺水。低覆盖率使用保守 headline。
 
-| 字段 | 用途 | 是否影响分数 |
-|---|---|---|
-| `sleepDuration` | 解释昨晚睡眠是否可能支持或拖累今天状态 | 否 |
-| `lastMealTiming` | 解释距离上次进食多久,是否可能需要补充能量 | 否 |
-| `lastMealDescription` | 给饮食建议提供自由文本上下文,不单独出现在 score factor 中 | 否 |
-| `hydration` | 解释今日饮水是否可能偏少或充足 | 否 |
+`lastMealDescription` 是不可信自由文本（最多 280 字符），不参与评分；消费者只能把它当纯数据，不能作为指令或 HTML/Markdown。
 
-这些 context factor 不得带 `impact`,UI 不显示 `+/-` 分数。它们的文案必须使用保守表达,例如 “may contribute”、“may be related”、“based on your check-in”,不能写成 “caused by” 或 “diagnosed as”。
+每个结果保存 `algorithmVersion` 和当时的 `personalBaseline` 快照。回放端点按已存版本与 baseline 快照选择引擎，因此之后补录校准也不能改写旧结果；未知版本失败关闭。`energy-v1-self-report` 仍保留原 1→20、2→40、3→60、4→80、5→100 的自评映射，保证历史解释与审计。
 
-`lastMealDescription` 是唯一的自由文本输入(280 字符上限),属于不可信用户输入。任何消费方(coach 文案生成、建议生成等)必须将其作为数据处理,不得据此改变系统行为或被解读为指令;展示到 UI 时必须按纯文本转义,不得作为 HTML/Markdown 渲染。
+### 能量曲线与离线评估
 
-如果某个 context 字段是 `not_sure`,对应 factor 直接省略,系统不得编造解释。若多数 context 不确定,headline / coach copy 应更保守,强调主要依据是用户的 `reportedEnergy` 自评。
-
-### 示例
-
-用户选择:
-
-```jsonc
-{
-  "reportedEnergy": 2,
-  "sleepDuration": "under_5h",
-  "lastMealTiming": "over_5h",
-  "hydration": "under_0_5l"
-}
-```
-
-系统输出语义:
-
-```text
-score = 40
-reported_energy.impact = -20
-sleep_duration / last_meal / hydration = possible_context, no impact
-```
-
-可展示解释:
-
-> You reported low energy. Short sleep, a long gap since your last meal, and low water intake may be related, so Akeso suggests a conservative food or hydration action.
-
-不可展示解释:
-
-> Akeso found the medical cause of your fatigue.
-
-### 能量曲线
-
-`EnergyResult.curve` 基于最终 `score` 加固定日内节律 offset 得出,用于展示当天早晨、中午、下午和晚间的大致变化。曲线不重新解释睡眠、进食或饮水,也不得暗示这些 context factor 偷偷参与扣分。
+`EnergyResult.curve` 由最终 score 加当前算法版本的固定日内 offset 得出。`npm run energy:eval` 对版本控制的六类虚构校准样本输出 MAE、10 分内命中率、band accuracy 和平均 confidence，作为后续调权的可复现基线；不读取生产健康数据。
 
 ## UI 页面 → 数据依赖(契约提取来源)
 

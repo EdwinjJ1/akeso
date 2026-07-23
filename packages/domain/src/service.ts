@@ -3,6 +3,7 @@ import type {
   CoachReply,
   CreateReportRequest,
   DayPlan,
+  EnergyCalibration,
   EnergyResult,
   FridgeItem,
   HealthReport,
@@ -49,6 +50,13 @@ export interface AkesoService {
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
   /** GET /v1/energy/:date — null when the user has not checked in yet */
   getTodayEnergy(date: string): Promise<EnergyResult | null>
+  /** GET /v1/energy/:date/replay — read-only replay under the stored version */
+  replayEnergy(date: string): Promise<EnergyResult>
+  /** PUT /v1/energy/:date/calibration — affects future baselines only */
+  saveEnergyCalibration(
+    date: string,
+    actualEnergy: 1 | 2 | 3 | 4 | 5
+  ): Promise<EnergyCalibration>
 
   getTasks(date: string): Promise<Task[]>
   /** GET /v1/plan/:date — null until an energy result exists */

@@ -15,6 +15,7 @@ import {
   type CoachReply,
   type CreateReportRequest,
   type DayPlan,
+  type EnergyCalibration,
   type EnergyResult,
   type FridgeImageUpload,
   type FridgeItem,
@@ -66,6 +67,9 @@ export class FixtureService implements AkesoService {
     private readonly profileStorage?: ProfileStorage
   ) {}
   private latestCheckIn: CheckInInput | null = null
+  private checkins = new Map<string, CheckInInput>()
+  private energyByDate = new Map<string, EnergyResult>()
+  private calibrations = new Map<string, EnergyCalibration>()
   private fridge = new Map<string, FridgeItem>()
   private reminder: ReminderPreference | null = null
   private reports = new Map<string, HealthReport>([
@@ -100,13 +104,52 @@ export class FixtureService implements AkesoService {
   async submitCheckIn(input: CheckInInput): Promise<EnergyResult> {
     await wait(this.latencyMs * 2)
     this.latestCheckIn = input
-    this.energy = energyEngine.evaluate(input)
+    const history = Array.from(this.checkins.values())
+      .filter((checkin) => checkin.date < input.date)
+      .map((checkin) => ({
+        date: checkin.date,
+        reportedEnergy: checkin.reportedEnergy,
+        ...(this.calibrations.get(checkin.date)
+          ? {
+              calibratedEnergy:
+                this.calibrations.get(checkin.date)!.actualEnergy,
+            }
+          : {}),
+      }))
+    this.checkins.set(input.date, input)
+    this.energy = energyEngine.evaluate(input, { history })
+    this.energyByDate.set(input.date, this.energy)
     return this.energy
   }
 
   async getTodayEnergy(date: string): Promise<EnergyResult | null> {
     await wait(this.latencyMs / 3)
-    return this.energy && this.energy.date === date ? this.energy : null
+    return this.energyByDate.get(date) ?? null
+  }
+
+  async replayEnergy(date: string): Promise<EnergyResult> {
+    await wait(this.latencyMs / 3)
+    const input = this.checkins.get(date)
+    const persisted = this.energyByDate.get(date)
+    if (!input || !persisted) throw new Error(`No energy result exists for ${date}`)
+    return EnergyEngine.forVersion(persisted.algorithmVersion).evaluate(input, {
+      baseline: persisted.personalBaseline,
+    })
+  }
+
+  async saveEnergyCalibration(
+    date: string,
+    actualEnergy: 1 | 2 | 3 | 4 | 5
+  ): Promise<EnergyCalibration> {
+    await wait(this.latencyMs / 3)
+    if (!this.checkins.has(date)) throw new Error(`No check-in exists for ${date}`)
+    const calibration: EnergyCalibration = {
+      date,
+      actualEnergy,
+      recordedAt: new Date().toISOString(),
+    }
+    this.calibrations.set(date, calibration)
+    return calibration
   }
 
   async getTasks(_date: string): Promise<Task[]> {

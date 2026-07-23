@@ -172,6 +172,54 @@ describe('cross-user isolation', () => {
     ])
   })
 
+  test('isolates energy history, replay and calibration by owner', async () => {
+    const userIdByToken: Record<string, string> = {
+      'alice-token': 'alice-id',
+      'bob-token': 'bob-id',
+    }
+    const app = await buildRealModeApp(async (token) =>
+      userIdByToken[token]
+        ? { data: { user: { id: userIdByToken[token] } }, error: null }
+        : { data: { user: null }, error: { message: 'invalid' } }
+    )
+    const checkin = {
+      date: '2026-07-21',
+      reportedEnergy: 4,
+      sleepDuration: '7_8h',
+      lastMealTiming: '1_3h',
+      hydration: '1_5_2l',
+      localHour: 10,
+    }
+
+    await request(app)
+      .post('/v1/checkins')
+      .set('Authorization', 'Bearer alice-token')
+      .send(checkin)
+      .expect(200)
+
+    const bobsView = await request(app)
+      .get('/v1/energy/2026-07-21')
+      .set('Authorization', 'Bearer bob-token')
+      .expect(200)
+    expect(bobsView.body.data).toBeNull()
+    await request(app)
+      .get('/v1/energy/2026-07-21/replay')
+      .set('Authorization', 'Bearer bob-token')
+      .expect(404)
+    await request(app)
+      .put('/v1/energy/2026-07-21/calibration')
+      .set('Authorization', 'Bearer bob-token')
+      .send({ actualEnergy: 1 })
+      .expect(404)
+
+    const aliceCalibration = await request(app)
+      .put('/v1/energy/2026-07-21/calibration')
+      .set('Authorization', 'Bearer alice-token')
+      .send({ actualEnergy: 4 })
+      .expect(200)
+    expect(aliceCalibration.body.data.actualEnergy).toBe(4)
+  })
+
   test('isolates report reads, writes and profile-grounded advice by owner', async () => {
     const userIdByToken: Record<string, string> = {
       'alice-token': 'alice-id',

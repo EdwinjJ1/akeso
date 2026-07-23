@@ -7,6 +7,7 @@ const { getSupabaseClient } = vi.hoisted(() => ({
 vi.mock('../supabase', () => ({ getSupabaseClient }))
 
 import { createSupabaseRepos } from './supabase'
+import { fixtureEnergyResult } from '@akeso/domain'
 
 describe('Supabase plan repository', () => {
   beforeEach(() => {
@@ -133,5 +134,94 @@ describe('Supabase plan repository', () => {
       ['date', '2026-07-21'],
       ['id', 'block-1'],
     ])
+  })
+})
+
+describe('Supabase personalized energy repository', () => {
+  beforeEach(() => {
+    getSupabaseClient.mockReset()
+  })
+
+  test('persists every replay and explanation field with the owner id', async () => {
+    const query = {
+      upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    const from = vi.fn(() => query)
+    getSupabaseClient.mockReturnValue({ from })
+
+    await createSupabaseRepos().energy.upsert(
+      '11111111-1111-1111-1111-111111111111',
+      fixtureEnergyResult
+    )
+
+    expect(from).toHaveBeenCalledWith('energy_result')
+    expect(query.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: '11111111-1111-1111-1111-111111111111',
+        algorithm_version: 'energy-v2-multisignal',
+        confidence: 0.76,
+        personal_baseline: fixtureEnergyResult.personalBaseline,
+        baseline_delta: 23,
+        baseline_explanation: fixtureEnergyResult.baselineExplanation,
+      }),
+      { onConflict: 'user_id,date' }
+    )
+  })
+
+  test('bounds and owner-scopes historical check-in reads', async () => {
+    const query = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      lt: vi.fn(),
+      order: vi.fn(),
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+    }
+    query.select.mockReturnValue(query)
+    query.eq.mockReturnValue(query)
+    query.lt.mockReturnValue(query)
+    query.order.mockReturnValue(query)
+    getSupabaseClient.mockReturnValue({ from: vi.fn(() => query) })
+
+    await createSupabaseRepos().checkins.listBefore(
+      '11111111-1111-1111-1111-111111111111',
+      '2026-07-21',
+      28
+    )
+
+    expect(query.eq).toHaveBeenCalledWith(
+      'user_id',
+      '11111111-1111-1111-1111-111111111111'
+    )
+    expect(query.lt).toHaveBeenCalledWith('date', '2026-07-21')
+    expect(query.order).toHaveBeenCalledWith('date', { ascending: false })
+    expect(query.limit).toHaveBeenCalledWith(28)
+  })
+
+  test('persists follow-up calibration in its owner-scoped table', async () => {
+    const query = {
+      upsert: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }
+    const from = vi.fn(() => query)
+    getSupabaseClient.mockReturnValue({ from })
+
+    await createSupabaseRepos().energyCalibrations.upsert(
+      '11111111-1111-1111-1111-111111111111',
+      {
+        date: '2026-07-21',
+        actualEnergy: 4,
+        recordedAt: '2026-07-21T23:59:59.000Z',
+      }
+    )
+
+    expect(from).toHaveBeenCalledWith('energy_calibration')
+    expect(query.upsert).toHaveBeenCalledWith(
+      {
+        user_id: '11111111-1111-1111-1111-111111111111',
+        date: '2026-07-21',
+        actual_energy: 4,
+        recorded_at: '2026-07-21T23:59:59.000Z',
+      },
+      { onConflict: 'user_id,date' }
+    )
   })
 })

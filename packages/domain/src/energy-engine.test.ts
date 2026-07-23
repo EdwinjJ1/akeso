@@ -1,10 +1,14 @@
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
-import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine'
-import type { CheckInInput, EnergyFactor } from './types'
+import {
+  CURRENT_ENERGY_ALGORITHM_VERSION,
+  ENERGY_ENGINE_CONFIG,
+  EnergyEngine,
+  LEGACY_ENERGY_ALGORITHM_VERSION,
+} from './energy-engine'
+import type { CheckInInput, EnergyHistorySample } from './types'
 
 const engine = new EnergyEngine()
-const { baseline } = ENERGY_ENGINE_CONFIG
 
 const canonicalCheckIn: CheckInInput = {
   date: '2026-07-21',
@@ -12,178 +16,228 @@ const canonicalCheckIn: CheckInInput = {
   sleepDuration: '7_8h',
   lastMealTiming: '1_3h',
   hydration: '1_1_5l',
+  localHour: 10,
 }
 
 const scoreWith = (overrides: Partial<CheckInInput>) =>
-  engine.score({ ...canonicalCheckIn, ...overrides })
+  engine.evaluate({ ...canonicalCheckIn, ...overrides })
 
-// Only the single scoring factor carries an impact; context factors do not.
-const reportedImpactTotal = (factors: readonly EnergyFactor[]) =>
-  factors.reduce(
-    (total, factor) =>
-      total + (factor.role === 'reported_energy' ? factor.impact : 0),
-    0
-  )
+describe('multi-signal scoring', () => {
+  test('canonical check-in is deterministic, versioned and explainable', () => {
+    const result = engine.evaluate(canonicalCheckIn)
 
-test('canonical check-in scores 80 with a deterministic timestamp', () => {
-  const canonical = engine.evaluate(canonicalCheckIn)
-  expect(canonical.score).toBe(80)
-  expect(canonical.band).toBe('high')
-  expect(canonical.computedAt).toBe('2026-07-21T00:00:00.000Z')
-  expect(canonical.score).toBe(
-    baseline + reportedImpactTotal(canonical.factors)
-  )
-})
-
-test('identical input produces an identical result', () => {
-  expect(engine.evaluate(canonicalCheckIn)).toEqual(
-    engine.evaluate(canonicalCheckIn)
-  )
-})
-
-test('reported_energy is always present and reconciles with the score', () => {
-  const canonical = engine.evaluate(canonicalCheckIn)
-  const reported = canonical.factors.find(
-    (factor) => factor.key === 'reported_energy'
-  )
-
-  expect(reported).toBeTruthy()
-  if (!reported || reported.role !== 'reported_energy') {
-    throw new Error('Expected reported_energy factor')
-  }
-  expect(reported.impact).toBe(80 - baseline)
-})
-
-test('sleep, meal and hydration are possible context with no impact', () => {
-  const canonical = engine.evaluate(canonicalCheckIn)
-  for (const key of ['sleep_duration', 'last_meal', 'hydration'] as const) {
-    const factor = canonical.factors.find((f) => f.key === key)
-    expect(factor, `${key} factor is present for a known value`).toBeTruthy()
-    if (!factor) throw new Error(`Missing ${key} factor`)
-
-    expect(factor.role).toBe('possible_context')
-    expect('impact' in factor).toBe(false)
-  }
-})
-
-test('reportedEnergy maps 1..5 straight onto the score', () => {
-  const scoreByReport = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 } as const
-  for (const level of [1, 2, 3, 4, 5] as const) {
-    expect(scoreWith({ reportedEnergy: level }).score).toBe(scoreByReport[level])
-  }
-})
-
-test('context inputs never move the score', () => {
-  expect(
-    scoreWith({ sleepDuration: 'under_5h', hydration: 'under_0_5l' }).score
-  ).toBe(scoreWith({}).score)
-})
-
-test('"not sure" omits the factor rather than fabricating a reason', () => {
-  const unsure = scoreWith({ hydration: 'not_sure' })
-  expect(unsure.factors.find((factor) => factor.key === 'hydration')).toBeUndefined()
-  expect(unsure.factors.find((factor) => factor.key === 'reported_energy')).toBeTruthy()
-})
-
-test('boundary self-reports stay inside the contract ranges', () => {
-  const lowUnknown = engine.evaluate({
-    date: '2026-07-21',
-    reportedEnergy: 1,
-    sleepDuration: 'not_sure',
-    lastMealTiming: 'not_sure',
-    hydration: 'not_sure',
-  })
-  expect(lowUnknown.score).toBe(20)
-  expect(lowUnknown.band).toBe('low')
-  expect(lowUnknown.factors.length).toBe(1)
-
-  const highBoundary = engine.evaluate({
-    date: '2026-07-21',
-    reportedEnergy: 5,
-    sleepDuration: 'over_9h',
-    lastMealTiming: 'within_1h',
-    hydration: 'over_2l',
-  })
-  expect(highBoundary.score).toBe(100)
-
-  for (const result of [lowUnknown, highBoundary]) {
-    expect(result.score).toBeGreaterThanOrEqual(0)
-    expect(result.score).toBeLessThanOrEqual(100)
-    expect(result.curve.length).toBeGreaterThanOrEqual(4)
-    expect(result.curve.some((point) => point.hour < 12)).toBe(true)
+    expect(result).toEqual(engine.evaluate(canonicalCheckIn))
+    expect(result).toMatchObject({
+      score: 83,
+      band: 'high',
+      algorithmVersion: CURRENT_ENERGY_ALGORITHM_VERSION,
+      confidence: 0.76,
+      personalBaseline: { score: 60, sampleSize: 0, source: 'cold_start' },
+      baselineDelta: 23,
+      computedAt: '2026-07-21T00:00:00.000Z',
+    })
+    expect(result.factors.map((factor) => factor.key)).toEqual([
+      'reported_energy',
+      'sleep_duration',
+      'last_meal',
+      'hydration',
+      'time_rhythm',
+    ])
     expect(
-      result.curve.some((point) => point.hour >= 12 && point.hour < 17)
-    ).toBe(true)
-    expect(result.curve.some((point) => point.hour >= 17)).toBe(true)
-    for (const point of result.curve) {
-      expect(point.level).toBeGreaterThanOrEqual(0)
-      expect(point.level).toBeLessThanOrEqual(100)
+      60 +
+        result.factors.reduce(
+          (sum, factor) => sum + ('impact' in factor ? factor.impact : 0),
+          0
+        )
+    ).toBe(result.score)
+  })
+
+  test('sleep, food, hydration and time rhythm all affect the number', () => {
+    const normal = scoreWith({})
+    expect(scoreWith({ sleepDuration: 'under_5h' }).score).toBeLessThan(
+      normal.score
+    )
+    expect(scoreWith({ lastMealTiming: 'over_5h' }).score).toBeLessThan(
+      normal.score
+    )
+    expect(scoreWith({ hydration: 'under_0_5l' }).score).toBeLessThan(
+      normal.score
+    )
+    expect(scoreWith({ localHour: 15 }).score).toBeLessThan(normal.score)
+  })
+
+  test('not_sure is neutral, omitted and lowers confidence', () => {
+    const known = scoreWith({})
+    const unsure = scoreWith({
+      sleepDuration: 'not_sure',
+      lastMealTiming: 'not_sure',
+      hydration: 'not_sure',
+      localHour: undefined,
+    })
+
+    expect(unsure.factors.map((factor) => factor.key)).toEqual([
+      'reported_energy',
+    ])
+    expect(unsure.confidence).toBeLessThan(known.confidence)
+    expect(unsure.score).toBe(72)
+    expect(unsure.headline).toContain('Limited signals')
+  })
+
+  test('conflicting inputs reduce confidence instead of hiding disagreement', () => {
+    const consistent = scoreWith({ reportedEnergy: 2, sleepDuration: 'under_5h' })
+    const conflicting = scoreWith({
+      reportedEnergy: 5,
+      sleepDuration: 'under_5h',
+      lastMealTiming: 'not_today',
+      hydration: 'under_0_5l',
+      localHour: 15,
+    })
+
+    expect(conflicting.confidence).toBeLessThan(consistent.confidence)
+    expect(conflicting.factors.some((factor) => 'impact' in factor && factor.impact > 0)).toBe(
+      true
+    )
+    expect(conflicting.factors.some((factor) => 'impact' in factor && factor.impact < 0)).toBe(
+      true
+    )
+  })
+
+  test('all scores and curve points remain inside contract bounds', () => {
+    for (const input of [
+      {
+        ...canonicalCheckIn,
+        reportedEnergy: 1 as const,
+        sleepDuration: 'under_5h' as const,
+        lastMealTiming: 'not_today' as const,
+        hydration: 'under_0_5l' as const,
+        localHour: 2,
+      },
+      {
+        ...canonicalCheckIn,
+        reportedEnergy: 5 as const,
+        hydration: 'over_2l' as const,
+      },
+    ]) {
+      const result = engine.evaluate(input)
+      expect(result.score).toBeGreaterThanOrEqual(0)
+      expect(result.score).toBeLessThanOrEqual(100)
+      result.curve.forEach((point) => {
+        expect(point.level).toBeGreaterThanOrEqual(0)
+        expect(point.level).toBeLessThanOrEqual(100)
+      })
     }
-  }
-})
-
-test('the headline lives on evaluate() alone and quotes the peak window', () => {
-  const score = engine.score(canonicalCheckIn)
-  expect('headline' in score).toBe(false)
-
-  const result = engine.evaluate(canonicalCheckIn)
-  expect(result.headline).toContain('Strong day ahead')
-  expect(result.headline).toContain('10:00')
-  expect(result.headline).toContain('12:00')
-})
-
-test('mostly-unknown context switches to the hedged headline', () => {
-  const result = engine.evaluate({
-    ...canonicalCheckIn,
-    sleepDuration: 'not_sure',
-    lastMealTiming: 'not_sure',
   })
-  expect(result.headline.startsWith('Going mostly on how you feel today')).toBe(true)
 })
 
-test('malformed input is sanitized once, consistently', () => {
-  const messy = engine.evaluate({
-    ...canonicalCheckIn,
-    date: 'not-a-date',
-    reportedEnergy: Number.NaN as CheckInInput['reportedEnergy'],
+describe('personal baseline and version replay', () => {
+  const history: EnergyHistorySample[] = [
+    { date: '2026-07-18', reportedEnergy: 2 },
+    { date: '2026-07-19', reportedEnergy: 3 },
+    { date: '2026-07-20', reportedEnergy: 4, calibratedEnergy: 5 },
+  ]
+
+  test('cold start is safe until the minimum history size is reached', () => {
+    const result = engine.evaluate(canonicalCheckIn, {
+      history: history.slice(0, 2),
+    })
+    expect(result.personalBaseline).toEqual({
+      score: 60,
+      sampleSize: 2,
+      source: 'cold_start',
+    })
   })
-  expect(messy.date).toBe('1970-01-01')
-  expect(messy.computedAt).toBe('1970-01-01T00:00:00.000Z')
 
-  const explicitEquivalent = engine.evaluate({
-    ...canonicalCheckIn,
-    date: '1970-01-01',
-    reportedEnergy: 1,
+  test('history and later calibration set a personal baseline', () => {
+    const result = engine.evaluate(canonicalCheckIn, { history })
+    expect(result.personalBaseline).toEqual({
+      score: 75,
+      sampleSize: 3,
+      source: 'calibrated',
+    })
+    expect(result.baselineDelta).toBe(result.score - 75)
+    expect(result.baselineExplanation).toContain('calibrated 3-day baseline')
   })
-  expect(messy).toEqual(explicitEquivalent)
-})
 
-test('an impossible calendar date is rejected, not just format-checked', () => {
-  // 2026-13-45 satisfies a naive YYYY-MM-DD regex but is not a real day. It
-  // must be sanitized like any other bad input and never echoed back through
-  // `date`/`computedAt` as if it were a genuine date.
-  const impossible = engine.evaluate({ ...canonicalCheckIn, date: '2026-13-45' })
-  expect(impossible.date).toBe('1970-01-01')
-  expect(impossible.computedAt).toBe('1970-01-01T00:00:00.000Z')
+  test('a persisted baseline snapshot makes replay immune to later calibration', () => {
+    const original = engine.evaluate(canonicalCheckIn, { history })
+    const changedHistory = history.map((sample) => ({
+      ...sample,
+      calibratedEnergy: 1 as const,
+    }))
+    const replay = engine.evaluate(canonicalCheckIn, {
+      history: changedHistory,
+      baseline: original.personalBaseline,
+    })
 
-  // A real calendar date on the same code path is preserved unchanged.
-  const real = engine.evaluate({ ...canonicalCheckIn, date: '2026-02-28' })
-  expect(real.date).toBe('2026-02-28')
-  expect(real.computedAt).toBe('2026-02-28T00:00:00.000Z')
-})
-
-test('a curve with no afternoon points still yields a dip window', () => {
-  const sparse = new EnergyEngine({
-    ...ENERGY_ENGINE_CONFIG,
-    curveOffsets: [
-      { hour: 8, offset: 4 },
-      { hour: 20, offset: -12 },
-    ],
+    expect(replay).toEqual(original)
   })
-  const result = sparse.evaluate(canonicalCheckIn)
-  expect(result.dipWindow).toEqual({ startHour: 19, endHour: 21 })
+
+  test('future or same-day history is ignored', () => {
+    const result = engine.evaluate(canonicalCheckIn, {
+      history: [
+        ...history.slice(0, 2),
+        { date: canonicalCheckIn.date, reportedEnergy: 5 },
+        { date: '2026-07-22', reportedEnergy: 5 },
+      ],
+    })
+    expect(result.personalBaseline.source).toBe('cold_start')
+    expect(result.personalBaseline.sampleSize).toBe(2)
+  })
+
+  test('legacy replay preserves the original self-report-only score', () => {
+    const legacy = EnergyEngine.forVersion(LEGACY_ENERGY_ALGORITHM_VERSION)
+    const result = legacy.evaluate(canonicalCheckIn, { history })
+    expect(result.score).toBe(80)
+    expect(result.algorithmVersion).toBe(LEGACY_ENERGY_ALGORITHM_VERSION)
+    expect(result.factors).toHaveLength(4)
+    expect(result.headline).toBe(
+      'Strong day ahead — protect 10:00–12:00 for demanding work.'
+    )
+  })
+
+  test('unknown algorithm versions fail closed', () => {
+    expect(() => EnergyEngine.forVersion('energy-v999')).toThrow(
+      'Unsupported energy algorithm version'
+    )
+  })
 })
 
-test('an empty curve config is rejected at construction', () => {
-  expect(() => new EnergyEngine({ ...ENERGY_ENGINE_CONFIG, curveOffsets: [] })).toThrow()
+describe('defensive deterministic boundaries', () => {
+  test('malformed direct-call input is sanitized consistently', () => {
+    const messy = engine.evaluate({
+      ...canonicalCheckIn,
+      date: 'not-a-date',
+      reportedEnergy: Number.NaN as CheckInInput['reportedEnergy'],
+    })
+    const equivalent = engine.evaluate({
+      ...canonicalCheckIn,
+      date: '1970-01-01',
+      reportedEnergy: 1,
+    })
+    expect(messy).toEqual(equivalent)
+  })
+
+  test('custom curves retain a safe dip fallback', () => {
+    const sparse = new EnergyEngine({
+      ...ENERGY_ENGINE_CONFIG,
+      curveOffsets: [
+        { hour: 8, offset: 4 },
+        { hour: 20, offset: -12 },
+      ],
+    })
+    expect(sparse.evaluate(canonicalCheckIn).dipWindow).toEqual({
+      startHour: 19,
+      endHour: 21,
+    })
+  })
+
+  test('empty curve config is rejected', () => {
+    expect(
+      () =>
+        new EnergyEngine({
+          ...ENERGY_ENGINE_CONFIG,
+          curveOffsets: [],
+        })
+    ).toThrow()
+  })
 })

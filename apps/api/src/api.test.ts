@@ -15,6 +15,7 @@ const validCheckIn: CheckInInput = {
   sleepDuration: '7_8h',
   lastMealTiming: '1_3h',
   hydration: '1_1_5l',
+  localHour: 10,
 }
 
 let app: ReturnType<typeof createApp>
@@ -130,6 +131,79 @@ describe('GET /v1/energy/:date', () => {
     await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
     const response = await request(app).get('/v1/energy/2026-07-21').expect(200)
     expect(response.body.data.date).toBe('2026-07-21')
+    expect(response.body.data).toMatchObject({
+      algorithmVersion: 'energy-v2-multisignal',
+      personalBaseline: { source: 'cold_start' },
+    })
+  })
+
+  test('replays under the persisted version without mutating the result', async () => {
+    const created = await request(app)
+      .post('/v1/checkins')
+      .send(validCheckIn)
+      .expect(200)
+    const replay = await request(app)
+      .get('/v1/energy/2026-07-21/replay')
+      .expect(200)
+    const persisted = await request(app)
+      .get('/v1/energy/2026-07-21')
+      .expect(200)
+
+    expect(replay.body.data).toEqual(created.body.data)
+    expect(persisted.body.data).toEqual(created.body.data)
+  })
+
+  test('uses owner-scoped prior check-ins and calibration for the future baseline', async () => {
+    for (const [date, reportedEnergy] of [
+      ['2026-07-18', 2],
+      ['2026-07-19', 3],
+      ['2026-07-20', 4],
+    ] as const) {
+      await request(app)
+        .post('/v1/checkins')
+        .send({ ...validCheckIn, date, reportedEnergy })
+        .expect(200)
+    }
+    await request(app)
+      .put('/v1/energy/2026-07-20/calibration')
+      .send({ actualEnergy: 5 })
+      .expect(200)
+
+    const response = await request(app)
+      .post('/v1/checkins')
+      .send(validCheckIn)
+      .expect(200)
+
+    expect(response.body.data.personalBaseline).toEqual({
+      score: 75,
+      sampleSize: 3,
+      source: 'calibrated',
+    })
+    expect(response.body.data.baselineExplanation).toContain(
+      'calibrated 3-day baseline'
+    )
+
+    await request(app)
+      .put('/v1/energy/2026-07-20/calibration')
+      .send({ actualEnergy: 1 })
+      .expect(200)
+    const replay = await request(app)
+      .get('/v1/energy/2026-07-21/replay')
+      .expect(200)
+    expect(replay.body.data).toEqual(response.body.data)
+  })
+
+  test('validates calibration and requires an existing check-in', async () => {
+    await request(app)
+      .put('/v1/energy/2026-07-21/calibration')
+      .send({ actualEnergy: 3 })
+      .expect(404)
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const invalid = await request(app)
+      .put('/v1/energy/2026-07-21/calibration')
+      .send({ actualEnergy: 9 })
+      .expect(400)
+    expect(invalid.body.error.code).toBe('VALIDATION_ERROR')
   })
 })
 

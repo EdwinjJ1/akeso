@@ -1,6 +1,7 @@
 import type {
   CheckInInput,
   DayPlan,
+  EnergyCalibration,
   EnergyResult,
   PlanBlock,
   FridgeItem,
@@ -19,12 +20,31 @@ export interface ProfileRepo {
 
 export interface CheckinRepo {
   get(userId: string, date: string): Promise<CheckInInput | null>
+  /** Newest first; dates are strictly earlier than `beforeDate`. */
+  listBefore(
+    userId: string,
+    beforeDate: string,
+    limit: number
+  ): Promise<CheckInInput[]>
   upsert(userId: string, input: CheckInInput): Promise<void>
 }
 
 export interface EnergyRepo {
   get(userId: string, date: string): Promise<EnergyResult | null>
   upsert(userId: string, result: EnergyResult): Promise<EnergyResult>
+}
+
+export interface EnergyCalibrationRepo {
+  get(userId: string, date: string): Promise<EnergyCalibration | null>
+  listBefore(
+    userId: string,
+    beforeDate: string,
+    limit: number
+  ): Promise<EnergyCalibration[]>
+  upsert(
+    userId: string,
+    calibration: EnergyCalibration
+  ): Promise<EnergyCalibration>
 }
 
 export interface TaskRepo {
@@ -83,6 +103,7 @@ export interface Repos {
   profile: ProfileRepo
   checkins: CheckinRepo
   energy: EnergyRepo
+  energyCalibrations: EnergyCalibrationRepo
   tasks: TaskRepo
   plans: PlanRepo
   fridge: FridgeRepo

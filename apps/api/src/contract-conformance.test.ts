@@ -4,6 +4,7 @@ import {
   CoachReplySchema,
   CreateReportResponseSchema,
   DayPlanSchema,
+  EnergyCalibrationSchema,
   EnergyResultSchema,
   UpdatePlanBlockResponseSchema,
   GetFridgeResponseSchema,
@@ -35,6 +36,7 @@ const validCheckIn: CheckInInput = {
   sleepDuration: '7_8h',
   lastMealTiming: '1_3h',
   hydration: '1_1_5l',
+  localHour: 10,
 }
 
 let app: ReturnType<typeof createApp>
@@ -95,6 +97,25 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
       true
     )
+  })
+
+  test('replay and calibration responses match their contracts', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const replay = await request(app)
+      .get('/v1/energy/2026-07-21/replay')
+      .expect(200)
+    const calibration = await request(app)
+      .put('/v1/energy/2026-07-21/calibration')
+      .send({ actualEnergy: 4 })
+      .expect(200)
+
+    expect(apiResponseSchema(EnergyResultSchema).safeParse(replay.body).success).toBe(
+      true
+    )
+    expect(
+      apiResponseSchema(EnergyCalibrationSchema).safeParse(calibration.body)
+        .success
+    ).toBe(true)
   })
 
   test('GET /v1/plan/:date → DayPlan envelope', async () => {

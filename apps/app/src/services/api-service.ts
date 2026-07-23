@@ -5,6 +5,7 @@ import type {
   CoachReply,
   CreateReportRequest,
   DayPlan,
+  EnergyCalibration,
   EnergyResult,
   FridgeImageUpload,
   FridgeItem,
@@ -160,6 +161,24 @@ export class ApiService implements AkesoService {
 
   getTodayEnergy(date: string): Promise<EnergyResult | null> {
     return this.request('GET', `/v1/energy/${encodeURIComponent(date)}`)
+  }
+
+  replayEnergy(date: string): Promise<EnergyResult> {
+    return this.request(
+      'GET',
+      `/v1/energy/${encodeURIComponent(date)}/replay`
+    )
+  }
+
+  saveEnergyCalibration(
+    date: string,
+    actualEnergy: 1 | 2 | 3 | 4 | 5
+  ): Promise<EnergyCalibration> {
+    return this.request(
+      'PUT',
+      `/v1/energy/${encodeURIComponent(date)}/calibration`,
+      { actualEnergy }
+    )
   }
 
   getTasks(date: string): Promise<Task[]> {
