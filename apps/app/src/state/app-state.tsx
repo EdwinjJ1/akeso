@@ -5,9 +5,14 @@ import type {
   EnergyResult,
   FridgeImageUpload,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportExtractionResult,
+  ReportImageUpload,
+  ReportMetric,
   Task,
   UpdatePlanBlockInput,
   UserProfile,
@@ -57,11 +62,21 @@ interface AppActions {
   updatePlanBlock(blockId: string, input: UpdatePlanBlockInput): Promise<void>
   regeneratePlan(instruction?: string): Promise<CoachReply>
   saveReminderPreference(pref: ReminderPreference): Promise<void>
-  recognizeFridgeImage(image: FridgeImageUpload): Promise<IngredientRecognitionResult>
+  recognizeFridgeImage(
+    image: FridgeImageUpload
+  ): Promise<IngredientRecognitionResult>
   saveFridgeItems(items: FridgeItem[]): Promise<void>
   updateFridgeItem(item: FridgeItem): Promise<void>
   deleteFridgeItem(id: string): Promise<void>
   regenerateNutrition(): Promise<void>
+  extractReportMetrics(
+    image: ReportImageUpload
+  ): Promise<ReportExtractionResult>
+  getReports(): Promise<HealthReport[]>
+  saveReport(metrics: ReportMetric[]): Promise<HealthReport>
+  deleteReport(id: string): Promise<void>
+  getReportRecommendations(id: string): Promise<HealthRecommendationSet>
+  regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
 }
 
 const initialState: AppState = {
@@ -199,8 +214,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }))
     }
 
-    const [tasksResult, planResult, nutritionResult, coachResult, fridgeResult, reminderResult] =
-      await ancillaryRequest
+    const [
+      tasksResult,
+      planResult,
+      nutritionResult,
+      coachResult,
+      fridgeResult,
+      reminderResult,
+    ] = await ancillaryRequest
     if (refreshRequestId.current !== requestId) return
 
     setState((prev) => ({
@@ -230,8 +251,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           : prev.ancillaryDate === date
             ? prev.coach
             : null,
-      fridge: fridgeResult.status === 'fulfilled' ? fridgeResult.value : prev.fridge,
-      reminder: reminderResult.status === 'fulfilled' ? reminderResult.value : prev.reminder,
+      fridge:
+        fridgeResult.status === 'fulfilled' ? fridgeResult.value : prev.fridge,
+      reminder:
+        reminderResult.status === 'fulfilled'
+          ? reminderResult.value
+          : prev.reminder,
       planLoading: false,
       planError:
         planResult.status === 'rejected'
@@ -241,7 +266,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             : "Today's plan is not ready yet.",
       coachLoading: false,
       coachError:
-        coachResult.status === 'rejected' ? "Could not load today's coaching note." : null,
+        coachResult.status === 'rejected'
+          ? "Could not load today's coaching note."
+          : null,
     }))
     if (reminderResult.status === 'fulfilled' && reminderResult.value) {
       void syncReminderSchedule(reminderResult.value, loadedEnergy !== null)
@@ -345,6 +372,31 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  // Reports live on the More tab, not the Today refresh: these are thin
+  // passthroughs to the single service instance and the screen owns the list
+  // state (mirrors recognizeFridgeImage).
+  const extractReportMetrics = useCallback(
+    (image: ReportImageUpload) => service.extractReportMetrics(image),
+    [service]
+  )
+  const getReports = useCallback(() => service.getReports(), [service])
+  const saveReport = useCallback(
+    (metrics: ReportMetric[]) => service.saveReport(metrics),
+    [service]
+  )
+  const deleteReport = useCallback(
+    (id: string) => service.deleteReport(id),
+    [service]
+  )
+  const getReportRecommendations = useCallback(
+    (id: string) => service.getReportRecommendations(id),
+    [service]
+  )
+  const regenerateReportRecommendations = useCallback(
+    (id: string) => service.regenerateReportRecommendations(id),
+    [service]
+  )
+
   const value = useMemo(
     () => ({
       ...state,
@@ -360,6 +412,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       updateFridgeItem,
       deleteFridgeItem,
       regenerateNutrition,
+      extractReportMetrics,
+      getReports,
+      saveReport,
+      deleteReport,
+      getReportRecommendations,
+      regenerateReportRecommendations,
     }),
     [
       state,
@@ -375,10 +433,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       updateFridgeItem,
       deleteFridgeItem,
       regenerateNutrition,
+      extractReportMetrics,
+      getReports,
+      saveReport,
+      deleteReport,
+      getReportRecommendations,
+      regenerateReportRecommendations,
     ]
   )
 
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
+  return (
+    <AppStateContext.Provider value={value}>
+      {children}
+    </AppStateContext.Provider>
+  )
 }
 
 export function useAppState() {

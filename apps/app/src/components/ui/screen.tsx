@@ -42,6 +42,7 @@ const styles = StyleSheet.create({
   content: {
     maxWidth: 560,
     width: '100%',
+    boxSizing: 'border-box',
     alignSelf: 'center',
   },
 })

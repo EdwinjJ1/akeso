@@ -1,4 +1,4 @@
-import { EnergyEngine } from '@akeso/domain'
+import { buildReportRecommendationBlueprint, EnergyEngine } from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
 import type { AiServices } from './services/types'
 import request from 'supertest'
@@ -58,6 +58,25 @@ const fakeAiServices: AiServices = {
         ? 'Generated from confirmed inventory.'
         : 'Add and confirm fridge ingredients first.',
     }
+  },
+  async extractReportMetrics() {
+    return {
+      status: 'ok',
+      metrics: [
+        {
+          name: 'Hemoglobin',
+          value: 14.2,
+          unit: 'g/dL',
+          referenceLow: 13.5,
+          referenceHigh: 17.5,
+          confidence: 0.9,
+          uncertaintyReason: null,
+        },
+      ],
+    }
+  },
+  async generateHealthRecommendations({ report }) {
+    return buildReportRecommendationBlueprint({ report })
   },
 }
 

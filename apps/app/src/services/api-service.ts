@@ -7,9 +7,14 @@ import type {
   EnergyResult,
   FridgeImageUpload,
   FridgeItem,
+  HealthReport,
+  HealthRecommendationSet,
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportExtractionResult,
+  ReportImageUpload,
+  ReportMetric,
   Task,
   UpdatePlanBlockInput,
   UserProfile,
@@ -224,6 +229,42 @@ export class ApiService implements AkesoService {
     image: FridgeImageUpload
   ): Promise<IngredientRecognitionResult> {
     return this.upload('/v1/fridge/recognitions', image)
+  }
+
+  extractReportMetrics(
+    image: ReportImageUpload
+  ): Promise<ReportExtractionResult> {
+    return this.upload('/v1/reports/extractions', image)
+  }
+
+  getReports(): Promise<HealthReport[]> {
+    return this.request('GET', '/v1/reports')
+  }
+
+  saveReport(metrics: ReportMetric[]): Promise<HealthReport> {
+    return this.request('POST', '/v1/reports', { metrics })
+  }
+
+  async deleteReport(id: string): Promise<void> {
+    await this.request('DELETE', `/v1/reports/${encodeURIComponent(id)}`)
+  }
+
+  getReportRecommendations(id: string): Promise<HealthRecommendationSet> {
+    return this.request(
+      'GET',
+      `/v1/reports/${encodeURIComponent(id)}/recommendations`
+    )
+  }
+
+  regenerateReportRecommendations(
+    id: string
+  ): Promise<HealthRecommendationSet> {
+    return this.request(
+      'POST',
+      `/v1/reports/${encodeURIComponent(id)}/recommendations/regenerate`,
+      undefined,
+      20_000
+    )
   }
 
   getReminderPreference(): Promise<ReminderPreference | null> {

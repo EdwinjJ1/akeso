@@ -528,6 +528,210 @@ export const NutritionPlanSchema = z
   })
 export type NutritionPlan = z.infer<typeof NutritionPlanSchema>
 
+// ── Health reports ────────────────────────────────────────────────────────
+
+/**
+ * Status of a single metric relative to the reference range printed on the
+ * report itself. `unknown` is used whenever the report did not supply a
+ * usable bound for the comparison — a status is never invented from
+ * population defaults or model guesses.
+ */
+export const ReportMetricStatusSchema = z.enum(['low', 'normal', 'high', 'unknown'])
+export type ReportMetricStatus = z.infer<typeof ReportMetricStatusSchema>
+
+/**
+ * A metric the user has reviewed and confirmed from an uploaded report.
+ * `referenceLow` / `referenceHigh` come from the report and either may be
+ * absent. `status` is derived (see computeMetricStatus in @akeso/domain) from
+ * the value against those bounds and MUST be `unknown` whenever a bound
+ * needed for the comparison is missing. Units are display-only: comparisons
+ * only ever use the report's own value and range, never a converted number.
+ */
+export const ReportMetricSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().trim().min(1).max(100),
+    value: z.number().finite(),
+    /** e.g. "g/dL". Empty is allowed for unitless metrics (ratios, pH). */
+    unit: z.string().trim().max(30),
+    referenceLow: z.number().finite().nullable(),
+    referenceHigh: z.number().finite().nullable(),
+    status: ReportMetricStatusSchema,
+  })
+  .strict()
+export type ReportMetric = z.infer<typeof ReportMetricSchema>
+
+/**
+ * A single metric read off a report image by the extraction model.
+ *
+ * Deliberately has no `id` and no `status`: the id is assigned when the user
+ * confirms the metric, and the status is computed server-side from the
+ * value/range so the model can never assert "high"/"low" on its own. The
+ * user reviews and edits these candidates before anything is persisted.
+ */
+export const DetectedReportMetricSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    value: z.number().finite(),
+    unit: z.string().trim().max(30),
+    referenceLow: z.number().finite().nullable(),
+    referenceHigh: z.number().finite().nullable(),
+    confidence: z.number().min(0).max(1),
+    uncertaintyReason: z.string().trim().min(1).max(280).nullable(),
+  })
+  .strict()
+export type DetectedReportMetric = z.infer<typeof DetectedReportMetricSchema>
+
+const DetectedReportMetricsSchema = z.array(DetectedReportMetricSchema)
+
+/**
+ * AI structured output for report-image metric extraction.
+ *
+ * Empty and refused outcomes carry an empty metric list so callers never
+ * have to guess whether a model-generated metric is real.
+ */
+export const ReportExtractionResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('ok'),
+      metrics: DetectedReportMetricsSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('empty'),
+      metrics: DetectedReportMetricsSchema.length(0),
+      reason: z.enum(['no_metrics_detected', 'unrecognizable_image']),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('refused'),
+      metrics: DetectedReportMetricsSchema.length(0),
+      reason: z.string().trim().min(1).max(280),
+    })
+    .strict(),
+])
+export type ReportExtractionResult = z.infer<typeof ReportExtractionResultSchema>
+
+export const HealthReportSchema = z.object({
+  id: z.string().min(1),
+  createdAt: IsoDateTimeSchema,
+  metrics: z.array(ReportMetricSchema).min(1),
+})
+export type HealthReport = z.infer<typeof HealthReportSchema>
+
+export const HealthRecommendationCategorySchema = z.enum([
+  'nutrition',
+  'activity',
+  'sleep',
+  'hydration',
+  'stress',
+  'follow_up',
+  'general',
+])
+export type HealthRecommendationCategory = z.infer<
+  typeof HealthRecommendationCategorySchema
+>
+
+export const HealthRecommendationSchema = z.object({
+  id: z.string().min(1),
+  category: HealthRecommendationCategorySchema,
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  /** Confirmed metric ids this suggestion is grounded in — never empty. */
+  basedOnMetricIds: z.array(z.string().min(1)).min(1),
+})
+export type HealthRecommendation = z.infer<typeof HealthRecommendationSchema>
+
+/**
+ * AI structured output for safe, non-diagnostic lifestyle recommendations.
+ *
+ * `metrics` echoes the confirmed metrics the set was grounded in; the
+ * superRefine rejects any recommendation citing a metric id outside that set
+ * (mirrors NutritionPlan's fridge-id check). The server substitutes its own
+ * confirmed metrics for `metrics` and re-validates, so a recommendation
+ * referencing a metric the user never confirmed is rejected server-side
+ * rather than surfacing to the client as a real citation.
+ */
+export const HealthRecommendationSetSchema = z
+  .object({
+    reportId: z.string().min(1),
+    metrics: z.array(ReportMetricSchema),
+    recommendations: z.array(HealthRecommendationSchema),
+    /** Non-diagnostic disclaimer — MUST always be shown with recommendations. */
+    disclaimer: z.string().min(1),
+  })
+  .superRefine((set, context) => {
+    const metricIds = new Set(set.metrics.map((metric) => metric.id))
+    set.recommendations.forEach((recommendation, recommendationIndex) => {
+      recommendation.basedOnMetricIds.forEach((metricId, metricIdIndex) => {
+        if (!metricIds.has(metricId)) {
+          context.addIssue({
+            code: 'custom',
+            path: [
+              'recommendations',
+              recommendationIndex,
+              'basedOnMetricIds',
+              metricIdIndex,
+            ],
+            message: `Unknown metric id: ${metricId}`,
+          })
+        }
+      })
+    })
+  })
+export type HealthRecommendationSet = z.infer<typeof HealthRecommendationSetSchema>
+
+/**
+ * Closed set of safe recommendation actions.
+ *
+ * The AI recommendation path returns ONLY these codes plus confirmed metric
+ * ids — never user-visible prose. The server renders every title/detail from a
+ * fixed trusted template keyed by the code (see @akeso/domain report
+ * templates), so a compromised or prompt-injected provider can never place
+ * free text — diagnostic, prescriptive, or otherwise — in front of the user.
+ * The codes deliberately cover only general lifestyle support and professional
+ * follow-up: there is no code that renders a diagnosis or a medication
+ * instruction, so a low/high/unknown metric cannot produce such text either.
+ */
+export const RecommendationActionCodeSchema = z.enum([
+  'professional_follow_up',
+  'support_sleep',
+  'support_hydration',
+  'support_balanced_meals',
+  'support_gentle_movement',
+  'support_stress',
+  'general_wellbeing',
+])
+export type RecommendationActionCode = z.infer<typeof RecommendationActionCodeSchema>
+
+export const HealthRecommendationBlueprintItemSchema = z
+  .object({
+    actionCode: RecommendationActionCodeSchema,
+    /** Confirmed metric ids this action is grounded in — validated server-side. */
+    basedOnMetricIds: z.array(z.string().min(1)).min(1),
+  })
+  .strict()
+export type HealthRecommendationBlueprintItem = z.infer<
+  typeof HealthRecommendationBlueprintItemSchema
+>
+
+/**
+ * Text-free AI output for report recommendations: action codes plus confirmed
+ * metric ids only. Carries no reportId, metrics, titles, details, or
+ * disclaimer — the server supplies all of those from the persisted confirmed
+ * report and fixed templates when rendering the HealthRecommendationSet.
+ */
+export const HealthRecommendationBlueprintSchema = z
+  .object({
+    recommendations: z.array(HealthRecommendationBlueprintItemSchema),
+  })
+  .strict()
+export type HealthRecommendationBlueprint = z.infer<
+  typeof HealthRecommendationBlueprintSchema
+>
+
 // ── Reminders ───────────────────────────────────────────────────────────────
 
 export const ReminderPreferenceSchema = z.object({

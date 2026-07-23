@@ -1,4 +1,5 @@
 import {
+  buildReportRecommendationBlueprint,
   ingredientRecognitionResultSchema,
   type IngredientRecognitionResult,
   type NutritionPlan,
@@ -26,7 +27,11 @@ import type {
 
 function outputText(payload: Record<string, unknown>): string {
   if (!Array.isArray(payload.candidates)) {
-    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+    throw new HttpError(
+      502,
+      'MALFORMED_AI_OUTPUT',
+      'AI returned no structured output.'
+    )
   }
   const first = payload.candidates[0]
   const content =
@@ -38,7 +43,11 @@ function outputText(payload: Record<string, unknown>): string {
       ? (content as Record<string, unknown>).parts
       : undefined
   if (!Array.isArray(parts)) {
-    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+    throw new HttpError(
+      502,
+      'MALFORMED_AI_OUTPUT',
+      'AI returned no structured output.'
+    )
   }
   const text = parts
     .map((part) =>
@@ -49,7 +58,11 @@ function outputText(payload: Record<string, unknown>): string {
     .map((partText) => (typeof partText === 'string' ? partText : ''))
     .join('')
   if (!text) {
-    throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI returned no structured output.')
+    throw new HttpError(
+      502,
+      'MALFORMED_AI_OUTPUT',
+      'AI returned no structured output.'
+    )
   }
   return text
 }
@@ -101,7 +114,11 @@ export function createGeminiAiServices(
       normalizeRecognitionResult(parseJson(outputText(payload)))
     )
     if (!parsed.success) {
-      throw new HttpError(502, 'MALFORMED_AI_OUTPUT', 'AI output failed validation.')
+      throw new HttpError(
+        502,
+        'MALFORMED_AI_OUTPUT',
+        'AI output failed validation.'
+      )
     }
     return parsed.data
   }
@@ -141,5 +158,18 @@ export function createGeminiAiServices(
     return fallbackNutrition(input)
   }
 
-  return { recognizeIngredients, generateNutrition }
+  const extractReportMetrics: AiServices['extractReportMetrics'] = async () => {
+    throw unavailableError()
+  }
+
+  const generateHealthRecommendations: AiServices['generateHealthRecommendations'] =
+    async (input) =>
+      buildReportRecommendationBlueprint({ report: input.report })
+
+  return {
+    recognizeIngredients,
+    generateNutrition,
+    extractReportMetrics,
+    generateHealthRecommendations,
+  }
 }

@@ -4,6 +4,8 @@ import type {
   CoachReply,
   DayPlan,
   EnergyResult,
+  HealthReport,
+  HealthRecommendationSet,
   Task,
 } from './schemas'
 /**
@@ -238,6 +240,71 @@ export const fixtureCoachReply: CoachReply = {
   ],
   disclaimer:
     'Akeso is an energy coach, not a medical device. Suggestions are based on your own check-ins, not clinical measurements.',
+}
+
+/**
+ * A fictional confirmed report. Statuses are consistent with the bounds:
+ * vitamin D 18 sits below its 30–100 range (low); hemoglobin 14.2 sits inside
+ * 13.5–17.5 (normal); the ferritin metric has no upper bound on this report
+ * so its status is `unknown` rather than invented.
+ */
+export const fixtureHealthReport: HealthReport = {
+  id: 'report-1',
+  createdAt: `${FIXTURE_DATE}T09:15:00+10:00`,
+  metrics: [
+    {
+      id: 'vitamin-d',
+      name: 'Vitamin D (25-OH)',
+      value: 18,
+      unit: 'ng/mL',
+      referenceLow: 30,
+      referenceHigh: 100,
+      status: 'low',
+    },
+    {
+      id: 'hemoglobin',
+      name: 'Hemoglobin',
+      value: 14.2,
+      unit: 'g/dL',
+      referenceLow: 13.5,
+      referenceHigh: 17.5,
+      status: 'normal',
+    },
+    {
+      id: 'ferritin',
+      name: 'Ferritin',
+      value: 42,
+      unit: 'ng/mL',
+      referenceLow: null,
+      referenceHigh: null,
+      status: 'unknown',
+    },
+  ],
+}
+
+export const fixtureHealthRecommendationSet: HealthRecommendationSet = {
+  reportId: fixtureHealthReport.id,
+  metrics: fixtureHealthReport.metrics,
+  recommendations: [
+    {
+      id: 'rec-1',
+      category: 'nutrition',
+      title: 'Consider vitamin D–rich foods and daylight',
+      detail:
+        'Your report flagged vitamin D below its listed range. Regular daylight and foods like oily fish or fortified options are general, low-risk supports — a clinician can advise whether anything more is needed.',
+      basedOnMetricIds: ['vitamin-d'],
+    },
+    {
+      id: 'rec-2',
+      category: 'follow_up',
+      title: 'Discuss the full panel at your next visit',
+      detail:
+        'Some values sat outside or without a listed range. Bringing this report to a healthcare professional is the safe way to interpret what it means for you.',
+      basedOnMetricIds: ['vitamin-d', 'ferritin'],
+    },
+  ],
+  disclaimer:
+    'Akeso is an energy coach, not a medical device. These are general lifestyle suggestions based on the values you confirmed — they do not diagnose any condition and are not a substitute for professional medical advice.',
 }
 
 export const fixtureApiError: ApiError = {

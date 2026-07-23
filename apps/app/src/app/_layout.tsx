@@ -21,6 +21,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="account" />
         <Stack.Screen name="coach" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="reports" />
       </Stack>
     </AppStateProvider>
   )
