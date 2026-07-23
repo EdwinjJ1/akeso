@@ -120,6 +120,18 @@ describe('POST /v1/reports/extractions', () => {
     expect(res.body.error.code).toBe('INVALID_IMAGE')
   })
 
+  test('accepts real image bytes even when the declared content-type differs', async () => {
+    // The byte signature is authoritative; some RN/browser multipart clients
+    // send a generic or mismatched declared content-type for a valid image.
+    await request(app)
+      .post('/v1/reports/extractions')
+      .attach('image', JPEG, {
+        filename: 'r.jpg',
+        contentType: 'application/octet-stream',
+      })
+      .expect(200)
+  })
+
   test('rejects images larger than 5 MiB', async () => {
     const oversized = Buffer.alloc(5 * 1024 * 1024 + 1)
     oversized.set([0xff, 0xd8, 0xff], 0)

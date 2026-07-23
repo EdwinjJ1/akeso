@@ -120,8 +120,11 @@ export function createReportsRouter(
       if (!req.file) {
         throw new HttpError(400, 'INVALID_IMAGE', 'multipart field "image" is required.')
       }
+      // The byte signature is authoritative; the client-declared multipart
+      // mimetype is not required to match it (some RN/browser clients send a
+      // generic or empty content-type for an otherwise valid JPEG/PNG).
       const detectedMimeType = detectReportImageType(req.file.buffer)
-      if (!detectedMimeType || detectedMimeType !== req.file.mimetype) {
+      if (!detectedMimeType) {
         throw new HttpError(400, 'INVALID_IMAGE', 'Upload a valid JPEG or PNG image.')
       }
       // The extracted metrics are never persisted here — the user must review
