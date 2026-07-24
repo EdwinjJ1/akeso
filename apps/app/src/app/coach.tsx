@@ -1,6 +1,7 @@
+import type { CoachChatTurn } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
-import { router } from 'expo-router'
-import { useRef, useState } from 'react'
+import { router, useLocalSearchParams } from 'expo-router'
+import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -14,23 +15,69 @@ interface ChatMessage {
   text: string
 }
 
-const STARTERS = ['Help me plan my next focus block', 'Why is my energy dipping?', 'Make today feel lighter']
+const STARTERS = ['Why is my energy dipping?', 'What should I eat today?', 'How do my report results look?']
+const RESHAPE_STARTER = 'Reshape today’s plan around how I feel'
+/** Only the most recent turns travel back — matches the contract cap. */
+const HISTORY_LIMIT = 10
 
 export default function CoachChat() {
   const insets = useSafeAreaInsets()
-  const { coach, energy, regeneratePlan } = useAppState()
+  const { mode } = useLocalSearchParams<{ mode?: string }>()
+  const moreMode = mode === 'more'
+  const { coach, energy, regeneratePlan, sendCoachMessage } = useAppState()
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 1, role: 'coach', text: coach?.message ?? "Hey, I’m Akeso. Tell me what your day feels like, or ask me to reshape your plan." },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    moreMode
+      ? []
+      : [{ id: 1, role: 'coach', text: coach?.message ?? "Hey, I’m Akeso. Tell me what your day feels like, or ask me anything about it." }]
+  )
+  const openerRequested = useRef(false)
+
+  const historyForServer = (current: ChatMessage[]): CoachChatTurn[] =>
+    current
+      .filter((message) => message.text.trim().length > 0)
+      .slice(-HISTORY_LIMIT)
+      .map((message) => ({ role: message.role, text: message.text }))
+
+  // "Tell Akeso more" opens with the coach asking ONE follow-up question.
+  useEffect(() => {
+    if (!moreMode || openerRequested.current || !energy) return
+    openerRequested.current = true
+    let cancelled = false
+    setSending(true)
+    sendCoachMessage({ message: '', history: [], intent: 'opener' })
+      .then((reply) => {
+        if (cancelled) return
+        setMessages((value) => [...value, { id: Date.now(), role: 'coach', text: reply.message }])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMessages((value) => [
+          ...value,
+          {
+            id: Date.now(),
+            role: 'coach',
+            text: 'Tell me anything that shapes your day — mood, food, stress, symptoms — and I’ll factor it in.',
+          },
+        ])
+      })
+      .finally(() => {
+        if (!cancelled) setSending(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [moreMode, energy, sendCoachMessage])
 
   const send = async (suggestion?: string) => {
     const text = (suggestion ?? draft).trim()
     if (!text || sending) return
-    setMessages((value) => [...value, { id: Date.now(), role: 'user', text }])
+    const outgoing: ChatMessage = { id: Date.now(), role: 'user', text }
+    const priorHistory = historyForServer(messages)
+    setMessages((value) => [...value, outgoing])
     setDraft('')
     setSending(true)
     setError(null)
@@ -47,7 +94,16 @@ export default function CoachChat() {
       return
     }
     try {
-      const reply = await regeneratePlan(text)
+      // The dedicated reshape starter regenerates the plan; every other
+      // message is a pure conversation turn that never rewrites the plan.
+      const reply =
+        text === RESHAPE_STARTER
+          ? await regeneratePlan(text)
+          : await sendCoachMessage({
+              message: text,
+              history: priorHistory,
+              intent: moreMode ? 'more' : 'chat',
+            })
       setMessages((value) => [...value, { id: Date.now() + 1, role: 'coach', text: reply.message }])
     } catch {
       setError('Akeso could not reply just now. Please try again.')
@@ -64,7 +120,7 @@ export default function CoachChat() {
           <View style={styles.mascotAvatar}><Mascot state="steady" size={58} /></View>
           <View>
             <View style={styles.onlineRow}><View style={styles.onlineDot} /><Text style={styles.online}>YOUR ENERGY COACH</Text></View>
-            <Text style={styles.title}>Talk to Akeso</Text>
+            <Text style={styles.title}>{moreMode ? 'Tell Akeso more' : 'Talk to Akeso'}</Text>
           </View>
         </View>
         <Pressable accessibilityLabel="Close coach" accessibilityRole="button" onPress={() => router.back()} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
@@ -77,7 +133,7 @@ export default function CoachChat() {
           <Ionicons name="sparkles" size={18} color={colors.text} />
           <Text style={styles.contextText}>
             {energy
-              ? 'I can use today’s check-in to explain your energy and adjust your plan.'
+              ? 'Akeso can see your check-in, plan, nutrition, and confirmed report results — ask about any of it.'
               : 'Complete today’s check-in to unlock personalised coaching.'}
           </Text>
         </View>
@@ -91,9 +147,9 @@ export default function CoachChat() {
           </View>
         ))}
 
-        {messages.length === 1 ? (
+        {!moreMode && messages.length === 1 ? (
           <View style={styles.starters}>
-            {STARTERS.map((starter) => (
+            {[...STARTERS, RESHAPE_STARTER].map((starter) => (
               <Pressable key={starter} onPress={() => send(starter)} style={({ pressed }) => [styles.starter, pressed && styles.pressed]}>
                 <Text style={styles.starterText}>{starter}</Text><Ionicons name="arrow-forward" size={16} color={colors.text} />
               </Pressable>
@@ -106,7 +162,7 @@ export default function CoachChat() {
       </ScrollView>
 
       <View style={styles.composer}>
-        <TextInput accessibilityLabel="Message Akeso" editable={!sending} multiline onChangeText={setDraft} onSubmitEditing={() => send()} placeholder="Ask about your energy or plan…" placeholderTextColor={colors.textMuted} returnKeyType="send" style={styles.input} value={draft} />
+        <TextInput accessibilityLabel="Message Akeso" editable={!sending} multiline onChangeText={setDraft} onSubmitEditing={() => send()} placeholder={moreMode ? 'Mood, food, stress, symptoms…' : 'Ask about your energy, food, or results…'} placeholderTextColor={colors.textMuted} returnKeyType="send" style={styles.input} value={draft} />
         <Pressable accessibilityLabel="Send message" accessibilityRole="button" disabled={!draft.trim() || sending} onPress={() => send()} style={({ pressed }) => [styles.send, (!draft.trim() || sending) && styles.sendDisabled, pressed && styles.pressed]}>
           <Ionicons name="arrow-up" size={22} color={colors.lime} />
         </Pressable>

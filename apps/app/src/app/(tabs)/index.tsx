@@ -1,12 +1,13 @@
 import type { CoachReply, DayPlan, EnergyResult, NutritionPlan } from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { CoachCard } from '@/components/coach-card'
 import { EnergyCurve } from '@/components/energy/energy-curve'
 import { FactorRow } from '@/components/energy/factor-row'
+import { ScoreAdjustSheet } from '@/components/energy/score-adjust-sheet'
 import { CheckInPrompt } from '@/components/home/checkin-prompt'
 import { NutritionSnapshot } from '@/components/home/nutrition-snapshot'
 import { ReminderCard } from '@/components/home/reminder-card'
@@ -18,7 +19,7 @@ import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
 import { useAppState } from '@/state/app-state'
 import { deriveDashboardState } from '@/state/dashboard-state'
-import { colors, sp, type } from '@/theme/tokens'
+import { colors, radius, sp, type } from '@/theme/tokens'
 import { formatHour, greetingForNow, todayISO, todayLabel } from '@/utils/dates'
 
 export default function Dashboard() {
@@ -37,6 +38,7 @@ export default function Dashboard() {
     coachLoading,
     coachError,
     refreshToday,
+    adjustScore,
   } = useAppState()
 
   useEffect(() => {
@@ -106,6 +108,7 @@ export default function Dashboard() {
           coachLoading={coachLoading}
           coachError={coachError}
           onRetry={refreshToday}
+          onAdjustScore={adjustScore}
         />
       ) : null}
     </Screen>
@@ -123,6 +126,7 @@ type ReadyDashboardProps = {
   coachLoading: boolean
   coachError: string | null
   onRetry: () => Promise<void>
+  onAdjustScore: (score: number, note?: string) => Promise<void>
 }
 
 function ReadyDashboard({
@@ -136,7 +140,9 @@ function ReadyDashboard({
   coachLoading,
   coachError,
   onRetry,
+  onAdjustScore,
 }: ReadyDashboardProps) {
+  const [adjustVisible, setAdjustVisible] = useState(false)
   const mascotState: MascotState =
     energy.band === 'high' ? 'high' : energy.band === 'low' ? 'low' : 'steady'
   const peakLabel = `Peak ${formatHour(energy.peakWindow.startHour)}–${formatHour(
@@ -238,18 +244,60 @@ function ReadyDashboard({
             <View>
               <Text style={styles.sectionKicker}>THE RECEIPT</Text>
               <Text style={type.h2}>Why this score</Text>
+              {energy.adjustment ? (
+                <View style={styles.adjustedPill}>
+                  <Ionicons name="person" size={11} color={colors.text} />
+                  <Text style={styles.adjustedPillText}>Adjusted by you</Text>
+                </View>
+              ) : null}
             </View>
             {/* Echo the actual score, not the factor count: a bare "4" next
-                to "Why this score" reads as a 4/100 score. */}
-            <Text style={styles.receiptScore}>{energy.score}</Text>
+                to "Why this score" reads as a 4/100 score. Tapping it opens
+                the correction sheet — the user always has the final say. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Adjust today's score of ${energy.score}`}
+              accessibilityHint="Opens a sheet to correct the score"
+              onPress={() => setAdjustVisible(true)}
+              style={({ pressed }) => [
+                styles.receiptScoreButton,
+                pressed && styles.receiptScorePressed,
+              ]}
+            >
+              <Text style={styles.receiptScore}>{energy.score}</Text>
+              <Ionicons name="pencil" size={13} color={colors.text} />
+            </Pressable>
           </View>
           <View style={styles.factorList}>
             {energy.factors.map((factor) => (
               <FactorRow key={factor.key} factor={factor} />
             ))}
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Tell Akeso more about today"
+            accessibilityHint="Opens the coach chat to add context like mood or meals"
+            onPress={() => router.push({ pathname: '../coach', params: { mode: 'more' } })}
+            style={({ pressed }) => [styles.tellMoreRow, pressed && styles.tellMorePressed]}
+          >
+            <Ionicons name="chatbubble-ellipses" size={17} color={colors.primaryDark} />
+            <View style={styles.tellMoreCopy}>
+              <Text style={styles.tellMoreTitle}>Tell Akeso more</Text>
+              <Text style={styles.tellMoreHint}>
+                Mood, food, stress, symptoms — help Akeso read today right.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={colors.text} />
+          </Pressable>
         </Card>
       </Reveal>
+
+      <ScoreAdjustSheet
+        visible={adjustVisible}
+        currentScore={energy.score}
+        onClose={() => setAdjustVisible(false)}
+        onSave={onAdjustScore}
+      />
 
       {nutrition ? (
         <Reveal delay={240}>
@@ -365,17 +413,59 @@ const styles = StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   sectionKicker: { ...type.label, color: colors.text, marginBottom: sp(1) },
   factorCard: { borderTopRightRadius: 8 },
+  receiptScoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: sp(1.5),
+    paddingLeft: sp(2),
+    paddingRight: sp(2.5),
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    backgroundColor: colors.lime,
+  },
+  receiptScorePressed: { transform: [{ translateY: 2 }] },
   receiptScore: {
-    minWidth: 36,
-    height: 36,
-    borderRadius: 18,
-    paddingHorizontal: sp(2),
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: sp(1.5),
     backgroundColor: colors.text,
     color: colors.lime,
     textAlign: 'center',
-    lineHeight: 36,
+    lineHeight: 32,
     fontWeight: '900',
   },
+  adjustedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: sp(1.5),
+    paddingHorizontal: sp(2),
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.text,
+    backgroundColor: colors.yellow,
+  },
+  adjustedPillText: { fontSize: 10, fontWeight: '800', color: colors.text },
+  tellMoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: sp(2.5),
+    marginTop: sp(3),
+    padding: sp(3),
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    backgroundColor: colors.primarySoft,
+  },
+  tellMorePressed: { transform: [{ translateY: 2 }] },
+  tellMoreCopy: { flex: 1 },
+  tellMoreTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  tellMoreHint: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
   factorList: { marginTop: sp(3) },
   coachLoadingCard: {
     flexDirection: 'row',

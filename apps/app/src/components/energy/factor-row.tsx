@@ -16,13 +16,10 @@ interface FactorRowProps {
 }
 
 /**
- * One "why this score" row: icon, label, explanation, and — only for the
- * scoring `reported_energy` factor — a signed impact. `possible_context`
- * factors carry no impact by design, so no number is shown for them.
+ * One "why this score" row: icon, label, qualitative explanation. No factor
+ * ever shows a point attribution — the scoring mechanics stay private.
  */
 export function FactorRow({ factor }: FactorRowProps) {
-  const impact = factor.role === 'reported_energy' ? factor.impact : undefined
-
   return (
     <View style={styles.row}>
       <View style={styles.iconWrap}>
@@ -32,16 +29,6 @@ export function FactorRow({ factor }: FactorRowProps) {
         <Text style={styles.label}>{factor.label}</Text>
         <Text style={styles.explanation}>{factor.explanation}</Text>
       </View>
-      {impact !== undefined ? (
-        <Text
-          style={[
-            styles.impact,
-            { color: impact < 0 ? colors.danger : colors.primaryDark },
-          ]}
-        >
-          {impact > 0 ? `+${impact}` : `${impact}`}
-        </Text>
-      ) : null}
     </View>
   )
 }
@@ -79,11 +66,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 18,
     marginTop: 1,
-  },
-  impact: {
-    fontSize: 15,
-    fontWeight: '700',
-    minWidth: 34,
-    textAlign: 'right',
   },
 })
