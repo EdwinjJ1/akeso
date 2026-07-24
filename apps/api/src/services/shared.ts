@@ -1,17 +1,34 @@
 import {
   buildInventoryNutritionFallback,
+  healthRecommendationBlueprintSchema,
+  healthRecommendationProfileContextSchema,
   nutritionPlanSchema,
+  type HealthRecommendationBlueprint,
   type NutritionPlan,
 } from '@akeso/domain'
 
 import { HttpError } from '../http-error'
-import type { NutritionGenerationInput } from './types'
+import type { HealthRecommendationInput, NutritionGenerationInput } from './types'
 
 export const REQUEST_TIMEOUT_MS = 15_000
 export const NUTRITION_PROMPT_VERSION = 3
+export const REPORT_RECOMMENDATION_PROMPT_VERSION = 3
 
-export const AI_UNAVAILABLE_MESSAGE =
-  'Fridge recognition is unavailable; use manual ingredient entry.'
+/**
+ * Unavailable copy is feature-scoped: the same 503 reads very differently on
+ * the fridge screen than on the health-report screen, and a mismatched
+ * message ("fridge recognition…" during a report upload) reads as a bug.
+ */
+export type AiUnavailableContext = 'fridge' | 'report' | 'generic'
+
+export const AI_UNAVAILABLE_MESSAGES: Readonly<
+  Record<AiUnavailableContext, string>
+> = {
+  fridge: 'Fridge recognition is unavailable; use manual ingredient entry.',
+  report:
+    'Report extraction is unavailable right now; please try again shortly.',
+  generic: 'AI assistance is unavailable right now; please try again shortly.',
+}
 
 export const recognitionPrompt = `Identify only food ingredients visibly present in this image.
 
@@ -34,6 +51,10 @@ The output must match exactly one of these shapes. Never omit ingredients and ne
 {"status":"refused","ingredients":[],"reason":"brief policy reason"}
 
 For status "ok", every ingredient must include exactly name, category, confidence, and uncertaintyReason. Allowed categories are protein, vegetable, fruit, dairy, grain, and other.`
+
+export const reportExtractionPrompt = `Extract only laboratory/test metrics printed in this health report image.
+
+Return exactly one JSON object. For each metric read: its name, its numeric value, its unit (empty string if none printed), and the reference range EXACTLY as printed on the report — referenceLow and referenceHigh are numbers or null when that bound is not printed. Never invent, convert, or infer a reference range, and never guess whether a value is high, low, or normal — output only what is printed. Do not output any diagnosis, interpretation, medication, or advice. Skip non-numeric results (e.g. "positive"). Deduplicate repeated metrics. If no metric is legible use {"status":"empty","metrics":[],"reason":"no_metrics_detected"}; if the image is too unclear use reason "unrecognizable_image"; if policy prevents processing use {"status":"refused","metrics":[],"reason":"short reason"}. Otherwise use {"status":"ok","metrics":[{"name":"Hemoglobin","value":14.2,"unit":"g/dL","referenceLow":13.5,"referenceHigh":17.5,"confidence":0.9,"uncertaintyReason":null}]}. Every ok metric has exactly those seven fields.`
 
 export const nutritionPrompt = (input: NutritionGenerationInput) => `Create a practical, non-medical nutrition plan for ${input.date} from the exact JSON context below.
 
@@ -123,6 +144,115 @@ export const ingredientRecognitionJsonSchema = {
       },
     },
   ],
+} as const
+
+/**
+ * Structured-output schema for report extraction (Gemini responseJsonSchema).
+ * Mirrors @akeso/contracts' ReportExtractionResultSchema, but relaxed for
+ * provider compatibility (no const/minLength/maxLength keywords); the strict
+ * Zod schema still runs on every response afterwards.
+ */
+export const reportExtractionJsonSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'metrics'],
+      properties: {
+        status: { type: 'string', enum: ['ok'] },
+        metrics: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+              'name',
+              'value',
+              'unit',
+              'referenceLow',
+              'referenceHigh',
+              'confidence',
+              'uncertaintyReason',
+            ],
+            properties: {
+              name: { type: 'string' },
+              value: { type: 'number' },
+              unit: { type: 'string' },
+              referenceLow: {
+                anyOf: [{ type: 'number' }, { type: 'null' }],
+              },
+              referenceHigh: {
+                anyOf: [{ type: 'number' }, { type: 'null' }],
+              },
+              confidence: { type: 'number', minimum: 0, maximum: 1 },
+              uncertaintyReason: {
+                anyOf: [{ type: 'string' }, { type: 'null' }],
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'metrics', 'reason'],
+      properties: {
+        status: { type: 'string', enum: ['empty'] },
+        metrics: { type: 'array', maxItems: 0 },
+        reason: {
+          type: 'string',
+          enum: ['no_metrics_detected', 'unrecognizable_image'],
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'metrics', 'reason'],
+      properties: {
+        status: { type: 'string', enum: ['refused'] },
+        metrics: { type: 'array', maxItems: 0 },
+        reason: { type: 'string' },
+      },
+    },
+  ],
+} as const
+
+export const healthRecommendationJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['recommendations'],
+  properties: {
+    recommendations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['actionCode', 'basedOnMetricIds'],
+        properties: {
+          actionCode: {
+            type: 'string',
+            enum: [
+              'professional_follow_up',
+              'support_sleep',
+              'support_hydration',
+              'support_balanced_meals',
+              'support_gentle_movement',
+              'support_stress',
+              'general_wellbeing',
+            ],
+          },
+          basedOnMetricIds: {
+            type: 'array',
+            minItems: 1,
+            items: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
 } as const
 
 export const nutritionBlueprintJsonSchema = {
@@ -288,22 +418,107 @@ export function parseJson(text: string): unknown {
   }
 }
 
-export function normalizeRecognitionResult(value: unknown): unknown {
+function normalizeStatusResult(value: unknown, itemsKey: string): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return value
   }
   const record = value as Record<string, unknown>
   if (
     (record.status === 'empty' || record.status === 'refused') &&
-    !Object.hasOwn(record, 'ingredients')
+    !Object.hasOwn(record, itemsKey)
   ) {
-    return { ...record, ingredients: [] }
+    return { ...record, [itemsKey]: [] }
   }
   return value
 }
 
-export function unavailableError(): HttpError {
-  return new HttpError(503, 'AI_UNAVAILABLE', AI_UNAVAILABLE_MESSAGE)
+export function normalizeRecognitionResult(value: unknown): unknown {
+  return normalizeStatusResult(value, 'ingredients')
+}
+
+export function normalizeExtractionResult(value: unknown): unknown {
+  return normalizeStatusResult(value, 'metrics')
+}
+
+/**
+ * Builds the provider-agnostic health-recommendation request. Metric names,
+ * values, and units never leave the server: the provider only sees opaque
+ * `metric_N` references plus the schema-allowlisted profile context, and
+ * groundRecommendationBlueprint() translates references back afterwards.
+ */
+export function buildRecommendationRequest(input: HealthRecommendationInput): {
+  metricIdByRef: Map<string, string>
+  prompt: string
+} {
+  const metricIdByRef = new Map<string, string>()
+  const metrics = input.report.metrics.map((metric, index) => {
+    const metricRef = `metric_${index + 1}`
+    metricIdByRef.set(metricRef, metric.id)
+    return { metricRef, status: metric.status }
+  })
+  // Reconstruct the allowlist instead of spreading input.profile. This is a
+  // defense-in-depth boundary against runtime objects carrying extra fields.
+  const profile = input.profile
+    ? healthRecommendationProfileContextSchema.parse({
+        goal: input.profile.goal,
+        typicalWake: input.profile.typicalWake,
+        typicalSleep: input.profile.typicalSleep,
+        dietaryPreference: input.profile.dietaryPreference,
+      })
+    : null
+  const prompt = `Choose safe, general, non-diagnostic lifestyle actions for the confirmed health-report metrics and allowed profile context in the JSON below.
+
+You do NOT write any user-facing text. You only pick from a fixed set of action codes; the app renders the wording. This makes it impossible for you to state a diagnosis or a medication, so never attempt to.
+
+Rules:
+- Return ONLY this JSON shape and no other keys:
+{"recommendations":[{"actionCode":"<one code>","basedOnMetricIds":["<an exact metricRef from context>"]}]}
+- actionCode must be exactly one of: professional_follow_up, support_sleep, support_hydration, support_balanced_meals, support_gentle_movement, support_stress, general_wellbeing.
+- Every basedOnMetricIds value must exactly match a metricRef supplied in the context. Never invent a reference. Each recommendation needs at least one reference.
+- For any metric whose status is "low", "high", or "unknown", use professional_follow_up — never imply the value is dangerous or normal.
+- Profile fields may only help prioritize a general lifestyle action. Never infer a condition, treatment, or clinical meaning from a goal, schedule, or dietary preference.
+- Metric names, results, units, real ids, profile names, and profile free text are intentionally absent. Never request or invent them.
+- If nothing useful applies, return {"recommendations":[]}.
+
+Context: ${JSON.stringify({
+    metrics,
+    profile,
+  })}`
+  return { metricIdByRef, prompt }
+}
+
+/**
+ * Translates opaque provider metric references back to persisted confirmed
+ * ids and discards everything else before the route performs its independent
+ * grounding check. The blueprint carries no free text — only action codes (a
+ * closed enum) and metric ids — so nothing the provider wrote can become
+ * user-visible copy.
+ */
+export function groundRecommendationBlueprint(
+  blueprint: HealthRecommendationBlueprint,
+  metricIdByRef: ReadonlyMap<string, string>
+): HealthRecommendationBlueprint {
+  return healthRecommendationBlueprintSchema.parse({
+    recommendations: blueprint.recommendations.flatMap((item) => {
+      const basedOnMetricIds = Array.from(
+        new Set(
+          item.basedOnMetricIds.flatMap((metricRef) => {
+            const metricId = metricIdByRef.get(metricRef)
+            return metricId ? [metricId] : []
+          })
+        )
+      )
+      return basedOnMetricIds.length > 0
+        ? [{ actionCode: item.actionCode, basedOnMetricIds }]
+        : []
+    }),
+  })
+}
+
+export function unavailableError(
+  context: AiUnavailableContext = 'generic'
+): HttpError {
+  return new HttpError(503, 'AI_UNAVAILABLE', AI_UNAVAILABLE_MESSAGES[context])
 }
 
 export function fallbackNutrition(input: NutritionGenerationInput): NutritionPlan {

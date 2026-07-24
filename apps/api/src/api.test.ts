@@ -692,8 +692,7 @@ describe('nutrition and coach', () => {
       await request(app)
         .post('/v1/nutrition/2026-08-01/regenerate')
         .expect(200)
-      env.vision.provider = 'mimo'
-      env.vision.mimoModel = 'mimo-cache-model-a'
+      env.vision.provider = 'unconfigured-provider'
       const providerMiss = await request(app)
         .get('/v1/nutrition/2026-08-01')
         .expect(200)

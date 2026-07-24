@@ -1,7 +1,6 @@
 import { env } from '../env'
 import { buildReportRecommendationBlueprint } from '@akeso/domain'
 import { createGeminiAiServices } from './gemini'
-import { createMimoAiServices } from './mimo'
 import {
   fallbackNutrition,
   NUTRITION_PROMPT_VERSION,
@@ -15,19 +14,18 @@ type ProviderFactory = (
 ) => AiServices
 
 const providerRegistry = new Map<string, ProviderFactory>([
-  ['mimo', createMimoAiServices],
   ['gemini', createGeminiAiServices],
 ])
 
 const unavailableServices: AiServices = {
   async recognizeIngredients() {
-    throw unavailableError()
+    throw unavailableError('fridge')
   },
   async generateNutrition(input) {
     return fallbackNutrition(input)
   },
   async extractReportMetrics() {
-    throw unavailableError()
+    throw unavailableError('report')
   },
   async generateHealthRecommendations(input) {
     return buildReportRecommendationBlueprint({
@@ -51,11 +49,7 @@ export function getSelectedVisionIdentity(config: VisionConfig = env.vision): {
   model: string
 } {
   const model =
-    config.provider === 'mimo'
-      ? config.mimoModel
-      : config.provider === 'gemini'
-        ? config.geminiModel
-        : 'unconfigured'
+    config.provider === 'gemini' ? config.geminiModel : 'unconfigured'
   return { provider: config.provider, model }
 }
 

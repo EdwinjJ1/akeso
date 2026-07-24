@@ -1,25 +1,37 @@
 import {
   buildReportRecommendationBlueprint,
+  healthRecommendationBlueprintSchema,
   ingredientRecognitionResultSchema,
+  reportExtractionResultSchema,
+  type HealthRecommendationBlueprint,
   type IngredientRecognitionResult,
   type NutritionPlan,
+  type ReportExtractionResult,
 } from '@akeso/domain'
 
 import { HttpError } from '../http-error'
 import {
+  buildRecommendationRequest,
   fallbackNutrition,
+  groundRecommendationBlueprint,
+  healthRecommendationJsonSchema,
   ingredientRecognitionJsonSchema,
+  normalizeExtractionResult,
   normalizeRecognitionResult,
   nutritionBlueprintJsonSchema,
   nutritionPrompt,
   parseJson,
   postJsonWithOneRetry,
   recognitionPrompt,
+  reportExtractionJsonSchema,
+  reportExtractionPrompt,
   unavailableError,
   validateNutritionPlanOutput,
+  type AiUnavailableContext,
 } from './shared'
 import type {
   AiServices,
+  HealthRecommendationInput,
   NutritionGenerationInput,
   UploadedImage,
   VisionConfig,
@@ -71,9 +83,9 @@ export function createGeminiAiServices(
   config: VisionConfig,
   fetchImpl: typeof fetch
 ): AiServices {
-  const postGemini = (body: unknown) => {
+  const postGemini = (body: unknown, context: AiUnavailableContext) => {
     if (!config.enabled || !config.geminiApiKey || !config.geminiModel) {
-      throw unavailableError()
+      throw unavailableError(context)
     }
     return postJsonWithOneRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent`,
@@ -89,27 +101,30 @@ export function createGeminiAiServices(
   const recognizeIngredients = async (
     image: UploadedImage
   ): Promise<IngredientRecognitionResult> => {
-    const payload = await postGemini({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: recognitionPrompt },
-            {
-              inlineData: {
-                mimeType: image.mimeType,
-                data: image.bytes.toString('base64'),
+    const payload = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: recognitionPrompt },
+              {
+                inlineData: {
+                  mimeType: image.mimeType,
+                  data: image.bytes.toString('base64'),
+                },
               },
-            },
-          ],
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseJsonSchema: ingredientRecognitionJsonSchema,
+          temperature: 0,
         },
-      ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseJsonSchema: ingredientRecognitionJsonSchema,
-        temperature: 0,
       },
-    })
+      'fridge'
+    )
     const parsed = ingredientRecognitionResultSchema.safeParse(
       normalizeRecognitionResult(parseJson(outputText(payload)))
     )
@@ -129,19 +144,22 @@ export function createGeminiAiServices(
     if (input.fridge.length === 0) return fallbackNutrition(input)
 
     try {
-      const payload = await postGemini({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: nutritionPrompt(input) }],
+      const payload = await postGemini(
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: nutritionPrompt(input) }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: nutritionBlueprintJsonSchema,
+            temperature: 0,
           },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseJsonSchema: nutritionBlueprintJsonSchema,
-          temperature: 0,
         },
-      })
+        'generic'
+      )
       const parsed = validateNutritionPlanOutput(
         input,
         parseJson(outputText(payload))
@@ -158,16 +176,85 @@ export function createGeminiAiServices(
     return fallbackNutrition(input)
   }
 
-  const extractReportMetrics: AiServices['extractReportMetrics'] = async () => {
-    throw unavailableError()
+  const extractReportMetrics = async (
+    image: UploadedImage
+  ): Promise<ReportExtractionResult> => {
+    const payload = await postGemini(
+      {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: reportExtractionPrompt },
+              {
+                inlineData: {
+                  mimeType: image.mimeType,
+                  data: image.bytes.toString('base64'),
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseJsonSchema: reportExtractionJsonSchema,
+          temperature: 0,
+        },
+      },
+      'report'
+    )
+    const parsed = reportExtractionResultSchema.safeParse(
+      normalizeExtractionResult(parseJson(outputText(payload)))
+    )
+    if (!parsed.success) {
+      throw new HttpError(
+        502,
+        'MALFORMED_AI_OUTPUT',
+        'AI output failed validation.'
+      )
+    }
+    return parsed.data
   }
 
-  const generateHealthRecommendations: AiServices['generateHealthRecommendations'] =
-    async (input) =>
-      buildReportRecommendationBlueprint({
-        report: input.report,
-        profile: input.profile,
-      })
+  const generateHealthRecommendations = async (
+    input: HealthRecommendationInput
+  ): Promise<HealthRecommendationBlueprint> => {
+    try {
+      const { metricIdByRef, prompt } = buildRecommendationRequest(input)
+      const payload = await postGemini(
+        {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: healthRecommendationJsonSchema,
+            temperature: 0,
+          },
+        },
+        'report'
+      )
+      const parsed = healthRecommendationBlueprintSchema.safeParse(
+        parseJson(outputText(payload))
+      )
+      if (parsed.success) {
+        return groundRecommendationBlueprint(parsed.data, metricIdByRef)
+      }
+      // Log only issue paths — never metric names or values (health data).
+      console.warn(
+        'Health recommendation AI output failed blueprint validation at paths:',
+        parsed.error.issues.map((issue) => issue.path)
+      )
+    } catch (error) {
+      console.warn(
+        'Health recommendation AI unavailable; using safe deterministic blueprint:',
+        error instanceof Error ? error.name : 'unknown error'
+      )
+    }
+
+    return buildReportRecommendationBlueprint({
+      report: input.report,
+      profile: input.profile,
+    })
+  }
 
   return {
     recognizeIngredients,

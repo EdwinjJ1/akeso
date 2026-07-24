@@ -48,8 +48,6 @@ export interface AiServices {
 export interface VisionConfig {
   enabled: boolean
   provider: string
-  mimoApiKey?: string
-  mimoModel: string
   geminiApiKey?: string
   geminiModel: string
 }
