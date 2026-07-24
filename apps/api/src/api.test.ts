@@ -1,4 +1,8 @@
-import { buildReportRecommendationBlueprint, EnergyEngine } from '@akeso/domain'
+import {
+  buildReportRecommendationBlueprint,
+  EnergyEngine,
+  planDay,
+} from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
 import type { AiServices } from './services/types'
 import request from 'supertest'
@@ -84,6 +88,15 @@ const fakeAiServices: AiServices = {
       suggestions: [],
       ...(plan ? { adjustedPlan: plan } : {}),
       disclaimer: 'Test disclaimer.',
+    }
+  },
+  async generatePlan({ date, energy, tasks, instruction }) {
+    const plan = planDay(energy, tasks)
+    // Make the instruction observable so tests can assert it reached the AI.
+    return {
+      ...plan,
+      date,
+      ...(instruction ? { coachNote: `AI planned around: ${instruction}` } : {}),
     }
   },
   async generateReportChatReply({ message }) {

@@ -3,7 +3,6 @@ import {
   mergeRegeneratedPlan,
   PlanBlockNotFoundError,
   PlanBlockOverlapError,
-  planDay,
   regeneratePlanBodySchema,
   updatePlanBlock as applyPlanBlockUpdate,
   updatePlanBlockInputSchema,
@@ -94,26 +93,30 @@ export function createPlanRouter(
       )
     }
 
-    const tasks = await repos.tasks.list(req.userId, date)
-    const currentPlan = await repos.plans.get(req.userId, date)
-    const freshPlan = planDay(energyResult, tasks)
-    const regenerated = instruction
-      ? {
-          ...freshPlan,
-          coachNote: `${freshPlan.coachNote} (Adjusted for: "${instruction}".)`,
-        }
-      : freshPlan
+    const [tasks, currentPlan, profile, checkin, fridge, contextNotes] =
+      await Promise.all([
+        repos.tasks.list(req.userId, date),
+        repos.plans.get(req.userId, date),
+        repos.profile.get(req.userId),
+        repos.checkins.get(req.userId, date),
+        repos.fridge.list(req.userId),
+        repos.contextNotes.list(req.userId, date),
+      ])
+    // The instruction goes TO the model (it shapes the schedule), not
+    // string-appended onto output text afterwards.
+    const freshPlan = await ai.generatePlan({
+      date,
+      energy: energyResult,
+      tasks,
+      profile,
+      contextNotes,
+      ...(instruction ? { instruction } : {}),
+    })
     const plan = currentPlan
-      ? mergeRegeneratedPlan(regenerated, currentPlan)
-      : regenerated
+      ? mergeRegeneratedPlan(freshPlan, currentPlan)
+      : freshPlan
 
     const saved = await repos.plans.upsert(req.userId, plan)
-    const [profile, checkin, fridge, contextNotes] = await Promise.all([
-      repos.profile.get(req.userId),
-      repos.checkins.get(req.userId, date),
-      repos.fridge.list(req.userId),
-      repos.contextNotes.list(req.userId, date),
-    ])
     const coach = await ai.generateCoachReply({
       date,
       message: instruction ?? 'Walk me through today’s plan.',

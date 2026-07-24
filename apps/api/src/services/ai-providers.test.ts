@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   fixtureDayPlan,
   fixtureEnergyResult,
+  fixtureTasks,
   type HealthRecommendationProfileContext,
   type HealthReport,
 } from '@akeso/domain'
@@ -1209,6 +1210,106 @@ describe('Gemini coach chat', () => {
     )
     expect(system).toContain('userAdjustedScore')
     expect(system).toContain('Rough night')
+  })
+})
+
+describe('Gemini plan generation', () => {
+  const planInput = () => ({
+    date: fixtureEnergyResult.date,
+    energy: fixtureEnergyResult,
+    tasks: fixtureTasks,
+    profile: null,
+    contextNotes: [],
+  })
+
+  const validBlueprint = () => ({
+    blocks: [
+      {
+        start: '09:00',
+        end: '11:00',
+        type: 'focus',
+        title: fixtureTasks[0].title,
+        taskId: fixtureTasks[0].id,
+        rationale: 'Your hardest task sits inside the morning peak window.',
+      },
+      {
+        start: '12:00',
+        end: '12:45',
+        type: 'meal',
+        title: 'Lunch',
+        taskId: null,
+        rationale: 'A meal protects the transition out of the peak.',
+      },
+    ],
+    coachNote: 'Front-loaded morning, gentle afternoon.',
+  })
+
+  test('grounds a valid blueprint into a server-assigned DayPlan', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(validBlueprint()))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+
+    expect(plan.date).toBe(fixtureEnergyResult.date)
+    expect(plan.blocks.map((block) => block.id)).toEqual(['block-1', 'block-2'])
+    expect(plan.blocks[0]).toMatchObject({
+      taskId: fixtureTasks[0].id,
+      status: 'planned',
+      source: 'akeso',
+    })
+    expect(plan.coachNote).toBe('Front-loaded morning, gentle afternoon.')
+    // The instruction rides in the prompt when present.
+    const requestBody = String(fetchMock.mock.calls[0][1]?.body)
+    expect(requestBody).toContain(fixtureTasks[0].id)
+  })
+
+  test('rejects an unknown taskId and falls back to the deterministic planner', async () => {
+    const blueprint = validBlueprint()
+    blueprint.blocks[0].taskId = 'task-i-made-up'
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+
+    // Deterministic fallback: same shape planDay produces, no invented task.
+    expect(
+      plan.blocks.every((block) => block.taskId !== 'task-i-made-up')
+    ).toBe(true)
+    expect(plan.blocks.length).toBeGreaterThan(0)
+  })
+
+  test('rejects overlapping blocks and falls back', async () => {
+    const blueprint = validBlueprint()
+    blueprint.blocks[1] = {
+      ...blueprint.blocks[1],
+      start: '10:00',
+      end: '10:45',
+    }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+    expect(plan.coachNote).not.toBe('Front-loaded morning, gentle afternoon.')
+  })
+
+  test('provider disabled goes straight to the deterministic planner', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const plan = await createServices(
+      config({ enabled: false }),
+      fetchMock
+    ).generatePlan(planInput())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(plan.blocks.length).toBeGreaterThan(0)
   })
 })
 

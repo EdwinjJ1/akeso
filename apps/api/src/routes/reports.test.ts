@@ -1,6 +1,7 @@
 import {
   buildReportRecommendationBlueprint,
   buildReportRecommendationsFallback,
+  planDay,
 } from '@akeso/domain'
 import type {
   HealthRecommendationBlueprint,
@@ -83,6 +84,9 @@ const makeAi = (over: Partial<AiServices> = {}): AiServices => ({
       ...(plan ? { adjustedPlan: plan } : {}),
       disclaimer: 'Test disclaimer.',
     }
+  },
+  async generatePlan({ energy, tasks }) {
+    return planDay(energy, tasks)
   },
   async generateReportChatReply({ message }) {
     return {

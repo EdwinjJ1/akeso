@@ -2,7 +2,6 @@ import {
   applyScoreAdjustment,
   buildInventoryNutritionFallback,
   fixtureCoachReply,
-  fixtureDayPlan,
   fixtureTasks,
   filterNutritionPlanForDietarySafety,
   buildReportRecommendationsFallback,
@@ -149,7 +148,10 @@ export class FixtureService implements AkesoService {
     await wait(this.latencyMs)
     if (!this.energy) return null
     if (!this.plan || this.plan.date !== date) {
-      this.plan = { ...fixtureDayPlan, date }
+      // Derived from the user's actual check-in via the shared deterministic
+      // planner — demo mode shows a real reaction to their inputs, never the
+      // canned fixtureDayPlan.
+      this.plan = planDay({ ...this.energy, date }, fixtureTasks)
     }
     return this.plan
   }
@@ -168,22 +170,29 @@ export class FixtureService implements AkesoService {
 
   async regeneratePlan(
     date: string,
-    _instruction?: string
+    instruction?: string
   ): Promise<{ plan: DayPlan; coach: CoachReply }> {
     await wait(this.latencyMs * 3)
-    const freshPlan: DayPlan = {
-      ...fixtureDayPlan,
-      date,
-      generatedAt: new Date().toISOString(),
-      coachNote:
-        'Plan refreshed: same protected morning peak, with the afternoon rebalanced around your current stress level.',
+    if (!this.energy) {
+      throw new Error('Complete a check-in before regenerating the plan.')
     }
+    const freshPlan = planDay({ ...this.energy, date }, fixtureTasks)
     this.plan = this.plan
       ? mergeRegeneratedPlan(freshPlan, this.plan)
       : freshPlan
+    // The coach message is DERIVED from the regenerated plan (plus an honest
+    // note about the instruction) — no canned reply text.
+    const message = instruction
+      ? `${this.plan.coachNote} I noted “${instruction}” — connect the live API for the AI to reshape the schedule around it.`
+      : this.plan.coachNote
     return {
       plan: this.plan,
-      coach: fixtureCoachReply,
+      coach: {
+        message,
+        suggestions: [],
+        adjustedPlan: this.plan,
+        disclaimer: fixtureCoachReply.disclaimer,
+      },
     }
   }
 
@@ -211,9 +220,24 @@ export class FixtureService implements AkesoService {
     return this.buildNutrition(date)
   }
 
-  async getCoachReply(_date: string): Promise<CoachReply> {
+  async getCoachReply(date: string): Promise<CoachReply> {
     await wait(this.latencyMs)
-    return fixtureCoachReply
+    // Derived from the user's own plan when one exists — never the canned
+    // fixture conversation.
+    if (this.energy && this.plan?.date === date) {
+      return {
+        message: this.plan.coachNote,
+        suggestions: [],
+        adjustedPlan: this.plan,
+        disclaimer: fixtureCoachReply.disclaimer,
+      }
+    }
+    return {
+      message:
+        'Complete today’s 20-second check-in and I can explain your energy and shape your plan with you.',
+      suggestions: [],
+      disclaimer: fixtureCoachReply.disclaimer,
+    }
   }
 
   /**
