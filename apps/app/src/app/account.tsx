@@ -17,6 +17,7 @@ import {
   AccountAuthError,
   getAccountStatus,
   requestEmailCode,
+  signInWithGoogle,
   signOutAccount,
   verifyEmailCode,
   type AccountStatus,
@@ -58,6 +59,18 @@ export default function Account() {
     } catch (cause) {
       setError(messageFor(cause))
     } finally {
+      setLoading(false)
+    }
+  }
+
+  const googleSignIn = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      // Full-page redirect on success — no state to update here.
+      await signInWithGoogle()
+    } catch (cause) {
+      setError(messageFor(cause))
       setLoading(false)
     }
   }
@@ -148,6 +161,24 @@ export default function Account() {
           <Text style={styles.cardTitle}>
             {profile ? 'Save your current progress' : 'Sign in to your existing Akeso'}
           </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Google"
+            disabled={loading}
+            onPress={googleSignIn}
+            style={({ pressed }) => [styles.googleButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="logo-google" size={18} color={colors.text} />
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR USE EMAIL</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
           <Text style={styles.cardCopy}>
             We will send a six-digit code. If this email already has an account, its saved profile
             will be restored after verification.
@@ -266,4 +297,23 @@ const styles = StyleSheet.create({
   },
   loadingRow: { alignItems: 'center', gap: sp(2), paddingVertical: sp(8) },
   error: { color: colors.danger, fontSize: 13, fontWeight: '700', marginTop: sp(3) },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sp(2.5),
+    minHeight: 52,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    backgroundColor: colors.surface,
+    shadowColor: colors.text,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  googleButtonText: { fontSize: 16, fontWeight: '800', color: colors.text },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: sp(3), marginVertical: sp(1) },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { ...type.label, color: colors.textMuted, fontSize: 10 },
 })

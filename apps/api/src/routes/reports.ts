@@ -24,7 +24,7 @@ import { ok } from '../http'
 import { HttpError } from '../http-error'
 import type { Repos } from '../repos'
 import type { AiServices, UploadedImage } from '../services/types'
-import { REPORT_RECOMMENDATION_PROMPT_VERSION } from '../services/mimo'
+import { REPORT_RECOMMENDATION_PROMPT_VERSION } from '../services/shared'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const uploadImage = multer({
@@ -75,9 +75,7 @@ export function createReportsRouter(
 ): Router {
   const router = Router()
   const recommendationModel =
-    env.vision.provider === 'gemini'
-      ? env.vision.geminiModel
-      : env.vision.mimoModel
+    env.vision.provider === 'gemini' ? env.vision.geminiModel : 'unconfigured'
 
   // Recommendations depend only on the persisted confirmed metrics, the
   // strict profile allowlist, and the provider/model/prompt version. No photo,

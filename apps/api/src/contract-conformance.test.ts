@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 
 import { createApp } from './app'
 import { createMemoryRepos } from './repos/memory'
+import { createSqliteRepos } from './repos/sqlite'
 
 /**
  * @akeso/contracts' apiContract route map mirrors the implemented /v1 API
@@ -39,11 +40,22 @@ const validCheckIn: CheckInInput = {
 
 let app: ReturnType<typeof createApp>
 
-beforeEach(() => {
-  app = createApp(createMemoryRepos())
-})
+/**
+ * Both local repo drivers must satisfy the same API contract: memory (demo
+ * mode) and sqlite (persistent local personal record). sqlite runs on
+ * ':memory:' here so tests stay hermetic and leave no file behind.
+ */
+const repoDrivers = [
+  ['memory', () => createMemoryRepos()],
+  ['sqlite', () => createSqliteRepos(':memory:')],
+] as const
 
-describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
+describe.each(repoDrivers)(
+  'real /v1 responses conform to @akeso/contracts data schemas (%s repos)',
+  (_driver, createDriverRepos) => {
+    beforeEach(() => {
+      app = createApp(createDriverRepos())
+    })
   test('GET /v1/profile -> UserProfile envelope', async () => {
     const response = await request(app).get('/v1/profile').expect(200)
 
@@ -223,4 +235,5 @@ describe('real /v1 responses conform to @akeso/contracts data schemas', () => {
     expect(UpdateReportMetricsResponseSchema.safeParse(metrics.body).success).toBe(true)
     expect(metrics.body.data.metrics[0].status).toBe('normal')
   })
-})
+  }
+)

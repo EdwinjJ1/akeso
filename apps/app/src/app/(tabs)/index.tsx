@@ -239,7 +239,9 @@ function ReadyDashboard({
               <Text style={styles.sectionKicker}>THE RECEIPT</Text>
               <Text style={type.h2}>Why this score</Text>
             </View>
-            <Text style={styles.factorCount}>{energy.factors.length}</Text>
+            {/* Echo the actual score, not the factor count: a bare "4" next
+                to "Why this score" reads as a 4/100 score. */}
+            <Text style={styles.receiptScore}>{energy.score}</Text>
           </View>
           <View style={styles.factorList}>
             {energy.factors.map((factor) => (
@@ -363,10 +365,11 @@ const styles = StyleSheet.create({
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   sectionKicker: { ...type.label, color: colors.text, marginBottom: sp(1) },
   factorCard: { borderTopRightRadius: 8 },
-  factorCount: {
-    width: 36,
+  receiptScore: {
+    minWidth: 36,
     height: 36,
     borderRadius: 18,
+    paddingHorizontal: sp(2),
     backgroundColor: colors.text,
     color: colors.lime,
     textAlign: 'center',

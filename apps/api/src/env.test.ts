@@ -34,8 +34,32 @@ afterAll(async () => {
   else await writeFile(envPath, originalEnvFile)
 })
 
+/**
+ * env.ts skips the .env file entirely under vitest (tests stay hermetic from
+ * the developer's local config), so these two tests drop the VITEST flag for
+ * the duration of the import to exercise the real file-loading path.
+ */
+async function importEnvWithFileLoading() {
+  const vitestFlag = process.env.VITEST
+  delete process.env.VITEST
+  try {
+    return await import('./env')
+  } finally {
+    process.env.VITEST = vitestFlag
+  }
+}
+
 test('loads PORT from the API-local .env file', async () => {
-  const { env } = await import('./env')
+  const { env } = await importEnvWithFileLoading()
+
+  expect(env.port).toBe(4123)
+})
+
+test('.env file values override variables inherited from the shell', async () => {
+  // Regression guard: a stale shell export (e.g. a rotated API key still in
+  // ~/.zshrc) must lose to the project .env, not silently win.
+  process.env.PORT = '9999'
+  const { env } = await importEnvWithFileLoading()
 
   expect(env.port).toBe(4123)
 })

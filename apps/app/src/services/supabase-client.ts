@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
+import { Platform } from 'react-native'
 
 export type EmailCodePurpose = 'link' | 'sign-in'
 
@@ -42,7 +43,10 @@ function getClient(): SupabaseClient {
         storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        // On web the OAuth (Google) redirect lands back on the app with a
+        // PKCE code in the URL; supabase-js must parse it to finish sign-in.
+        detectSessionInUrl: Platform.OS === 'web',
+        flowType: 'pkce',
       },
     })
   }
@@ -173,6 +177,41 @@ export async function verifyEmailCode(
   return {
     email: data.user.email ?? email,
     isAnonymous: data.user.is_anonymous === true,
+  }
+}
+
+/**
+ * Google sign-in via Supabase OAuth (web only — the flow is a full-page
+ * redirect). An anonymous session is upgraded in place with linkIdentity so
+ * auth.uid() — and every row keyed to it — survives the upgrade; if manual
+ * linking is disabled on the project this falls back to a fresh Google
+ * session. Requires the Google provider to be enabled in the Supabase
+ * dashboard; until then the returned error message surfaces in the UI.
+ */
+export async function signInWithGoogle(): Promise<void> {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    throw new AccountAuthError('Google sign-in is currently available in the web app.')
+  }
+  const supabase = getClient()
+  const redirectTo = window.location.origin
+
+  const { data } = await supabase.auth.getSession()
+  if (data.session?.user.is_anonymous) {
+    const { error: linkError } = await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo },
+    })
+    if (!linkError) return
+  }
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  })
+  if (error) {
+    throw new AccountAuthError(
+      'Could not start Google sign-in. Check that the Google provider is enabled, then try again.'
+    )
   }
 }
 

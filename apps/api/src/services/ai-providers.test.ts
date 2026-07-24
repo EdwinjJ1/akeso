@@ -10,14 +10,12 @@ import {
   getSelectedVisionIdentity,
   NUTRITION_PROMPT_VERSION,
 } from './ai'
-import { REPORT_RECOMMENDATION_PROMPT_VERSION } from './mimo'
+import { REPORT_RECOMMENDATION_PROMPT_VERSION } from './shared'
 import type { AiServices } from './types'
 
 type TestVisionConfig = {
   enabled: boolean
   provider: string
-  mimoApiKey?: string
-  mimoModel: string
   geminiApiKey?: string
   geminiModel: string
 }
@@ -34,6 +32,21 @@ const validRecognition = {
       name: 'Tomato',
       category: 'vegetable',
       confidence: 0.94,
+      uncertaintyReason: null,
+    },
+  ],
+}
+
+const validExtraction = {
+  status: 'ok',
+  metrics: [
+    {
+      name: 'Hemoglobin',
+      value: 14.2,
+      unit: 'g/dL',
+      referenceLow: 13.5,
+      referenceHigh: 17.5,
+      confidence: 0.9,
       uncertaintyReason: null,
     },
   ],
@@ -75,12 +88,6 @@ const geminiResponse = (text: string, status = 200) =>
     { status, headers: { 'content-type': 'application/json' } }
   )
 
-const mimoResponse = (text: string) =>
-  new Response(
-    JSON.stringify({ choices: [{ message: { content: text } }] }),
-    { status: 200, headers: { 'content-type': 'application/json' } }
-  )
-
 const collectObjectKeys = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap(collectObjectKeys)
   if (typeof value !== 'object' || value === null) return []
@@ -104,8 +111,6 @@ const createServices = (
 const config = (overrides: Partial<TestVisionConfig> = {}): TestVisionConfig => ({
   enabled: true,
   provider: 'gemini',
-  mimoApiKey: 'mimo-test-key',
-  mimoModel: 'mimo-test-model',
   geminiApiKey: 'gemini-test-key',
   geminiModel: 'gemini-test-model',
   ...overrides,
@@ -145,33 +150,8 @@ describe('AI provider selection', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  test('keeps MiMo selectable without contacting Gemini', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
-      expect(url).toBe('https://api.xiaomimimo.com/v1/chat/completions')
-      const prompt = JSON.parse(String(init?.body)).messages[0].content[0].text
-      expect(prompt).toContain(
-        '{"status":"ok","ingredients":[{"name":"tomato","category":"vegetable","confidence":0.95,"uncertaintyReason":null}]}'
-      )
-      expect(prompt).toContain(
-        '{"status":"empty","ingredients":[],"reason":"no_food_detected"}'
-      )
-      expect(prompt).toContain(
-        '{"status":"empty","ingredients":[],"reason":"unrecognizable_image"}'
-      )
-      expect(prompt).toContain(
-        '{"status":"refused","ingredients":[],"reason":"brief policy reason"}'
-      )
-      return mimoResponse(JSON.stringify(validRecognition))
-    })
-
-    await expect(
-      createServices(config({ provider: 'mimo' }), fetchMock).recognizeIngredients(image)
-    ).resolves.toEqual(validRecognition)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-  })
-
-  test.each(['other', 'toString'])(
-    'rejects unknown provider %s before making any request',
+  test.each(['mimo', 'other', 'toString'])(
+    'rejects unsupported provider %s before making any request',
     async (provider) => {
       const fetchMock = vi.fn<typeof fetch>()
 
@@ -189,6 +169,22 @@ describe('AI provider selection', () => {
     }
   )
 
+  test('report extraction on an unsupported provider uses report-scoped copy', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+
+    await expect(
+      createServices(config({ provider: 'other' }), fetchMock).extractReportMetrics(
+        image
+      )
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'AI_UNAVAILABLE',
+      message:
+        'Report extraction is unavailable right now; please try again shortly.',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test('requires a provider to be explicitly configured', async () => {
     const fetchMock = vi.fn<typeof fetch>()
 
@@ -199,7 +195,7 @@ describe('AI provider selection', () => {
   })
 })
 
-describe('MiMo report recommendation security boundary', () => {
+describe('Gemini report recommendation security boundary', () => {
   test('versions the profile-aware opaque-reference prompt', () => {
     expect(REPORT_RECOMMENDATION_PROMPT_VERSION).toBe(3)
   })
@@ -228,7 +224,7 @@ describe('MiMo report recommendation security boundary', () => {
     } as unknown as HealthRecommendationProfileContext
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       const body = JSON.parse(String(init?.body))
-      const prompt = String(body.messages[0].content)
+      const prompt = String(body.contents[0].parts[0].text)
       expect(prompt).toContain(
         JSON.stringify({
           metrics: [{ metricRef: 'metric_1', status: 'low' }],
@@ -239,7 +235,7 @@ describe('MiMo report recommendation security boundary', () => {
       expect(prompt).not.toContain('Vitamin D')
       expect(prompt).not.toContain(injection)
       expect(prompt).not.toContain('ng/mL')
-      return mimoResponse(
+      return geminiResponse(
         JSON.stringify({
           recommendations: [
             {
@@ -252,10 +248,7 @@ describe('MiMo report recommendation security boundary', () => {
     })
 
     await expect(
-      createServices(
-        config({ provider: 'mimo' }),
-        fetchMock
-      ).generateHealthRecommendations({
+      createServices(config(), fetchMock).generateHealthRecommendations({
         report: reportWithInjection,
         profile: runtimeProfile,
       })
@@ -269,11 +262,49 @@ describe('MiMo report recommendation security boundary', () => {
     })
   })
 
+  test('requests the closed action-code response schema', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      expect(body.generationConfig).toMatchObject({
+        responseMimeType: 'application/json',
+      })
+      const itemSchema =
+        body.generationConfig.responseJsonSchema.properties.recommendations.items
+      expect(itemSchema.required).toEqual(['actionCode', 'basedOnMetricIds'])
+      expect(itemSchema.properties.actionCode.enum).toEqual([
+        'professional_follow_up',
+        'support_sleep',
+        'support_hydration',
+        'support_balanced_meals',
+        'support_gentle_movement',
+        'support_stress',
+        'general_wellbeing',
+      ])
+      expect(itemSchema.properties).not.toHaveProperty('detail')
+      return geminiResponse(
+        JSON.stringify({
+          recommendations: [
+            {
+              actionCode: 'professional_follow_up',
+              basedOnMetricIds: ['metric_1'],
+            },
+          ],
+        })
+      )
+    })
+
+    await createServices(config(), fetchMock).generateHealthRecommendations({
+      report: confirmedReport,
+      profile: recommendationProfile,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   test('rejects provider prose and falls back to fixed closed actions', async () => {
     const injection = 'Diagnosis: cancer. Stop treatment and take 500mg.'
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      mimoResponse(
+      geminiResponse(
         JSON.stringify({
           recommendations: [
             {
@@ -287,7 +318,7 @@ describe('MiMo report recommendation security boundary', () => {
     )
 
     const result = await createServices(
-      config({ provider: 'mimo' }),
+      config(),
       fetchMock
     ).generateHealthRecommendations({
       report: confirmedReport,
@@ -304,6 +335,119 @@ describe('MiMo report recommendation security boundary', () => {
       )
     ).toBe(true)
     warn.mockRestore()
+  })
+
+  test('falls back to the deterministic blueprint when the provider errors', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('down', { status: 503 }))
+
+    const result = await createServices(
+      config(),
+      fetchMock
+    ).generateHealthRecommendations({
+      report: confirmedReport,
+      profile: recommendationProfile,
+    })
+
+    expect(result.recommendations.length).toBeGreaterThan(0)
+    expect(
+      result.recommendations.every((item) =>
+        item.basedOnMetricIds.every((id) => id === 'vitamin-d')
+      )
+    ).toBe(true)
+    warn.mockRestore()
+  })
+})
+
+describe('Gemini report metric extraction', () => {
+  test('maps inline image input and requests the extraction JSON Schema', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      expect(body.contents[0]).toMatchObject({
+        role: 'user',
+        parts: [
+          { text: expect.stringContaining('laboratory/test metrics') },
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: image.bytes.toString('base64'),
+            },
+          },
+        ],
+      })
+      expect(body.generationConfig).toMatchObject({
+        responseMimeType: 'application/json',
+        temperature: 0,
+      })
+      const schema = body.generationConfig.responseJsonSchema
+      expect(schema.oneOf[0].properties.status.enum).toEqual(['ok'])
+      expect(schema.oneOf[0].properties.metrics.items.required).toEqual([
+        'name',
+        'value',
+        'unit',
+        'referenceLow',
+        'referenceHigh',
+        'confidence',
+        'uncertaintyReason',
+      ])
+      expect(schema.oneOf[1].properties.reason.enum).toEqual([
+        'no_metrics_detected',
+        'unrecognizable_image',
+      ])
+      const schemaKeys = collectObjectKeys(schema)
+      expect(schemaKeys).not.toContain('const')
+      expect(schemaKeys).not.toContain('minLength')
+      expect(schemaKeys).not.toContain('maxLength')
+      return geminiResponse(JSON.stringify(validExtraction))
+    })
+
+    await expect(
+      createServices(config(), fetchMock).extractReportMetrics(image)
+    ).resolves.toEqual(validExtraction)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('normalizes missing empty metrics before shared validation', async () => {
+    const output = { status: 'empty', reason: 'no_metrics_detected' }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(output))
+    )
+
+    await expect(
+      createServices(config(), fetchMock).extractReportMetrics(image)
+    ).resolves.toEqual({ ...output, metrics: [] })
+  })
+
+  test('rejects malformed extraction output after schema relaxation', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify({ status: 'ok', metrics: [] }))
+    )
+
+    await expect(
+      createServices(config(), fetchMock).extractReportMetrics(image)
+    ).rejects.toMatchObject({
+      status: 502,
+      code: 'MALFORMED_AI_OUTPUT',
+      message: 'AI output failed validation.',
+    })
+  })
+
+  test('returns report-scoped unavailable copy when configuration is missing', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+
+    await expect(
+      createServices(config({ geminiApiKey: undefined }), fetchMock).extractReportMetrics(
+        image
+      )
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'AI_UNAVAILABLE',
+      message:
+        'Report extraction is unavailable right now; please try again shortly.',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
@@ -447,30 +591,22 @@ describe('Gemini production provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  test.each(['mimo', 'gemini'] as const)(
-    'rejects HTTP 200 null JSON from %s as malformed output',
-    async (provider) => {
-      const fetchMock = vi.fn<typeof fetch>(async () =>
-        new Response('null', {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      )
+  test('rejects HTTP 200 null JSON as malformed output', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response('null', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    )
 
-      await expect(
-        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
-      ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
-    }
-  )
+    await expect(
+      createServices(config(), fetchMock).recognizeIngredients(image)
+    ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
+  })
 
-  test.each([
-    ['mimo', []],
-    ['mimo', 'text'],
-    ['gemini', []],
-    ['gemini', 42],
-  ] as const)(
-    'rejects HTTP 200 non-object JSON from %s as malformed output',
-    async (provider, payload) => {
+  test.each([[[]], [42]])(
+    'rejects HTTP 200 non-object JSON %j as malformed output',
+    async (payload) => {
       const fetchMock = vi.fn<typeof fetch>(async () =>
         new Response(JSON.stringify(payload), {
           status: 200,
@@ -479,19 +615,17 @@ describe('Gemini production provider', () => {
       )
 
       await expect(
-        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+        createServices(config(), fetchMock).recognizeIngredients(image)
       ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
     }
   )
 
   test.each([
-    ['mimo', { choices: {} }],
-    ['mimo', { choices: [{ message: { content: [] } }] }],
-    ['gemini', { candidates: {} }],
-    ['gemini', { candidates: [{ content: { parts: {} } }] }],
-  ] as const)(
-    'rejects malformed %s response envelopes without leaking runtime errors',
-    async (provider, payload) => {
+    [{ candidates: {} }],
+    [{ candidates: [{ content: { parts: {} } }] }],
+  ])(
+    'rejects malformed response envelope %j without leaking runtime errors',
+    async (payload) => {
       const fetchMock = vi.fn<typeof fetch>(async () =>
         new Response(JSON.stringify(payload), {
           status: 200,
@@ -500,7 +634,7 @@ describe('Gemini production provider', () => {
       )
 
       await expect(
-        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
+        createServices(config(), fetchMock).recognizeIngredients(image)
       ).rejects.toMatchObject({ status: 502, code: 'MALFORMED_AI_OUTPUT' })
     }
   )
@@ -527,39 +661,33 @@ describe('Gemini production provider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  test.each(['mimo', 'gemini'] as const)(
-    'maps a stalled %s response body abort to AI_TIMEOUT without retrying',
-    async (provider) => {
-      vi.useFakeTimers()
-      const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
-        const signal = init?.signal
-        const response = new Response(null, { status: 200 })
-        Object.defineProperty(response, 'json', {
-          value: async () =>
-            await new Promise<never>((_resolve, reject) => {
-              signal?.addEventListener('abort', () => {
-                const error = new Error('body consumption aborted')
-                error.name = 'AbortError'
-                reject(error)
-              })
-            }),
-        })
-        return response
+  test('maps a stalled response body abort to AI_TIMEOUT without retrying', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
+      const signal = init?.signal
+      const response = new Response(null, { status: 200 })
+      Object.defineProperty(response, 'json', {
+        value: async () =>
+          await new Promise<never>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => {
+              const error = new Error('body consumption aborted')
+              error.name = 'AbortError'
+              reject(error)
+            })
+          }),
       })
+      return response
+    })
 
-      const promise = createServices(
-        config({ provider }),
-        fetchMock
-      ).recognizeIngredients(image)
-      const assertion = expect(promise).rejects.toMatchObject({
-        status: 504,
-        code: 'AI_TIMEOUT',
-      })
-      await vi.advanceTimersByTimeAsync(15_000)
-      await assertion
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-    }
-  )
+    const promise = createServices(config(), fetchMock).recognizeIngredients(image)
+    const assertion = expect(promise).rejects.toMatchObject({
+      status: 504,
+      code: 'AI_TIMEOUT',
+    })
+    await vi.advanceTimersByTimeAsync(15_000)
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 
   test('normalizes malformed structured output', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
@@ -575,21 +703,16 @@ describe('Gemini production provider', () => {
     })
   })
 
-  test.each(['mimo', 'gemini'] as const)(
-    'normalizes missing empty ingredients from %s before shared validation',
-    async (provider) => {
-      const output = { status: 'empty', reason: 'no_food_detected' }
-      const fetchMock = vi.fn<typeof fetch>(async () =>
-        provider === 'mimo'
-          ? mimoResponse(JSON.stringify(output))
-          : geminiResponse(JSON.stringify(output))
-      )
+  test('normalizes missing empty ingredients before shared validation', async () => {
+    const output = { status: 'empty', reason: 'no_food_detected' }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(output))
+    )
 
-      await expect(
-        createServices(config({ provider }), fetchMock).recognizeIngredients(image)
-      ).resolves.toEqual({ ...output, ingredients: [] })
-    }
-  )
+    await expect(
+      createServices(config(), fetchMock).recognizeIngredients(image)
+    ).resolves.toEqual({ ...output, ingredients: [] })
+  })
 
   test('normalizes missing refused ingredients without changing a valid reason', async () => {
     const output = { status: 'refused', reason: 'policy restriction' }
@@ -903,46 +1026,5 @@ describe('Gemini production provider', () => {
     expect(sliced.meals[0].description).toBe('Slice Tomato.')
     expect(heated.meals[0].description).toBe('Warm Tomato.')
     expect(heated.meals[0].description).not.toBe(sliced.meals[0].description)
-  })
-
-  test('renders grounded MiMo nutrition and falls back on unknown item ids', async () => {
-    const input = {
-      date: '2026-07-22',
-      fridge: [{ id: 'tomato', name: 'Tomato', category: 'vegetable' as const, allergenTags: [] }],
-      energy: null,
-      profile: null,
-    }
-    const blueprint = (itemId: string) => ({
-      date: input.date,
-      needs: [],
-      meals: [
-        {
-          slot: 'snack',
-          itemIds: [itemId],
-          actions: [{ method: 'slice', itemIds: [itemId] }],
-          boosts: [],
-          prepMinutes: 5,
-        },
-      ],
-    })
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(mimoResponse(JSON.stringify(blueprint('tomato'))))
-      .mockResolvedValueOnce(mimoResponse(JSON.stringify(blueprint('salmon'))))
-    const services = createServices(config({ provider: 'mimo' }), fetchMock)
-
-    const grounded = await services.generateNutrition(input)
-    const fallback = await services.generateNutrition(input)
-
-    expect(grounded.meals[0]).toMatchObject({
-      title: 'Sliced Tomato',
-      description: 'Slice Tomato.',
-      usesFridgeItemIds: ['tomato'],
-    })
-    expect(fallback.meals[0]).toMatchObject({
-      id: 'confirmed-fridge-1',
-      usesFridgeItemIds: ['tomato'],
-    })
-    expect(JSON.stringify(fallback).toLowerCase()).not.toContain('salmon')
   })
 })

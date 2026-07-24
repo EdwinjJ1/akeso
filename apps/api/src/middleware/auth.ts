@@ -13,16 +13,17 @@ declare module 'express-serve-static-core' {
 const BEARER_PREFIX = 'Bearer '
 
 /**
- * In demo mode (default whenever Supabase isn't configured) every request
- * is attributed to a single fixed demo user — no token required. Otherwise
- * this verifies a Supabase Auth bearer token and attaches the real user id.
+ * In local mode (memory or sqlite repo driver — no auth provider available)
+ * every request is attributed to a single fixed local user — no token
+ * required. Otherwise this verifies a Supabase Auth bearer token and
+ * attaches the real user id.
  */
 export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  if (env.demoMode) {
+  if (env.localMode) {
     req.userId = env.demoUserId
     next()
     return
