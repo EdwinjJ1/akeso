@@ -12,10 +12,14 @@
  * different class.
  */
 export {
+  AdjustEnergyBodySchema as adjustEnergyBodySchema,
   BatchFridgeItemsRequestSchema as batchFridgeItemsRequestSchema,
   ZodError,
   CheckInInputSchema as checkInInputSchema,
   CoachChatBlueprintSchema as coachChatBlueprintSchema,
+  CoachChatRequestSchema as coachChatRequestSchema,
+  ContextNoteSchema as contextNoteSchema,
+  CreateContextNoteBodySchema as createContextNoteBodySchema,
   CreateReportRequestSchema as createReportRequestSchema,
   DateStringSchema as localDateSchema,
   DietarySafetyProfileSchema as dietarySafetyProfileSchema,
@@ -36,8 +40,13 @@ export {
   PutFridgeItemBodySchema as putFridgeItemBodySchema,
   PatchFridgeItemBodySchema as patchFridgeItemBodySchema,
   NutritionPlanSchema as nutritionPlanSchema,
+  PlanBlueprintSchema as planBlueprintSchema,
   RegeneratePlanBodySchema as regeneratePlanBodySchema,
   ReminderPreferenceSchema as reminderPreferenceSchema,
+  ReportChatBlueprintSchema as reportChatBlueprintSchema,
+  ReportChatRequestSchema as reportChatRequestSchema,
+  ReportChatReplySchema as reportChatReplySchema,
+  ReportChatTurnSchema as reportChatTurnSchema,
   ReportExtractionResultSchema as reportExtractionResultSchema,
   ReportMetricSchema as reportMetricSchema,
   ReportMetricStatusSchema as reportMetricStatusSchema,
