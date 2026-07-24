@@ -14,39 +14,18 @@ import { ChipRow, MultiChipRow } from '@/components/ui/chips'
 import { Mascot } from '@/components/mascot'
 import { Reveal } from '@/components/ui/reveal'
 import { Screen } from '@/components/ui/screen'
+import {
+  ALLERGEN_OPTIONS,
+  DIET_OPTIONS,
+  GOAL_OPTIONS,
+  listFromText,
+  SLEEP_OPTIONS,
+  WAKE_OPTIONS,
+} from '@/services/profile-options'
+import { AccountAuthError, signInWithGoogle } from '@/services/supabase-client'
 import { useAppState } from '@/state/app-state'
 import { colors, radius, sp, type } from '@/theme/tokens'
 import { getOnboardingErrorMessage } from '@/utils/onboarding-error'
-
-const GOAL_OPTIONS: { value: UserGoal; label: string }[] = [
-  { value: 'academic', label: 'Study & exams' },
-  { value: 'work', label: 'Work & career' },
-  { value: 'fitness', label: 'Training & fitness' },
-  { value: 'balance', label: 'Overall balance' },
-]
-
-const WAKE_OPTIONS = ['06:00', '06:30', '07:00', '07:30', '08:00', '09:00']
-const SLEEP_OPTIONS = ['22:00', '22:30', '23:00', '23:30', '00:00', '01:00']
-
-const DIET_OPTIONS: { value: DietaryPreference; label: string }[] = [
-  { value: 'none', label: 'No preference' },
-  { value: 'vegetarian', label: 'Vegetarian' },
-  { value: 'vegan', label: 'Vegan' },
-  { value: 'halal', label: 'Halal' },
-  { value: 'gluten_free', label: 'Gluten-free' },
-]
-
-const ALLERGEN_OPTIONS: { value: FoodAllergen; label: string }[] = [
-  { value: 'peanuts', label: 'Peanuts' },
-  { value: 'tree_nuts', label: 'Tree nuts' },
-  { value: 'milk', label: 'Milk' },
-  { value: 'eggs', label: 'Eggs' },
-  { value: 'soy', label: 'Soy' },
-  { value: 'wheat_gluten', label: 'Wheat / gluten' },
-  { value: 'fish', label: 'Fish' },
-  { value: 'shellfish', label: 'Shellfish' },
-  { value: 'sesame', label: 'Sesame' },
-]
 
 const VALUE_PROPS: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
   { icon: 'flash', text: 'A 20-second check-in turns into your daily energy score' },
@@ -54,22 +33,26 @@ const VALUE_PROPS: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
   { icon: 'nutrition', text: 'Meals matched to what your body needs — from your own fridge' },
 ]
 
-function listFromText(text: string): string[] {
-  return Array.from(
-    new Set(
-      text
-        .split(/[,\n]/)
-        .map((value) => value.trim().slice(0, 80))
-        .filter(Boolean)
-    )
-  ).slice(0, 20)
-}
-
 export default function Welcome() {
   const { completeOnboarding } = useAppState()
   const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [googleError, setGoogleError] = useState<string | null>(null)
+
+  const googleSignIn = async () => {
+    setGoogleError(null)
+    try {
+      // Redirects the page on success; errors surface inline.
+      await signInWithGoogle()
+    } catch (cause) {
+      setGoogleError(
+        cause instanceof AccountAuthError
+          ? cause.message
+          : 'Could not start Google sign-in. Please try again.'
+      )
+    }
+  }
 
   const [name, setName] = useState('')
   const [goal, setGoal] = useState<UserGoal | null>(null)
@@ -166,7 +149,13 @@ export default function Welcome() {
           </View>
 
           <Button label="Get started" onPress={() => setStep(1)} />
+          <Button label="Continue with Google" variant="ghost" onPress={googleSignIn} />
           <Button label="I already have an account" variant="ghost" onPress={() => router.push('../account')} />
+          {googleError ? (
+            <Text accessibilityRole="alert" style={styles.saveError}>
+              {googleError}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
