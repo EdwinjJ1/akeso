@@ -1,5 +1,6 @@
 import type {
   CheckInInput,
+  CoachChatRequest,
   CoachReply,
   CreateReportRequest,
   DayPlan,
@@ -11,6 +12,8 @@ import type {
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportChatReply,
+  ReportChatRequest,
   ReportExtractionResult,
   ReportImageUpload,
   Task,
@@ -60,9 +63,13 @@ interface AppActions {
   completeOnboarding(profile: UserProfile): Promise<void>
   reloadProfile(): Promise<UserProfile | null | undefined>
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  /** Manual score correction — updates energy (and the plan when re-shaped). */
+  adjustScore(score: number, note?: string): Promise<void>
   refreshToday(): Promise<void>
   updatePlanBlock(blockId: string, input: UpdatePlanBlockInput): Promise<void>
   regeneratePlan(instruction?: string): Promise<CoachReply>
+  /** A conversation turn with the coach — talks only, never rewrites the plan. */
+  sendCoachMessage(input: CoachChatRequest): Promise<CoachReply>
   saveReminderPreference(pref: ReminderPreference): Promise<void>
   recognizeFridgeImage(
     image: FridgeImageUpload
@@ -85,6 +92,10 @@ interface AppActions {
   deleteReport(id: string): Promise<void>
   getReportRecommendations(id: string): Promise<HealthRecommendationSet>
   regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
+  sendReportChatMessage(
+    id: string,
+    input: ReportChatRequest
+  ): Promise<ReportChatReply>
 }
 
 const initialState: AppState = {
@@ -198,6 +209,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       service.getCoachReply(date),
       service.getFridgeItems(),
       service.getReminderPreference(),
+      service.getCheckIn(date),
     ])
     let loadedEnergy: EnergyResult | null = null
 
@@ -231,6 +243,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       coachResult,
       fridgeResult,
       reminderResult,
+      checkInResult,
     ] = await ancillaryRequest
     if (refreshRequestId.current !== requestId) return
 
@@ -267,6 +280,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         reminderResult.status === 'fulfilled'
           ? reminderResult.value
           : prev.reminder,
+      // Rehydrates factor editing after a restart; an in-session submit
+      // already populated this, so a failed fetch keeps the current value.
+      latestCheckIn:
+        checkInResult.status === 'fulfilled' && checkInResult.value
+          ? checkInResult.value
+          : prev.latestCheckIn,
       planLoading: false,
       planError:
         planResult.status === 'rejected'
@@ -302,6 +321,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  const adjustScore = useCallback(
+    async (score: number, note?: string) => {
+      const date = todayISO()
+      const { energy, plan } = await service.adjustEnergyScore(
+        date,
+        score,
+        note
+      )
+      setState((prev) => ({
+        ...prev,
+        energy,
+        ...(plan ? { plan, ancillaryDate: date, planError: null } : {}),
+      }))
+    },
+    [service]
+  )
+
   const regeneratePlan = useCallback(
     async (instruction?: string) => {
       const date = todayISO()
@@ -316,6 +352,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }))
       return coach
     },
+    [service]
+  )
+
+  const sendCoachMessage = useCallback(
+    (input: CoachChatRequest) => service.sendCoachMessage(todayISO(), input),
     [service]
   )
 
@@ -420,6 +461,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     (id: string) => service.regenerateReportRecommendations(id),
     [service]
   )
+  const sendReportChatMessage = useCallback(
+    (id: string, input: ReportChatRequest) =>
+      service.sendReportChatMessage(id, input),
+    [service]
+  )
 
   const value = useMemo(
     () => ({
@@ -427,9 +473,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       completeOnboarding,
       reloadProfile,
       submitCheckIn,
+      adjustScore,
       refreshToday,
       updatePlanBlock,
       regeneratePlan,
+      sendCoachMessage,
       saveReminderPreference,
       recognizeFridgeImage,
       saveFridgeItems,
@@ -445,15 +493,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       deleteReport,
       getReportRecommendations,
       regenerateReportRecommendations,
+      sendReportChatMessage,
     }),
     [
       state,
       completeOnboarding,
       reloadProfile,
       submitCheckIn,
+      adjustScore,
       refreshToday,
       updatePlanBlock,
       regeneratePlan,
+      sendCoachMessage,
       saveReminderPreference,
       recognizeFridgeImage,
       saveFridgeItems,
@@ -469,6 +520,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       deleteReport,
       getReportRecommendations,
       regenerateReportRecommendations,
+      sendReportChatMessage,
     ]
   )
 

@@ -168,8 +168,12 @@ export const EnergyFactorSchema = z.discriminatedUnion('role', [
       key: z.literal('reported_energy'),
       label: z.string().min(1),
       role: z.literal('reported_energy'),
-      /** Signed integer points this factor contributed to the score. */
-      impact: FactorImpactSchema,
+      /**
+       * Legacy signed point attribution. The engine no longer emits it — the
+       * scoring mechanics are deliberately not exposed to clients — but rows
+       * persisted before that change still carry it, so it stays parseable.
+       */
+      impact: FactorImpactSchema.optional(),
       explanation: z.string().min(1),
     })
     .strict(),
@@ -201,6 +205,25 @@ export const HourWindowSchema = z
   })
 export type HourWindow = z.infer<typeof HourWindowSchema>
 
+/**
+ * A user's manual correction of today's score ("you said 80, it feels like
+ * 60"). When present, `score`/`band`/`curve`/windows on the surrounding
+ * EnergyResult are already re-derived from `adjustedScore` — downstream
+ * consumers never need to merge anything. `originalScore` keeps the engine's
+ * first answer so the coach can acknowledge the difference. Re-submitting the
+ * day's check-in replaces the whole result and clears the adjustment.
+ */
+export const ScoreAdjustmentSchema = z
+  .object({
+    originalScore: EnergyScoreSchema,
+    adjustedScore: EnergyScoreSchema,
+    /** Optional free-text "what we missed" note, fed to the AI coach. */
+    note: z.string().trim().min(1).max(280).optional(),
+    adjustedAt: IsoDateTimeSchema,
+  })
+  .strict()
+export type ScoreAdjustment = z.infer<typeof ScoreAdjustmentSchema>
+
 export const EnergyResultSchema = z.object({
   date: DateStringSchema,
   score: EnergyScoreSchema,
@@ -212,6 +235,8 @@ export const EnergyResultSchema = z.object({
   peakWindow: HourWindowSchema,
   dipWindow: HourWindowSchema,
   computedAt: IsoDateTimeSchema,
+  /** Present only after the user has manually corrected the score. */
+  adjustment: ScoreAdjustmentSchema.optional(),
 })
 export type EnergyResult = z.infer<typeof EnergyResultSchema>
 
@@ -319,6 +344,37 @@ export const DayPlanSchema = z.object({
 })
 export type DayPlan = z.infer<typeof DayPlanSchema>
 
+/**
+ * Raw AI output for day-plan generation, before server-side grounding.
+ * Deliberately carries no ids, status, source, or energyLevel — the server
+ * assigns all of those, validates every taskId against the user's real
+ * tasks, and rejects overlapping or out-of-hours blocks before anything is
+ * persisted (see validatePlanBlueprint in the API service layer).
+ */
+export const PlanBlueprintBlockSchema = z
+  .object({
+    start: TimeStringSchema,
+    end: TimeStringSchema,
+    type: PlanBlockTypeSchema,
+    title: z.string().trim().min(1).max(120),
+    /** A real task id, or null for coach-added blocks (meals, breaks, …). */
+    taskId: z.string().min(1).nullable(),
+    rationale: z.string().trim().min(1).max(280),
+  })
+  .strict()
+  .refine((block) => block.end > block.start, {
+    message: 'end must be after start',
+  })
+export type PlanBlueprintBlock = z.infer<typeof PlanBlueprintBlockSchema>
+
+export const PlanBlueprintSchema = z
+  .object({
+    blocks: z.array(PlanBlueprintBlockSchema).min(2).max(14),
+    coachNote: z.string().trim().min(1).max(400),
+  })
+  .strict()
+export type PlanBlueprint = z.infer<typeof PlanBlueprintSchema>
+
 // ── Coach ───────────────────────────────────────────────────────────────────
 
 export const CoachSuggestionSchema = z.object({
@@ -330,6 +386,27 @@ export const CoachSuggestionSchema = z.object({
 })
 export type CoachSuggestion = z.infer<typeof CoachSuggestionSchema>
 
+/**
+ * Raw AI chat output before server-side grounding: suggestion ids are
+ * assigned by the server, and every basedOn ref is validated against the
+ * user's real energy factors / plan block ids before anything is shown.
+ */
+export const CoachChatSuggestionDraftSchema = z.object({
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  /** Evidence refs — must be copied exactly from the allowed list in the prompt. */
+  basedOn: z.array(z.string().min(1)).min(1),
+})
+export type CoachChatSuggestionDraft = z.infer<
+  typeof CoachChatSuggestionDraftSchema
+>
+
+export const CoachChatBlueprintSchema = z.object({
+  message: z.string().min(1),
+  suggestions: z.array(CoachChatSuggestionDraftSchema).max(3),
+})
+export type CoachChatBlueprint = z.infer<typeof CoachChatBlueprintSchema>
+
 /** AI structured output — MUST be parsed with this schema before use. */
 export const CoachReplySchema = z.object({
   message: z.string().min(1),
@@ -340,6 +417,46 @@ export const CoachReplySchema = z.object({
   disclaimer: z.string().min(1),
 })
 export type CoachReply = z.infer<typeof CoachReplySchema>
+
+export const CoachChatRoleSchema = z.enum(['user', 'coach'])
+export type CoachChatRole = z.infer<typeof CoachChatRoleSchema>
+
+/** One prior turn of the coach chat, replayed by the client for context. */
+export const CoachChatTurnSchema = z
+  .object({
+    role: CoachChatRoleSchema,
+    text: z.string().min(1).max(2000),
+  })
+  .strict()
+export type CoachChatTurn = z.infer<typeof CoachChatTurnSchema>
+
+/**
+ * Why the message was sent: `chat` is a normal conversation turn; `more` is
+ * the "Tell Akeso more" flow (the user's message is also persisted as a
+ * context note for the day); `opener` asks the coach to start that flow with
+ * one follow-up question — it carries no user message.
+ */
+export const CoachChatIntentSchema = z.enum(['chat', 'more', 'opener'])
+export type CoachChatIntent = z.infer<typeof CoachChatIntentSchema>
+
+export const CoachChatRequestSchema = z
+  .object({
+    message: z.string().trim().max(1000).default(''),
+    /** Most recent turns only — the server truncates anything older. */
+    history: z.array(CoachChatTurnSchema).max(12).default([]),
+    intent: CoachChatIntentSchema.default('chat'),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (request.intent !== 'opener' && request.message.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['message'],
+        message: 'A message is required unless intent is "opener"',
+      })
+    }
+  })
+export type CoachChatRequest = z.infer<typeof CoachChatRequestSchema>
 
 // ── User & onboarding ───────────────────────────────────────────────────────
 
@@ -799,6 +916,78 @@ export const HealthRecommendationBlueprintSchema = z
 export type HealthRecommendationBlueprint = z.infer<
   typeof HealthRecommendationBlueprintSchema
 >
+
+// ── Report nutrition chat ───────────────────────────────────────────────────
+
+export const ReportChatRoleSchema = z.enum(['user', 'assistant'])
+export type ReportChatRole = z.infer<typeof ReportChatRoleSchema>
+
+/** One prior turn of the nutrition chat, replayed by the client for context. */
+export const ReportChatTurnSchema = z
+  .object({
+    role: ReportChatRoleSchema,
+    text: z.string().min(1).max(2000),
+  })
+  .strict()
+export type ReportChatTurn = z.infer<typeof ReportChatTurnSchema>
+
+export const ReportChatRequestSchema = z
+  .object({
+    message: z.string().min(1).max(500),
+    /** Most recent turns only — the server truncates anything older. */
+    history: z.array(ReportChatTurnSchema).max(12).default([]),
+  })
+  .strict()
+export type ReportChatRequest = z.infer<typeof ReportChatRequestSchema>
+
+/**
+ * Raw AI nutrition-chat output before the server attaches the mandatory
+ * disclaimer. Free text is allowed here (like CoachChatBlueprint) but it is
+ * generated only from the user's confirmed metrics and dietary profile.
+ */
+export const ReportChatBlueprintSchema = z
+  .object({
+    message: z.string().min(1),
+  })
+  .strict()
+export type ReportChatBlueprint = z.infer<typeof ReportChatBlueprintSchema>
+
+/** AI structured output — MUST be parsed with this schema before use. */
+export const ReportChatReplySchema = z.object({
+  message: z.string().min(1),
+  /**
+   * Reference-only disclaimer — MUST always be shown with every nutritionist
+   * reply: dietary suggestions are general guidance, not medical advice.
+   */
+  disclaimer: z.string().min(1),
+})
+export type ReportChatReply = z.infer<typeof ReportChatReplySchema>
+
+// ── Context notes ───────────────────────────────────────────────────────────
+
+/**
+ * Who wrote a context note: the user (free text about mood, food, symptoms,
+ * stress, …) or the coach (the follow-up question it asked). Both are kept
+ * so the AI conversation can resume with its own questions in place.
+ */
+export const ContextNoteAuthorSchema = z.enum(['user', 'coach'])
+export type ContextNoteAuthor = z.infer<typeof ContextNoteAuthorSchema>
+
+/**
+ * A dated free-text note enriching the day's context for the AI coach.
+ * Captured through the "Tell Akeso more" flow and fed into every coach
+ * conversation for that date. Never interpreted clinically.
+ */
+export const ContextNoteSchema = z
+  .object({
+    id: z.string().min(1),
+    date: DateStringSchema,
+    author: ContextNoteAuthorSchema,
+    text: z.string().trim().min(1).max(500),
+    createdAt: IsoDateTimeSchema,
+  })
+  .strict()
+export type ContextNote = z.infer<typeof ContextNoteSchema>
 
 // ── Reminders ───────────────────────────────────────────────────────────────
 

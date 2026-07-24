@@ -1,6 +1,7 @@
 import { healthReportSchema } from '@akeso/domain'
 import type {
   CheckInInput,
+  ContextNote,
   DayPlan,
   EnergyResult,
   FridgeItem,
@@ -45,6 +46,8 @@ interface EnergyResultRow {
   peak_window: EnergyResult['peakWindow']
   dip_window: EnergyResult['dipWindow']
   computed_at: string
+  /** Nullable jsonb — present only after a manual score correction (0007). */
+  adjustment: EnergyResult['adjustment'] | null
 }
 
 interface TaskRow {
@@ -187,6 +190,14 @@ interface ReportRecommendationCacheRow {
   recommendations: HealthRecommendationSet
 }
 
+interface ContextNoteRow {
+  id: string
+  date: string
+  author: ContextNote['author']
+  text: string
+  created_at: string
+}
+
 /**
  * Supabase-backed repos (service role). Used whenever SUPABASE_URL and
  * SUPABASE_SERVICE_ROLE_KEY are configured — see env.ts / repos/index.ts.
@@ -291,7 +302,7 @@ export function createSupabaseRepos(): Repos {
           await supabase
             .from('energy_result')
             .select(
-              'date, score, band, headline, factors, curve, peak_window, dip_window, computed_at'
+              'date, score, band, headline, factors, curve, peak_window, dip_window, computed_at, adjustment'
             )
             .eq('user_id', userId)
             .eq('date', date)
@@ -309,6 +320,7 @@ export function createSupabaseRepos(): Repos {
           peakWindow: row.peak_window,
           dipWindow: row.dip_window,
           computedAt: row.computed_at,
+          ...(row.adjustment ? { adjustment: row.adjustment } : {}),
         }
       },
       async upsert(userId, result: EnergyResult) {
@@ -325,6 +337,7 @@ export function createSupabaseRepos(): Repos {
               peak_window: result.peakWindow,
               dip_window: result.dipWindow,
               computed_at: result.computedAt,
+              adjustment: result.adjustment ?? null,
             },
             { onConflict: 'user_id,date' }
           ),
@@ -669,6 +682,46 @@ export function createSupabaseRepos(): Repos {
             .eq('report_id', reportId),
           'report_recommendation_cache.removeByReport'
         )
+      },
+    },
+
+    contextNotes: {
+      async list(userId, date) {
+        const rows =
+          unwrap<ContextNoteRow[]>(
+            await supabase
+              .from('context_note')
+              .select('id, date, author, text, created_at')
+              .eq('user_id', userId)
+              .eq('date', date)
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true }),
+            'context_note.list'
+          ) ?? []
+        return rows.map((row) => ({
+          id: row.id,
+          date: row.date,
+          author: row.author,
+          text: row.text,
+          createdAt: row.created_at,
+        }))
+      },
+      async append(userId, note) {
+        unwrap(
+          await supabase.from('context_note').upsert(
+            {
+              id: note.id,
+              user_id: userId,
+              date: note.date,
+              author: note.author,
+              text: note.text,
+              created_at: note.createdAt,
+            },
+            { onConflict: 'user_id,id' }
+          ),
+          'context_note.append'
+        )
+        return note
       },
     },
   }

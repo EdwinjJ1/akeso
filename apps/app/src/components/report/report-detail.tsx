@@ -38,6 +38,7 @@ import {
   LabeledInput,
   MetricRow,
 } from './report-manager'
+import { ReportNutritionChat } from './report-nutrition-chat'
 
 interface ReportDetailProps {
   reportId: string
@@ -525,6 +526,13 @@ export function ReportDetail({
           </Pressable>
         ) : null}
       </Card>
+
+      {!editing ? (
+        <ReportNutritionChat
+          reportId={report.id}
+          hasConfirmedMetrics={confirmedCount > 0}
+        />
+      ) : null}
 
       {editing ? (
         <View style={styles.editActions}>

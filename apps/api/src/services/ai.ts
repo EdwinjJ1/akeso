@@ -1,6 +1,8 @@
 import { env } from '../env'
-import { buildReportRecommendationBlueprint } from '@akeso/domain'
+import { buildReportRecommendationBlueprint, planDay } from '@akeso/domain'
+import { buildCoachUnavailableReply } from './coach'
 import { createGeminiAiServices } from './gemini'
+import { buildNutritionistFallbackReply } from './nutritionist'
 import {
   fallbackNutrition,
   NUTRITION_PROMPT_VERSION,
@@ -32,6 +34,15 @@ const unavailableServices: AiServices = {
       report: input.report,
       profile: input.profile,
     })
+  },
+  async generateCoachReply(input) {
+    return buildCoachUnavailableReply(input)
+  },
+  async generatePlan(input) {
+    return planDay(input.energy, input.tasks)
+  },
+  async generateReportChatReply() {
+    return buildNutritionistFallbackReply()
   },
 }
 

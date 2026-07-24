@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import type {
-  HealthRecommendationProfileContext,
-  HealthReport,
+import {
+  fixtureDayPlan,
+  fixtureEnergyResult,
+  fixtureTasks,
+  type HealthRecommendationProfileContext,
+  type HealthReport,
 } from '@akeso/domain'
 
 import { HttpError } from '../http-error'
@@ -1026,5 +1029,347 @@ describe('Gemini production provider', () => {
     expect(sliced.meals[0].description).toBe('Slice Tomato.')
     expect(heated.meals[0].description).toBe('Warm Tomato.')
     expect(heated.meals[0].description).not.toBe(sliced.meals[0].description)
+  })
+})
+
+describe('Gemini coach chat', () => {
+  const chatInput = () => ({
+    date: fixtureEnergyResult.date,
+    message: 'I feel a bit tired, what should I eat?',
+    history: [],
+    intent: 'chat' as const,
+    energy: fixtureEnergyResult,
+    plan: fixtureDayPlan,
+    profile: null,
+    checkin: null,
+    fridge: [],
+    reports: [],
+    contextNotes: [],
+  })
+
+  test('sends the user message and returns the grounded AI reply', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(
+        JSON.stringify({
+          message: 'Your energy dips 14:00–16:00 — a light snack now helps.',
+          suggestions: [
+            {
+              title: 'Snack before the dip',
+              detail: 'Eat something light before your 14:00 dip window.',
+              basedOn: ['last_meal', 'made-up-ref'],
+            },
+            {
+              title: 'Phantom evidence only',
+              detail: 'This one cites nothing real.',
+              basedOn: ['not-a-real-ref'],
+            },
+          ],
+        })
+      )
+    )
+
+    const reply = await createServices(config(), fetchMock).generateCoachReply(
+      chatInput()
+    )
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    expect(JSON.stringify(requestBody)).toContain(
+      'I feel a bit tired, what should I eat?'
+    )
+    expect(reply.message).toContain('dips 14:00–16:00')
+    // Phantom refs are dropped; a suggestion with no real evidence is discarded.
+    expect(reply.suggestions).toEqual([
+      {
+        id: 'coach-sug-1',
+        title: 'Snack before the dip',
+        detail: 'Eat something light before your 14:00 dip window.',
+        basedOn: ['last_meal'],
+      },
+    ])
+    expect(reply.adjustedPlan).toEqual(fixtureDayPlan)
+    expect(reply.disclaimer).toBeTruthy()
+  })
+
+  test('falls back to an honest data-derived reply on malformed AI output', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse('not json at all')
+    )
+
+    const reply = await createServices(config(), fetchMock).generateCoachReply(
+      chatInput()
+    )
+
+    // Composed only from the user's real data + a plain outage statement.
+    expect(reply.message).toContain(fixtureEnergyResult.headline)
+    expect(reply.message).toContain(fixtureDayPlan.coachNote)
+    expect(reply.suggestions).toEqual([])
+  })
+
+  test('falls back to the honest reply when the provider is disabled', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+
+    const reply = await createServices(
+      config({ enabled: false }),
+      fetchMock
+    ).generateCoachReply(chatInput())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(reply.message).toContain(fixtureEnergyResult.headline)
+  })
+
+  test('carries history as real turns and full context in the system instruction', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify({ message: 'Got it.', suggestions: [] }))
+    )
+
+    await createServices(config(), fetchMock).generateCoachReply({
+      ...chatInput(),
+      history: [
+        { role: 'user' as const, text: 'Earlier question' },
+        { role: 'coach' as const, text: 'Earlier answer' },
+      ],
+      profile: {
+        displayName: 'Alex',
+        goal: 'balance',
+        typicalWake: '07:00',
+        typicalSleep: '23:00',
+        dietaryPreference: 'none',
+        dietarySafety: { allergens: [], avoidIngredients: [] },
+      },
+      reports: [
+        {
+          id: 'r1',
+          name: 'Blood panel',
+          reportDate: '2026-07-20',
+          createdAt: '2026-07-20T09:00:00.000Z',
+          metrics: [
+            {
+              id: 'ferritin',
+              name: 'Ferritin',
+              value: 18,
+              unit: 'µg/L',
+              referenceLow: 30,
+              referenceHigh: 200,
+              status: 'low' as const,
+              confidence: 0.9,
+              uncertaintyReason: null,
+              confirmed: true,
+            },
+          ],
+        },
+      ],
+      contextNotes: [
+        {
+          id: 'n1',
+          date: fixtureEnergyResult.date,
+          author: 'user' as const,
+          text: 'Skipped breakfast today',
+          createdAt: '2026-07-21T08:00:00.000Z',
+        },
+      ],
+    })
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    // History rides as real turns: user → model → current user message.
+    expect(
+      requestBody.contents.map((turn: { role: string }) => turn.role)
+    ).toEqual(['user', 'model', 'user'])
+    // The user's own data lands in the system instruction.
+    const system = JSON.stringify(requestBody.systemInstruction)
+    expect(system).toContain('Alex')
+    expect(system).toContain('Ferritin')
+    expect(system).toContain('Skipped breakfast today')
+    // The scoring mechanics never travel to the provider: the context JSON
+    // carries no point attributions (the word "baselines" in the RULES text
+    // is the instruction forbidding them, so check the data keys instead).
+    expect(system).not.toContain('"impact"')
+    expect(system).not.toContain('reportedEnergyScore')
+  })
+
+  test('an adjusted score is presented as the user’s own number', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify({ message: 'Noted.', suggestions: [] }))
+    )
+
+    await createServices(config(), fetchMock).generateCoachReply({
+      ...chatInput(),
+      energy: {
+        ...fixtureEnergyResult,
+        score: 55,
+        adjustment: {
+          originalScore: 80,
+          adjustedScore: 55,
+          note: 'Rough night',
+          adjustedAt: '2026-07-21T10:00:00.000Z',
+        },
+      },
+    })
+
+    const system = JSON.stringify(
+      JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).systemInstruction
+    )
+    expect(system).toContain('userAdjustedScore')
+    expect(system).toContain('Rough night')
+  })
+})
+
+describe('Gemini plan generation', () => {
+  const planInput = () => ({
+    date: fixtureEnergyResult.date,
+    energy: fixtureEnergyResult,
+    tasks: fixtureTasks,
+    profile: null,
+    contextNotes: [],
+  })
+
+  const validBlueprint = () => ({
+    blocks: [
+      {
+        start: '09:00',
+        end: '11:00',
+        type: 'focus',
+        title: fixtureTasks[0].title,
+        taskId: fixtureTasks[0].id,
+        rationale: 'Your hardest task sits inside the morning peak window.',
+      },
+      {
+        start: '12:00',
+        end: '12:45',
+        type: 'meal',
+        title: 'Lunch',
+        taskId: null,
+        rationale: 'A meal protects the transition out of the peak.',
+      },
+    ],
+    coachNote: 'Front-loaded morning, gentle afternoon.',
+  })
+
+  test('grounds a valid blueprint into a server-assigned DayPlan', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(validBlueprint()))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+
+    expect(plan.date).toBe(fixtureEnergyResult.date)
+    expect(plan.blocks.map((block) => block.id)).toEqual(['block-1', 'block-2'])
+    expect(plan.blocks[0]).toMatchObject({
+      taskId: fixtureTasks[0].id,
+      status: 'planned',
+      source: 'akeso',
+    })
+    expect(plan.coachNote).toBe('Front-loaded morning, gentle afternoon.')
+    // The instruction rides in the prompt when present.
+    const requestBody = String(fetchMock.mock.calls[0][1]?.body)
+    expect(requestBody).toContain(fixtureTasks[0].id)
+  })
+
+  test('rejects an unknown taskId and falls back to the deterministic planner', async () => {
+    const blueprint = validBlueprint()
+    blueprint.blocks[0].taskId = 'task-i-made-up'
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+
+    // Deterministic fallback: same shape planDay produces, no invented task.
+    expect(
+      plan.blocks.every((block) => block.taskId !== 'task-i-made-up')
+    ).toBe(true)
+    expect(plan.blocks.length).toBeGreaterThan(0)
+  })
+
+  test('rejects overlapping blocks and falls back', async () => {
+    const blueprint = validBlueprint()
+    blueprint.blocks[1] = {
+      ...blueprint.blocks[1],
+      start: '10:00',
+      end: '10:45',
+    }
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(JSON.stringify(blueprint))
+    )
+
+    const plan = await createServices(config(), fetchMock).generatePlan(
+      planInput()
+    )
+    expect(plan.coachNote).not.toBe('Front-loaded morning, gentle afternoon.')
+  })
+
+  test('provider disabled goes straight to the deterministic planner', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const plan = await createServices(
+      config({ enabled: false }),
+      fetchMock
+    ).generatePlan(planInput())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(plan.blocks.length).toBeGreaterThan(0)
+  })
+})
+
+describe('Gemini nutritionist report chat', () => {
+  const nutritionChatInput = () => ({
+    message: 'What should I eat for my iron levels?',
+    history: [{ role: 'user' as const, text: 'earlier question' }],
+    report: confirmedReport,
+    profile: recommendationProfile,
+  })
+
+  test('sends the confirmed metrics and returns the reply with the server-attached disclaimer', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(
+        JSON.stringify({
+          message:
+            'Iron-rich plant foods like lentils and pumpkin seeds can help. This is general guidance for reference only.',
+        })
+      )
+    )
+
+    const reply = await createServices(
+      config(),
+      fetchMock
+    ).generateReportChatReply(nutritionChatInput())
+
+    const requestBody = JSON.stringify(
+      JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    )
+    expect(requestBody).toContain('What should I eat for my iron levels?')
+    expect(requestBody).toContain('Vitamin D')
+    expect(reply.message).toContain('lentils')
+    // The reference-only disclaimer is always server-attached, never AI text.
+    expect(reply.disclaimer).toContain('for reference only')
+  })
+
+  test('degrades to the honest unavailable reply on malformed AI output', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse('not json at all')
+    )
+
+    const reply = await createServices(
+      config(),
+      fetchMock
+    ).generateReportChatReply(nutritionChatInput())
+
+    expect(reply.message).toContain('unavailable')
+    expect(reply.disclaimer).toContain('for reference only')
+  })
+
+  test('degrades to the honest unavailable reply when the provider is disabled', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+
+    const reply = await createServices(
+      config({ enabled: false }),
+      fetchMock
+    ).generateReportChatReply(nutritionChatInput())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(reply.message).toContain('unavailable')
+    expect(reply.disclaimer).toContain('for reference only')
   })
 })

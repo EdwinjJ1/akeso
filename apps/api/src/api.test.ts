@@ -1,4 +1,8 @@
-import { buildReportRecommendationBlueprint, EnergyEngine } from '@akeso/domain'
+import {
+  buildReportRecommendationBlueprint,
+  EnergyEngine,
+  planDay,
+} from '@akeso/domain'
 import type { CheckInInput } from '@akeso/domain'
 import type { AiServices } from './services/types'
 import request from 'supertest'
@@ -78,6 +82,29 @@ const fakeAiServices: AiServices = {
   async generateHealthRecommendations({ report }) {
     return buildReportRecommendationBlueprint({ report })
   },
+  async generateCoachReply({ message, plan }) {
+    return {
+      message: `Coach heard: ${message}`,
+      suggestions: [],
+      ...(plan ? { adjustedPlan: plan } : {}),
+      disclaimer: 'Test disclaimer.',
+    }
+  },
+  async generatePlan({ date, energy, tasks, instruction }) {
+    const plan = planDay(energy, tasks)
+    // Make the instruction observable so tests can assert it reached the AI.
+    return {
+      ...plan,
+      date,
+      ...(instruction ? { coachNote: `AI planned around: ${instruction}` } : {}),
+    }
+  },
+  async generateReportChatReply({ message }) {
+    return {
+      message: `Nutritionist heard: ${message}`,
+      disclaimer: 'Test chat disclaimer.',
+    }
+  },
 }
 
 beforeEach(() => {
@@ -130,6 +157,161 @@ describe('GET /v1/energy/:date', () => {
     await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
     const response = await request(app).get('/v1/energy/2026-07-21').expect(200)
     expect(response.body.data.date).toBe('2026-07-21')
+  })
+})
+
+describe('GET /v1/checkins/:date', () => {
+  test('returns null before any check-in', async () => {
+    const response = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+    expect(response.body).toEqual({ success: true, data: null })
+  })
+
+  test('echoes the exact submitted check-in so factors can be re-edited', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+    expect(response.body.data).toEqual(validCheckIn)
+  })
+
+  test('rejects a malformed date', async () => {
+    const response = await request(app).get('/v1/checkins/21-07-2026').expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+})
+
+describe('POST /v1/energy/:date/adjust', () => {
+  test('404s before any check-in exists', async () => {
+    const response = await request(app)
+      .post('/v1/energy/2026-07-21/adjust')
+      .send({ score: 55 })
+      .expect(404)
+    expect(response.body.error.code).toBe('NOT_FOUND')
+  })
+
+  test('re-derives band, curve and headline and persists the adjustment', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+
+    const response = await request(app)
+      .post('/v1/energy/2026-07-21/adjust')
+      .send({ score: 25, note: 'Barely slept, the app could not know' })
+      .expect(200)
+
+    const { energy, plan } = response.body.data
+    expect(energy.score).toBe(25)
+    expect(energy.band).toBe('low')
+    expect(energy.adjustment).toMatchObject({
+      originalScore: 60,
+      adjustedScore: 25,
+      note: 'Barely slept, the app could not know',
+    })
+    // No plan existed yet, so nothing was re-planned.
+    expect(plan).toBeNull()
+
+    // Every downstream reader sees the adjusted result.
+    const persisted = await request(app).get('/v1/energy/2026-07-21').expect(200)
+    expect(persisted.body.data.score).toBe(25)
+    expect(persisted.body.data.adjustment.adjustedScore).toBe(25)
+  })
+
+  test('re-plans an existing day around the corrected score', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    await request(app).get('/v1/plan/2026-07-21').expect(200)
+
+    const response = await request(app)
+      .post('/v1/energy/2026-07-21/adjust')
+      .send({ score: 15 })
+      .expect(200)
+
+    expect(response.body.data.plan).not.toBeNull()
+    expect(response.body.data.plan.date).toBe('2026-07-21')
+
+    const persistedPlan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    expect(persistedPlan.body.data.generatedAt).toBe(
+      response.body.data.plan.generatedAt
+    )
+  })
+
+  test('a fresh check-in supersedes and clears the adjustment', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    await request(app)
+      .post('/v1/energy/2026-07-21/adjust')
+      .send({ score: 90 })
+      .expect(200)
+
+    await request(app)
+      .post('/v1/checkins')
+      .send({ ...validCheckIn, reportedEnergy: 2 })
+      .expect(200)
+
+    const response = await request(app).get('/v1/energy/2026-07-21').expect(200)
+    expect(response.body.data.score).toBe(40)
+    expect(response.body.data.adjustment).toBeUndefined()
+  })
+
+  test('rejects an out-of-range or non-integer score', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    for (const score of [-5, 101, 55.5]) {
+      const response = await request(app)
+        .post('/v1/energy/2026-07-21/adjust')
+        .send({ score })
+        .expect(400)
+      expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    }
+  })
+})
+
+describe('context notes', () => {
+  test('GET returns an empty list before any note is saved', async () => {
+    const response = await request(app)
+      .get('/v1/context/2026-07-21/notes')
+      .expect(200)
+    expect(response.body).toEqual({ success: true, data: [] })
+  })
+
+  test('POST persists a user note and GET returns it oldest-first', async () => {
+    const first = await request(app)
+      .post('/v1/context/2026-07-21/notes')
+      .send({ text: 'Skipped lunch, big deadline stress' })
+      .expect(200)
+    expect(first.body.data).toMatchObject({
+      date: '2026-07-21',
+      author: 'user',
+      text: 'Skipped lunch, big deadline stress',
+    })
+    expect(first.body.data.id).toBeTruthy()
+
+    await request(app)
+      .post('/v1/context/2026-07-21/notes')
+      .send({ text: 'Feeling better after a walk' })
+      .expect(200)
+
+    const list = await request(app)
+      .get('/v1/context/2026-07-21/notes')
+      .expect(200)
+    expect(list.body.data.map((note: { text: string }) => note.text)).toEqual([
+      'Skipped lunch, big deadline stress',
+      'Feeling better after a walk',
+    ])
+  })
+
+  test('notes are scoped to their date', async () => {
+    await request(app)
+      .post('/v1/context/2026-07-21/notes')
+      .send({ text: 'Only for the 21st' })
+      .expect(200)
+    const other = await request(app)
+      .get('/v1/context/2026-07-22/notes')
+      .expect(200)
+    expect(other.body.data).toEqual([])
+  })
+
+  test('rejects empty and over-long notes', async () => {
+    for (const text of ['', '   ', 'x'.repeat(501)]) {
+      const response = await request(app)
+        .post('/v1/context/2026-07-21/notes')
+        .send({ text })
+        .expect(400)
+      expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    }
   })
 })
 
@@ -322,6 +504,18 @@ describe('POST /v1/plan/:date/regenerate', () => {
 
     expect(response.body.data.plan.coachNote).toContain('more rest')
     expect(response.body.data.coach.disclaimer).toBeTruthy()
+  })
+
+  test('passes the user instruction through to the AI coach', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/plan/2026-07-21/regenerate')
+      .send({ instruction: 'I feel a bit tired, what should I eat?' })
+      .expect(200)
+
+    expect(response.body.data.coach.message).toBe(
+      'Coach heard: I feel a bit tired, what should I eat?'
+    )
   })
 
   test('preserves user-updated blocks during regeneration', async () => {
@@ -758,6 +952,93 @@ describe('nutrition and coach', () => {
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
     const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
     expect(response.body.data.disclaimer).toBeTruthy()
+  })
+
+  test('GET /v1/coach/:date invites a check-in when no plan exists yet', async () => {
+    const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
+    expect(response.body.data.message).toContain('check-in')
+    expect(response.body.data.suggestions).toEqual([])
+  })
+
+  test("GET /v1/coach/:date reflects the user's own plan once one exists", async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+
+    const response = await request(app).get('/v1/coach/2026-07-21').expect(200)
+    expect(response.body.data.message).toBe(plan.body.data.coachNote)
+    expect(response.body.data.adjustedPlan.date).toBe('2026-07-21')
+  })
+})
+
+describe('POST /v1/coach/:date/chat', () => {
+  test('404s before any check-in exists', async () => {
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: 'How am I doing?' })
+      .expect(404)
+    expect(response.body.error.code).toBe('NOT_FOUND')
+  })
+
+  test('sends the message to the AI and never rewrites the plan', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: 'Why is my afternoon low?' })
+      .expect(200)
+
+    expect(response.body.data.message).toBe('Coach heard: Why is my afternoon low?')
+    expect(response.body.data.disclaimer).toBeTruthy()
+
+    const planAfter = await request(app).get('/v1/plan/2026-07-21').expect(200)
+    expect(planAfter.body.data.generatedAt).toBe(plan.body.data.generatedAt)
+  })
+
+  test('works without a plan (chat is not plan-gated)', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: 'Just checking in' })
+      .expect(200)
+    expect(response.body.data.message).toBe('Coach heard: Just checking in')
+  })
+
+  test("intent 'more' persists the user's answer as a context note", async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: 'Feeling stressed about exams', intent: 'more' })
+      .expect(200)
+
+    const notes = await request(app).get('/v1/context/2026-07-21/notes').expect(200)
+    expect(notes.body.data).toHaveLength(1)
+    expect(notes.body.data[0]).toMatchObject({
+      author: 'user',
+      text: 'Feeling stressed about exams',
+    })
+  })
+
+  test("intent 'opener' needs no message and stores the coach's question", async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ intent: 'opener' })
+      .expect(200)
+    expect(response.body.data.message).toBeTruthy()
+
+    const notes = await request(app).get('/v1/context/2026-07-21/notes').expect(200)
+    expect(notes.body.data).toHaveLength(1)
+    expect(notes.body.data[0].author).toBe('coach')
+  })
+
+  test('a plain chat message requires a non-empty message', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: '   ' })
+      .expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
   })
 })
 

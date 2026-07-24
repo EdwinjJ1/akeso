@@ -1,10 +1,9 @@
 import { expect, test } from 'vitest'
 
 import { ENERGY_ENGINE_CONFIG, EnergyEngine } from './energy-engine'
-import type { CheckInInput, EnergyFactor } from './types'
+import type { CheckInInput } from './types'
 
 const engine = new EnergyEngine()
-const { baseline } = ENERGY_ENGINE_CONFIG
 
 const canonicalCheckIn: CheckInInput = {
   date: '2026-07-21',
@@ -17,22 +16,11 @@ const canonicalCheckIn: CheckInInput = {
 const scoreWith = (overrides: Partial<CheckInInput>) =>
   engine.score({ ...canonicalCheckIn, ...overrides })
 
-// Only the single scoring factor carries an impact; context factors do not.
-const reportedImpactTotal = (factors: readonly EnergyFactor[]) =>
-  factors.reduce(
-    (total, factor) =>
-      total + (factor.role === 'reported_energy' ? factor.impact : 0),
-    0
-  )
-
 test('canonical check-in scores 80 with a deterministic timestamp', () => {
   const canonical = engine.evaluate(canonicalCheckIn)
   expect(canonical.score).toBe(80)
   expect(canonical.band).toBe('high')
   expect(canonical.computedAt).toBe('2026-07-21T00:00:00.000Z')
-  expect(canonical.score).toBe(
-    baseline + reportedImpactTotal(canonical.factors)
-  )
 })
 
 test('identical input produces an identical result', () => {
@@ -41,7 +29,7 @@ test('identical input produces an identical result', () => {
   )
 })
 
-test('reported_energy is always present and reconciles with the score', () => {
+test('reported_energy is always present and never exposes scoring mechanics', () => {
   const canonical = engine.evaluate(canonicalCheckIn)
   const reported = canonical.factors.find(
     (factor) => factor.key === 'reported_energy'
@@ -51,7 +39,20 @@ test('reported_energy is always present and reconciles with the score', () => {
   if (!reported || reported.role !== 'reported_energy') {
     throw new Error('Expected reported_energy factor')
   }
-  expect(reported.impact).toBe(80 - baseline)
+  // The receipt explains the day qualitatively: no point attribution, no
+  // digits, no mention of a baseline. The algorithm stays private.
+  expect('impact' in reported).toBe(false)
+  expect(reported.explanation).not.toMatch(/\d/)
+  expect(reported.explanation.toLowerCase()).not.toContain('baseline')
+})
+
+test('every explanation is free of scoring numbers across all levels', () => {
+  for (const level of [1, 2, 3, 4, 5] as const) {
+    const result = scoreWith({ reportedEnergy: level })
+    const reported = result.factors.find((f) => f.key === 'reported_energy')
+    if (!reported) throw new Error('Expected reported_energy factor')
+    expect(reported.explanation).not.toMatch(/\d/)
+  }
 })
 
 test('sleep, meal and hydration are possible context with no impact', () => {

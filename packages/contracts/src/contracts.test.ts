@@ -68,15 +68,27 @@ describe('fixtures satisfy the frozen schemas', () => {
     expect(parsed.curve.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('only the reported_energy factor carries an impact', () => {
+  it('no factor exposes a point attribution', () => {
+    // The scoring mechanics stay private: the engine emits qualitative
+    // explanations only, so the canonical fixture must carry no impact.
     for (const factor of fixtureEnergyResult.factors) {
-      if (factor.role === 'reported_energy') {
-        expect(factor.impact).toBeTypeOf('number')
-      } else {
-        expect(factor.role).toBe('possible_context')
-        expect('impact' in factor).toBe(false)
-      }
+      expect('impact' in factor).toBe(false)
+      expect(factor.explanation).not.toMatch(/\d/)
     }
+  })
+
+  it('still parses legacy persisted factors that carry an impact', () => {
+    const reportedFactor = fixtureEnergyResult.factors.find(isReportedFactor)
+    expect(reportedFactor).toBeDefined()
+    if (!reportedFactor) throw new Error('Fixture factors are incomplete')
+
+    const legacy = {
+      ...fixtureEnergyResult,
+      factors: fixtureEnergyResult.factors.map((factor) =>
+        factor === reportedFactor ? { ...factor, impact: 20 } : factor
+      ),
+    }
+    expect(EnergyResultSchema.safeParse(legacy).success).toBe(true)
   })
 
   it('rejects factor attribution that disagrees with the role', () => {
@@ -89,14 +101,6 @@ describe('fixtures satisfy the frozen schemas', () => {
     const restFactors = fixtureEnergyResult.factors.filter(
       (factor) => factor !== reportedFactor && factor !== contextFactor
     )
-    const { impact: _impact, ...reportedWithoutImpact } = reportedFactor
-
-    expect(
-      EnergyResultSchema.safeParse({
-        ...fixtureEnergyResult,
-        factors: [reportedWithoutImpact, contextFactor, ...restFactors],
-      }).success
-    ).toBe(false)
 
     expect(
       EnergyResultSchema.safeParse({
@@ -288,13 +292,16 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'GET /v1/profile',
       'PUT /v1/profile',
       'POST /v1/checkins',
+      'GET /v1/checkins/:date',
       'GET /v1/energy/:date',
+      'POST /v1/energy/:date/adjust',
       'GET /v1/tasks',
       'GET /v1/plan/:date',
       'PATCH /v1/plan/:date/blocks/:blockId',
       'POST /v1/plan/:date/regenerate',
       'GET /v1/nutrition/:date',
       'GET /v1/coach/:date',
+      'POST /v1/coach/:date/chat',
       'GET /v1/fridge',
       'PUT /v1/fridge/:id',
       'DELETE /v1/fridge/:id',
@@ -310,6 +317,9 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'DELETE /v1/reports/:id',
       'GET /v1/reports/:id/recommendations',
       'POST /v1/reports/:id/recommendations/regenerate',
+      'POST /v1/reports/:id/chat',
+      'GET /v1/context/:date/notes',
+      'POST /v1/context/:date/notes',
       'GET /v1/reminders',
       'PUT /v1/reminders',
     ])

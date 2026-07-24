@@ -14,7 +14,8 @@ import type {
  * same values so the demo looks identical before and after integration.
  *
  * fixtureEnergyResult is genuine EnergyEngine output for fixtureCheckIn:
- * reportedEnergy 4/5 → score 80, impact +20 against the neutral 60 baseline.
+ * reportedEnergy 4/5 → score 80. Factor explanations are qualitative on
+ * purpose — the receipt never exposes the scoring mechanics.
  * packages/domain/src/fixtures.test.ts locks this file to the real engine.
  */
 
@@ -38,8 +39,7 @@ export const fixtureEnergyResult: EnergyResult = {
       key: 'reported_energy',
       label: 'Feeling good (4/5)',
       role: 'reported_energy',
-      impact: 20,
-      explanation: 'You reported your energy as 4/5 — that lifts today’s baseline by 20.',
+      explanation: 'You said you’re feeling good — that sets a stronger starting point for today.',
     },
     {
       key: 'sleep_duration',

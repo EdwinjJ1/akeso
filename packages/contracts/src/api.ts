@@ -2,7 +2,9 @@ import { z } from 'zod'
 import {
   ApiErrorSchema,
   CheckInInputSchema,
+  CoachChatRequestSchema,
   CoachReplySchema,
+  ContextNoteSchema,
   DateStringSchema,
   DayPlanSchema,
   EnergyResultSchema,
@@ -12,6 +14,8 @@ import {
   IngredientRecognitionResultSchema,
   NutritionPlanSchema,
   ReminderPreferenceSchema,
+  ReportChatReplySchema,
+  ReportChatRequestSchema,
   ReportNameSchema,
   ReportExtractionResultSchema,
   ReportMetricSchema,
@@ -59,11 +63,42 @@ export const CheckInRequestSchema = CheckInInputSchema
 export const CheckInResponseSchema = apiResponseSchema(EnergyResultSchema)
 export type CheckInResponse = ApiResponse<z.infer<typeof EnergyResultSchema>>
 
+// ── GET /v1/checkins/:date ──────────────────────────────────────────────────
+
+/**
+ * The check-in exactly as the user submitted it, so the receipt can offer
+ * per-factor edits after an app restart. `data: null` (HTTP 200) when the
+ * user has not checked in on that date.
+ */
+export const GetCheckInResponseSchema = apiResponseSchema(
+  CheckInInputSchema.nullable()
+)
+
 // ── GET /v1/energy/:date ────────────────────────────────────────────────────
 
 /** `data: null` (HTTP 200) when there is no check-in for that date yet. */
 export const GetEnergyResponseSchema = apiResponseSchema(
   EnergyResultSchema.nullable()
+)
+
+// ── POST /v1/energy/:date/adjust ────────────────────────────────────────────
+
+/** The user's corrected score for the day, replacing the engine's number. */
+export const AdjustEnergyBodySchema = z
+  .object({
+    score: EnergyResultSchema.shape.score,
+    /** Optional "what we missed" note, kept with the adjustment. */
+    note: z.string().trim().min(1).max(280).optional(),
+  })
+  .strict()
+export type AdjustEnergyBody = z.infer<typeof AdjustEnergyBodySchema>
+
+/**
+ * The re-derived energy result plus the day's plan when one existed and was
+ * re-planned around the corrected score (`null` when no plan exists yet).
+ */
+export const AdjustEnergyResponseSchema = apiResponseSchema(
+  z.object({ energy: EnergyResultSchema, plan: DayPlanSchema.nullable() })
 )
 
 // ── GET /v1/tasks?date= ─────────────────────────────────────────────────────
@@ -109,6 +144,16 @@ export const GetNutritionResponseSchema = apiResponseSchema(
 // ── GET /v1/coach/:date ─────────────────────────────────────────────────────
 
 export const GetCoachResponseSchema = apiResponseSchema(CoachReplySchema)
+
+// ── POST /v1/coach/:date/chat ───────────────────────────────────────────────
+
+/**
+ * A conversation turn with the AI coach. Unlike plan regeneration, this
+ * never rewrites the plan — it only talks, grounded in the user's own data
+ * (check-in, plan, profile, fridge, confirmed report metrics, context notes).
+ */
+export const CoachChatBodySchema = CoachChatRequestSchema
+export const CoachChatResponseSchema = apiResponseSchema(CoachReplySchema)
 
 // ── GET /v1/fridge · PUT /v1/fridge/:id · DELETE /v1/fridge/:id ─────────────
 
@@ -260,6 +305,24 @@ export const RegenerateReportRecommendationsResponseSchema = apiResponseSchema(
   HealthRecommendationSetSchema
 )
 
+/** POST /v1/reports/:id/chat — nutritionist chat (the AI-calling path). */
+export const ReportChatResponseSchema = apiResponseSchema(ReportChatReplySchema)
+
+// ── GET /v1/context/:date/notes · POST /v1/context/:date/notes ──────────────
+
+/** Oldest first, so the conversation reads top-to-bottom. */
+export const GetContextNotesResponseSchema = apiResponseSchema(
+  z.array(ContextNoteSchema)
+)
+
+/** The server assigns id/createdAt; the author is always 'user' here. */
+export const CreateContextNoteBodySchema = z
+  .object({ text: ContextNoteSchema.shape.text })
+  .strict()
+export type CreateContextNoteBody = z.infer<typeof CreateContextNoteBodySchema>
+
+export const CreateContextNoteResponseSchema = apiResponseSchema(ContextNoteSchema)
+
 // ── GET /v1/reminders · PUT /v1/reminders ───────────────────────────────────
 
 /** `data: null` until the user has set a preference. */
@@ -296,11 +359,24 @@ export const apiContract = {
     request: CheckInRequestSchema,
     response: CheckInResponseSchema,
   },
+  getCheckIn: {
+    method: 'GET',
+    path: '/v1/checkins/:date',
+    params: DateParamsSchema,
+    response: GetCheckInResponseSchema,
+  },
   getTodayEnergy: {
     method: 'GET',
     path: '/v1/energy/:date',
     params: DateParamsSchema,
     response: GetEnergyResponseSchema,
+  },
+  adjustEnergyScore: {
+    method: 'POST',
+    path: '/v1/energy/:date/adjust',
+    params: DateParamsSchema,
+    request: AdjustEnergyBodySchema,
+    response: AdjustEnergyResponseSchema,
   },
   getTasks: {
     method: 'GET',
@@ -339,6 +415,13 @@ export const apiContract = {
     path: '/v1/coach/:date',
     params: DateParamsSchema,
     response: GetCoachResponseSchema,
+  },
+  sendCoachMessage: {
+    method: 'POST',
+    path: '/v1/coach/:date/chat',
+    params: DateParamsSchema,
+    request: CoachChatBodySchema,
+    response: CoachChatResponseSchema,
   },
   getFridgeItems: {
     method: 'GET',
@@ -428,6 +511,26 @@ export const apiContract = {
     path: '/v1/reports/:id/recommendations/regenerate',
     params: ReportParamsSchema,
     response: RegenerateReportRecommendationsResponseSchema,
+  },
+  sendReportChatMessage: {
+    method: 'POST',
+    path: '/v1/reports/:id/chat',
+    params: ReportParamsSchema,
+    request: ReportChatRequestSchema,
+    response: ReportChatResponseSchema,
+  },
+  getContextNotes: {
+    method: 'GET',
+    path: '/v1/context/:date/notes',
+    params: DateParamsSchema,
+    response: GetContextNotesResponseSchema,
+  },
+  createContextNote: {
+    method: 'POST',
+    path: '/v1/context/:date/notes',
+    params: DateParamsSchema,
+    request: CreateContextNoteBodySchema,
+    response: CreateContextNoteResponseSchema,
   },
   getReminderPreference: {
     method: 'GET',

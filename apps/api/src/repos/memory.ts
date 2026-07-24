@@ -1,6 +1,7 @@
 import { fixtureTasks } from '@akeso/domain'
 import type {
   CheckInInput,
+  ContextNote,
   DayPlan,
   EnergyResult,
   FridgeItem,
@@ -60,6 +61,8 @@ export function createMemoryRepos(): Repos {
     string,
     Map<string, HealthRecommendationSet>
   >(limit)
+  // user::date → notes in insertion (chronological) order.
+  const contextNotesByDate = createBoundedMap<string, ContextNote[]>(limit)
 
   return {
     profile: {
@@ -192,6 +195,18 @@ export function createMemoryRepos(): Repos {
         for (const [cacheKey, set] of cache) {
           if (set.reportId === reportId) cache.delete(cacheKey)
         }
+      },
+    },
+
+    contextNotes: {
+      async list(userId, date) {
+        return contextNotesByDate.get(dateKey(userId, date)) ?? []
+      },
+      async append(userId, note) {
+        const key = dateKey(userId, note.date)
+        const notes = contextNotesByDate.get(key) ?? []
+        contextNotesByDate.set(key, [...notes, note])
+        return note
       },
     },
   }

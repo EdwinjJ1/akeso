@@ -28,12 +28,6 @@ type ScaleScoreMap = Readonly<Record<Scale1to5, number>>
 type ContextFactorKey = Exclude<EnergyFactorKey, 'reported_energy'>
 
 export interface EnergyEngineConfig {
-  /**
-   * The neutral score a middling self-report (3/5) lands on.  The single
-   * scoring factor's impact is always measured against this, so the factor
-   * list reconciles with the score.
-   */
-  readonly baseline: number
   /** reportedEnergy 1..5 maps straight onto the score: 20/40/60/80/100. */
   readonly reportedEnergyScore: ScaleScoreMap
   readonly curveOffsets: readonly {
@@ -48,7 +42,6 @@ export interface EnergyEngineConfig {
  * meal and hydration are shown as possible context and never move the number.
  */
 export const ENERGY_ENGINE_CONFIG: EnergyEngineConfig = {
-  baseline: 60,
   reportedEnergyScore: { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 },
   // A fixed circadian shape; only the score shifts it up or down, so the
   // curve never invents dips from factors the user didn't report.
@@ -174,18 +167,72 @@ const normalizedScale = (value: number): Scale1to5 =>
 const normalizedDate = (date: string) =>
   localDateSchema.safeParse(date).success ? date : FALLBACK_DATE
 
-const energyBandFor = (score: number): EnergyBand => {
+export const energyBandFor = (score: number): EnergyBand => {
   if (score >= 70) return 'high'
   if (score >= 40) return 'moderate'
   return 'low'
 }
 
-const reportedEnergyExplanation = (level: Scale1to5, impact: number) => {
-  if (impact > 0)
-    return `You reported your energy as ${level}/5 — that lifts today’s baseline by ${impact}.`
-  if (impact < 0)
-    return `You reported your energy as ${level}/5 — that pulls today’s baseline down by ${Math.abs(impact)}.`
-  return `You reported your energy as ${level}/5 — right at your neutral baseline.`
+/** The fixed circadian shape shifted by the day's score, clamped to 0–100. */
+export const energyCurveFor = (
+  score: number,
+  config: EnergyEngineConfig = ENERGY_ENGINE_CONFIG
+): EnergyCurvePoint[] =>
+  config.curveOffsets.map(({ hour, offset }) => ({
+    hour,
+    level: clamp(score + offset, SCORE_MIN, SCORE_MAX),
+  }))
+
+export interface EnergyOutlook {
+  peakWindow: HourWindow
+  dipWindow: HourWindow
+  headline: string
+}
+
+/**
+ * Peak/dip windows and the band-appropriate headline for a curve. `hedged`
+ * switches to the "going mostly on how you feel" phrasing used when most of
+ * the check-in context was left unknown.
+ */
+export const deriveEnergyOutlook = (
+  band: EnergyBand,
+  curve: readonly EnergyCurvePoint[],
+  hedged: boolean
+): EnergyOutlook => {
+  const peak = curve.reduce((best, point) =>
+    point.level > best.level ? point : best
+  )
+  const afternoonCurve = curve.filter(
+    (point) => point.hour >= 13 && point.hour <= 17
+  )
+  // A custom config may plot no afternoon points; the dip then falls back
+  // to the lowest point of the whole day instead of crashing.
+  const dipCandidates = afternoonCurve.length > 0 ? afternoonCurve : curve
+  const dip = dipCandidates.reduce((lowest, point) =>
+    point.level < lowest.level ? point : lowest
+  )
+  const peakWindow = windowAround(peak.hour)
+  const dipWindow = windowAround(dip.hour)
+
+  const headline = hedged
+    ? `Going mostly on how you feel today — treat ${peakWindow.startHour}:00–${peakWindow.endHour}:00 as your better window and keep the rest flexible.`
+    : band === 'high'
+      ? `Strong day ahead — protect ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for demanding work.`
+      : band === 'moderate'
+        ? `Steady day ahead — use ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for your most important task.`
+        : `Lower-energy day — keep ${dipWindow.startHour}:00–${dipWindow.endHour}:00 light and make room for recovery.`
+
+  return { peakWindow, dipWindow, headline }
+}
+
+// Qualitative on purpose: the receipt explains the day without exposing the
+// scoring mechanics (baseline, weights, point attributions) to the client.
+const REPORTED_ENERGY_EXPLANATIONS: Readonly<Record<Scale1to5, string>> = {
+  1: 'You said you’re running on empty — today starts gently, with recovery first.',
+  2: 'You said you’re below your usual — today starts from a softer footing.',
+  3: 'You reported a middling day — today starts from your usual level.',
+  4: 'You said you’re feeling good — that sets a stronger starting point for today.',
+  5: 'You said you’re feeling great — today starts from a strong place.',
 }
 
 const contextFactor = (
@@ -228,15 +275,12 @@ export class EnergyEngine {
       SCORE_MIN,
       SCORE_MAX
     )
-    const impact = score - this.config.baseline
-
     const factors: EnergyFactor[] = [
       {
         key: 'reported_energy',
         label: REPORTED_ENERGY_LABELS[reportedEnergy],
         role: 'reported_energy',
-        impact,
-        explanation: reportedEnergyExplanation(reportedEnergy, impact),
+        explanation: REPORTED_ENERGY_EXPLANATIONS[reportedEnergy],
       },
     ]
 
@@ -257,47 +301,24 @@ export class EnergyEngine {
   }
 
   curve(score: EnergyScore): EnergyCurvePoint[] {
-    return this.config.curveOffsets.map(({ hour, offset }) => ({
-      hour,
-      level: clamp(score.score + offset, SCORE_MIN, SCORE_MAX),
-    }))
+    return energyCurveFor(score.score, this.config)
   }
 
   evaluate(input: CheckInInput): EnergyResult {
     const score = this.score(input)
     const curve = this.curve(score)
-    const peak = curve.reduce((best, point) =>
-      point.level > best.level ? point : best
-    )
-    const afternoonCurve = curve.filter(
-      (point) => point.hour >= 13 && point.hour <= 17
-    )
-    // A custom config may plot no afternoon points; the dip then falls back
-    // to the lowest point of the whole day instead of crashing.
-    const dipCandidates = afternoonCurve.length > 0 ? afternoonCurve : curve
-    const dip = dipCandidates.reduce((lowest, point) =>
-      point.level < lowest.level ? point : lowest
-    )
-    const peakWindow = windowAround(peak.hour)
-    const dipWindow = windowAround(dip.hour)
-
     // When most context is unknown we say so, and lean on the self-report
     // rather than implying a precisely modelled day.
-    const headline =
+    const outlook = deriveEnergyOutlook(
+      score.band,
+      curve,
       unknownContextCount(input) >= 2
-        ? `Going mostly on how you feel today — treat ${peakWindow.startHour}:00–${peakWindow.endHour}:00 as your better window and keep the rest flexible.`
-        : score.band === 'high'
-          ? `Strong day ahead — protect ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for demanding work.`
-          : score.band === 'moderate'
-            ? `Steady day ahead — use ${peakWindow.startHour}:00–${peakWindow.endHour}:00 for your most important task.`
-            : `Lower-energy day — keep ${dipWindow.startHour}:00–${dipWindow.endHour}:00 light and make room for recovery.`
+    )
 
     return {
       ...score,
-      headline,
+      ...outlook,
       curve,
-      peakWindow,
-      dipWindow,
       // Deterministic by design: derived from the sanitized check-in date,
       // never from the wall clock, so identical input yields an identical
       // result.

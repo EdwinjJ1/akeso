@@ -1,5 +1,6 @@
 import type {
   CheckInInput,
+  CoachChatRequest,
   CoachReply,
   CreateReportRequest,
   DayPlan,
@@ -10,6 +11,8 @@ import type {
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportChatReply,
+  ReportChatRequest,
   ReportExtractionResult,
   Task,
   UpdatePlanBlockInput,
@@ -47,8 +50,23 @@ export interface AkesoService {
 
   /** POST /v1/checkins → EnergyEngine runs server-side, returns the result */
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  /**
+   * GET /v1/checkins/:date — the check-in as submitted, so factor edits can
+   * start from the real answers after a restart. Null when none exists.
+   */
+  getCheckIn(date: string): Promise<CheckInInput | null>
   /** GET /v1/energy/:date — null when the user has not checked in yet */
   getTodayEnergy(date: string): Promise<EnergyResult | null>
+  /**
+   * POST /v1/energy/:date/adjust — the user's manual score correction.
+   * Returns the re-derived energy result and, when a plan already existed,
+   * the plan re-shaped around it (null otherwise).
+   */
+  adjustEnergyScore(
+    date: string,
+    score: number,
+    note?: string
+  ): Promise<{ energy: EnergyResult; plan: DayPlan | null }>
 
   getTasks(date: string): Promise<Task[]>
   /** GET /v1/plan/:date — null until an energy result exists */
@@ -68,6 +86,11 @@ export interface AkesoService {
   getNutritionPlan(date: string): Promise<NutritionPlan | null>
   regenerateNutrition(date: string): Promise<NutritionPlan>
   getCoachReply(date: string): Promise<CoachReply>
+  /**
+   * POST /v1/coach/:date/chat — a real conversation turn with the AI coach,
+   * grounded in the user's own data. Never rewrites the plan.
+   */
+  sendCoachMessage(date: string, input: CoachChatRequest): Promise<CoachReply>
 
   /**
    * GET /v1/fridge · PUT /v1/fridge/:id · DELETE /v1/fridge/:id
@@ -104,6 +127,14 @@ export interface AkesoService {
   deleteReport(id: string): Promise<void>
   getReportRecommendations(id: string): Promise<HealthRecommendationSet>
   regenerateReportRecommendations(id: string): Promise<HealthRecommendationSet>
+  /**
+   * POST /v1/reports/:id/chat — nutritionist chat grounded only in confirmed
+   * metrics. Every reply carries the reference-only disclaimer.
+   */
+  sendReportChatMessage(
+    id: string,
+    input: ReportChatRequest
+  ): Promise<ReportChatReply>
 
   /** GET /v1/reminders — null until the user has set a preference */
   getReminderPreference(): Promise<ReminderPreference | null>

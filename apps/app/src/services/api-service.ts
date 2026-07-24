@@ -2,6 +2,7 @@ import type {
   AkesoService,
   ApiResponse,
   CheckInInput,
+  CoachChatRequest,
   CoachReply,
   CreateReportRequest,
   DayPlan,
@@ -13,6 +14,8 @@ import type {
   IngredientRecognitionResult,
   NutritionPlan,
   ReminderPreference,
+  ReportChatReply,
+  ReportChatRequest,
   ReportExtractionResult,
   ReportImageUpload,
   Task,
@@ -158,8 +161,24 @@ export class ApiService implements AkesoService {
     return this.request('POST', '/v1/checkins', input)
   }
 
+  getCheckIn(date: string): Promise<CheckInInput | null> {
+    return this.request('GET', `/v1/checkins/${encodeURIComponent(date)}`)
+  }
+
   getTodayEnergy(date: string): Promise<EnergyResult | null> {
     return this.request('GET', `/v1/energy/${encodeURIComponent(date)}`)
+  }
+
+  adjustEnergyScore(
+    date: string,
+    score: number,
+    note?: string
+  ): Promise<{ energy: EnergyResult; plan: DayPlan | null }> {
+    return this.request(
+      'POST',
+      `/v1/energy/${encodeURIComponent(date)}/adjust`,
+      note === undefined ? { score } : { score, note }
+    )
   }
 
   getTasks(date: string): Promise<Task[]> {
@@ -208,6 +227,16 @@ export class ApiService implements AkesoService {
 
   getCoachReply(date: string): Promise<CoachReply> {
     return this.request('GET', `/v1/coach/${encodeURIComponent(date)}`)
+  }
+
+  sendCoachMessage(date: string, input: CoachChatRequest): Promise<CoachReply> {
+    // Extended timeout: this call waits on the AI provider round-trip.
+    return this.request(
+      'POST',
+      `/v1/coach/${encodeURIComponent(date)}/chat`,
+      input,
+      20_000
+    )
   }
 
   getFridgeItems(): Promise<FridgeItem[]> {
@@ -291,6 +320,18 @@ export class ApiService implements AkesoService {
       'POST',
       `/v1/reports/${encodeURIComponent(id)}/recommendations/regenerate`,
       undefined,
+      20_000
+    )
+  }
+
+  sendReportChatMessage(
+    id: string,
+    input: ReportChatRequest
+  ): Promise<ReportChatReply> {
+    return this.request(
+      'POST',
+      `/v1/reports/${encodeURIComponent(id)}/chat`,
+      input,
       20_000
     )
   }

@@ -1,8 +1,12 @@
 import type { CheckInInput } from '@akeso/domain'
 import {
+  AdjustEnergyResponseSchema,
   apiResponseSchema,
   CoachReplySchema,
+  CreateContextNoteResponseSchema,
   CreateReportResponseSchema,
+  GetCheckInResponseSchema,
+  GetContextNotesResponseSchema,
   DayPlanSchema,
   EnergyResultSchema,
   UpdatePlanBlockResponseSchema,
@@ -109,6 +113,20 @@ describe.each(repoDrivers)(
     )
   })
 
+  test('GET /v1/checkins/:date → CheckIn envelope (null then the saved input)', async () => {
+    const before = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+    expect(before.body).toEqual({ success: true, data: null })
+
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const after = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+
+    const result = GetCheckInResponseSchema.safeParse(after.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+    expect(after.body.data).toEqual(validCheckIn)
+  })
+
   test('GET /v1/plan/:date → DayPlan envelope', async () => {
     await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
     const response = await request(app).get('/v1/plan/2026-07-21').expect(200)
@@ -138,6 +156,53 @@ describe.each(repoDrivers)(
       result.success,
       JSON.stringify(result.success ? null : result.error.issues)
     ).toBe(true)
+  })
+
+  test('POST /v1/energy/:date/adjust → AdjustEnergy envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/energy/2026-07-21/adjust')
+      .send({ score: 45, note: 'Long commute wiped me out' })
+      .expect(200)
+
+    const result = AdjustEnergyResponseSchema.safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
+  })
+
+  test('context notes GET/POST → ContextNote envelopes', async () => {
+    const created = await request(app)
+      .post('/v1/context/2026-07-21/notes')
+      .send({ text: 'Feeling low after lunch' })
+      .expect(200)
+    const createdResult = CreateContextNoteResponseSchema.safeParse(created.body)
+    expect(
+      createdResult.success,
+      JSON.stringify(createdResult.success ? null : createdResult.error.issues)
+    ).toBe(true)
+
+    const list = await request(app)
+      .get('/v1/context/2026-07-21/notes')
+      .expect(200)
+    const listResult = GetContextNotesResponseSchema.safeParse(list.body)
+    expect(
+      listResult.success,
+      JSON.stringify(listResult.success ? null : listResult.error.issues)
+    ).toBe(true)
+  })
+
+  test('POST /v1/coach/:date/chat → CoachReply envelope', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/coach/2026-07-21/chat')
+      .send({ message: 'How does my day look?' })
+      .expect(200)
+
+    const result = apiResponseSchema(CoachReplySchema).safeParse(response.body)
+    expect(result.success, JSON.stringify(result.success ? null : result.error.issues)).toBe(
+      true
+    )
   })
 
   test('GET /v1/coach/:date → CoachReply envelope', async () => {

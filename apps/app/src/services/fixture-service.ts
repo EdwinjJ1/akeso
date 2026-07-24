@@ -1,17 +1,19 @@
 import {
+  applyScoreAdjustment,
   buildInventoryNutritionFallback,
   fixtureCoachReply,
-  fixtureDayPlan,
   fixtureTasks,
   filterNutritionPlanForDietarySafety,
   buildReportRecommendationsFallback,
   computeMetricStatus,
   EnergyEngine,
   mergeRegeneratedPlan,
+  planDay,
   toHealthRecommendationProfileContext,
   updatePlanBlock as applyPlanBlockUpdate,
   type AkesoService,
   type CheckInInput,
+  type CoachChatRequest,
   type CoachReply,
   type CreateReportRequest,
   type DayPlan,
@@ -23,8 +25,11 @@ import {
   type IngredientRecognitionResult,
   type NutritionPlan,
   type ReminderPreference,
+  type ReportChatReply,
+  type ReportChatRequest,
   type ReportExtractionResult,
   type ReportImageUpload,
+  REPORT_CHAT_DISCLAIMER,
   type Task,
   type UpdatePlanBlockInput,
   type UpdateReportMetricsRequest,
@@ -104,9 +109,41 @@ export class FixtureService implements AkesoService {
     return this.energy
   }
 
+  async getCheckIn(date: string): Promise<CheckInInput | null> {
+    await wait(this.latencyMs / 3)
+    return this.latestCheckIn && this.latestCheckIn.date === date
+      ? this.latestCheckIn
+      : null
+  }
+
   async getTodayEnergy(date: string): Promise<EnergyResult | null> {
     await wait(this.latencyMs / 3)
     return this.energy && this.energy.date === date ? this.energy : null
+  }
+
+  async adjustEnergyScore(
+    date: string,
+    score: number,
+    note?: string
+  ): Promise<{ energy: EnergyResult; plan: DayPlan | null }> {
+    await wait(this.latencyMs / 2)
+    if (!this.energy || this.energy.date !== date) {
+      throw new Error(
+        `No check-in for ${date} yet — submit one before adjusting the score.`
+      )
+    }
+    // Same domain function the API runs, so demo mode behaves identically.
+    this.energy = applyScoreAdjustment(this.energy, score, {
+      note,
+      adjustedAt: new Date().toISOString(),
+    })
+    if (this.plan) {
+      this.plan = mergeRegeneratedPlan(
+        planDay(this.energy, fixtureTasks),
+        this.plan
+      )
+    }
+    return { energy: this.energy, plan: this.plan }
   }
 
   async getTasks(_date: string): Promise<Task[]> {
@@ -118,7 +155,10 @@ export class FixtureService implements AkesoService {
     await wait(this.latencyMs)
     if (!this.energy) return null
     if (!this.plan || this.plan.date !== date) {
-      this.plan = { ...fixtureDayPlan, date }
+      // Derived from the user's actual check-in via the shared deterministic
+      // planner — demo mode shows a real reaction to their inputs, never the
+      // canned fixtureDayPlan.
+      this.plan = planDay({ ...this.energy, date }, fixtureTasks)
     }
     return this.plan
   }
@@ -137,22 +177,29 @@ export class FixtureService implements AkesoService {
 
   async regeneratePlan(
     date: string,
-    _instruction?: string
+    instruction?: string
   ): Promise<{ plan: DayPlan; coach: CoachReply }> {
     await wait(this.latencyMs * 3)
-    const freshPlan: DayPlan = {
-      ...fixtureDayPlan,
-      date,
-      generatedAt: new Date().toISOString(),
-      coachNote:
-        'Plan refreshed: same protected morning peak, with the afternoon rebalanced around your current stress level.',
+    if (!this.energy) {
+      throw new Error('Complete a check-in before regenerating the plan.')
     }
+    const freshPlan = planDay({ ...this.energy, date }, fixtureTasks)
     this.plan = this.plan
       ? mergeRegeneratedPlan(freshPlan, this.plan)
       : freshPlan
+    // The coach message is DERIVED from the regenerated plan (plus an honest
+    // note about the instruction) — no canned reply text.
+    const message = instruction
+      ? `${this.plan.coachNote} I noted “${instruction}” — connect the live API for the AI to reshape the schedule around it.`
+      : this.plan.coachNote
     return {
       plan: this.plan,
-      coach: fixtureCoachReply,
+      coach: {
+        message,
+        suggestions: [],
+        adjustedPlan: this.plan,
+        disclaimer: fixtureCoachReply.disclaimer,
+      },
     }
   }
 
@@ -180,9 +227,68 @@ export class FixtureService implements AkesoService {
     return this.buildNutrition(date)
   }
 
-  async getCoachReply(_date: string): Promise<CoachReply> {
+  async getCoachReply(date: string): Promise<CoachReply> {
     await wait(this.latencyMs)
-    return fixtureCoachReply
+    // Derived from the user's own plan when one exists — never the canned
+    // fixture conversation.
+    if (this.energy && this.plan?.date === date) {
+      return {
+        message: this.plan.coachNote,
+        suggestions: [],
+        adjustedPlan: this.plan,
+        disclaimer: fixtureCoachReply.disclaimer,
+      }
+    }
+    return {
+      message:
+        'Complete today’s 20-second check-in and I can explain your energy and shape your plan with you.',
+      suggestions: [],
+      disclaimer: fixtureCoachReply.disclaimer,
+    }
+  }
+
+  /**
+   * Demo-mode chat: no AI available offline, so the reply is DERIVED from
+   * the user's current in-memory data (energy headline, plan note, their
+   * note) — the same honest-degradation shape the API uses, never a canned
+   * fake conversation.
+   */
+  async sendCoachMessage(
+    _date: string,
+    input: CoachChatRequest
+  ): Promise<CoachReply> {
+    await wait(this.latencyMs)
+    if (!this.energy) {
+      return {
+        message:
+          'Complete today’s 20-second check-in first, then I can talk about your actual day.',
+        suggestions: [],
+        disclaimer: fixtureCoachReply.disclaimer,
+      }
+    }
+    if (input.intent === 'opener') {
+      return {
+        message:
+          'One quick question so I read today right: how is your mood and stress level, and is there anything about food or sleep I should know?',
+        suggestions: [],
+        disclaimer: fixtureCoachReply.disclaimer,
+      }
+    }
+    const acknowledgement =
+      input.intent === 'more'
+        ? 'Noted — I’ll keep that in mind for today. '
+        : ''
+    const parts = [
+      `${acknowledgement}Here's what today's data says: ${this.energy.headline}`,
+      ...(this.plan ? [this.plan.coachNote] : []),
+      'Connect the live API for full AI coaching.',
+    ]
+    return {
+      message: parts.join(' '),
+      suggestions: [],
+      ...(this.plan ? { adjustedPlan: this.plan } : {}),
+      disclaimer: fixtureCoachReply.disclaimer,
+    }
   }
 
   async getFridgeItems(): Promise<FridgeItem[]> {
@@ -316,6 +422,30 @@ export class FixtureService implements AkesoService {
   ): Promise<HealthRecommendationSet> {
     await wait(this.latencyMs)
     return this.recommendationsFor(id)
+  }
+
+  async sendReportChatMessage(
+    id: string,
+    input: ReportChatRequest
+  ): Promise<ReportChatReply> {
+    await wait(this.latencyMs)
+    const report = this.reports.get(id)
+    if (!report) throw new Error('Report not found.')
+    const confirmed = report.metrics.filter((metric) => metric.confirmed)
+    const flagged = confirmed.filter(
+      (metric) => metric.status === 'low' || metric.status === 'high'
+    )
+    const focus =
+      flagged.length > 0
+        ? `Looking at your confirmed values, ${flagged
+            .slice(0, 2)
+            .map((metric) => metric.name)
+            .join(' and ')} sit outside the reference range, so gentle, food-first adjustments there are a sensible place to start.`
+        : 'Your confirmed values all sit within their reference ranges, so a varied, balanced routine is the main thing to keep up.'
+    return {
+      message: `Thanks for asking about “${input.message.slice(0, 80)}”. ${focus} Regular meals with vegetables, whole grains, legumes or lean protein, and steady hydration support most goals.`,
+      disclaimer: REPORT_CHAT_DISCLAIMER,
+    }
   }
 
   private recommendationsFor(id: string): HealthRecommendationSet {

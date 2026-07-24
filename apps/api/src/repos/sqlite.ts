@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fixtureTasks } from '@akeso/domain'
 import type {
   CheckInInput,
+  ContextNote,
   DayPlan,
   EnergyResult,
   FridgeItem,
@@ -84,6 +85,17 @@ const SCHEMA = `
     data      text not null,
     primary key (user_id, cache_key)
   );
+  -- "Tell Akeso more" free-text notes enriching a day's coach context.
+  create table if not exists context_note (
+    user_id    text not null,
+    id         text not null,
+    date       text not null,
+    created_at text not null,
+    data       text not null,
+    primary key (user_id, id)
+  );
+  create index if not exists context_note_by_day
+    on context_note (user_id, date, created_at);
   -- Ready for Apple Health / Apple Watch ingestion: device samples land here
   -- alongside the rest of the personal record. 'source' distinguishes
   -- apple_health / report / manual entries.
@@ -362,6 +374,31 @@ export function createSqliteRepos(path: string = env.sqlitePath): Repos {
           userId,
           reportId
         )
+      },
+    },
+
+    contextNotes: {
+      async list(userId, date) {
+        return getAll(
+          `select data from context_note
+           where user_id = ? and date = ?
+           order by created_at asc, id asc`,
+          userId,
+          date
+        ).map((data) => parse<ContextNote>(data))
+      },
+      async append(userId, note) {
+        run(
+          `insert into context_note (user_id, id, date, created_at, data)
+           values (?, ?, ?, ?, ?)
+           on conflict (user_id, id) do update set data = excluded.data`,
+          userId,
+          note.id,
+          note.date,
+          note.createdAt,
+          JSON.stringify(note)
+        )
+        return note
       },
     },
   }

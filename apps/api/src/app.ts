@@ -8,6 +8,7 @@ import { createRateLimiters } from './middleware/rate-limit'
 import { createRepos, type Repos } from './repos'
 import { createCheckinsRouter } from './routes/checkins'
 import { createCoachRouter } from './routes/coach'
+import { createContextRouter } from './routes/context'
 import { createEnergyRouter } from './routes/energy'
 import { createFridgeRouter } from './routes/fridge'
 import { healthRouter } from './routes/health'
@@ -39,12 +40,13 @@ export function createApp(
   app.use('/v1', apiRateLimiter)
   app.use('/v1', requireAuth)
   app.use('/v1', createCheckinsRouter(repos, writeRateLimiter))
-  app.use('/v1', createEnergyRouter(repos))
+  app.use('/v1', createEnergyRouter(repos, writeRateLimiter))
   app.use('/v1', createTasksRouter(repos))
-  app.use('/v1', createPlanRouter(repos, writeRateLimiter))
+  app.use('/v1', createPlanRouter(repos, writeRateLimiter, ai))
   app.use('/v1', createProfileRouter(repos))
   app.use('/v1', createNutritionRouter(repos, ai, writeRateLimiter))
-  app.use('/v1', createCoachRouter())
+  app.use('/v1', createCoachRouter(repos, ai, writeRateLimiter))
+  app.use('/v1', createContextRouter(repos, writeRateLimiter))
   app.use('/v1', createFridgeRouter(repos, writeRateLimiter, ai))
   app.use('/v1', createReportsRouter(repos, writeRateLimiter, ai))
   app.use('/v1', createRemindersRouter(repos, writeRateLimiter))

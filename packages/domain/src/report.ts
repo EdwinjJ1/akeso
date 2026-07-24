@@ -21,6 +21,14 @@ export const REPORT_RECOMMENDATION_DISCLAIMER =
   'Akeso is an energy coach, not a medical device. These are general lifestyle suggestions based on the values you confirmed — they do not diagnose any condition, are not medical advice, and must not be used to start, stop, or change any medication or treatment. Discuss your results with a qualified healthcare professional.'
 
 /**
+ * The reference-only disclaimer shown with every nutritionist chat reply. It
+ * must never be dropped: dietary suggestions are general nutrition guidance,
+ * never a diagnosis, prescription, or instruction to change treatment.
+ */
+export const REPORT_CHAT_DISCLAIMER =
+  'These dietary suggestions are for reference only. They are general nutrition guidance based on the values you confirmed — not medical advice, a diagnosis, or a prescribed diet. Discuss your results and any diet changes with a qualified healthcare professional or registered dietitian.'
+
+/**
  * Derive a metric's status strictly from the reference bounds the report
  * itself supplied. When neither bound needed for the comparison is present,
  * the status is `unknown` — a status is never invented from population
