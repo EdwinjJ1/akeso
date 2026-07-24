@@ -78,10 +78,16 @@ const makeAi = (over: Partial<AiServices> = {}): AiServices => ({
   },
   async generateCoachReply({ plan }) {
     return {
-      message: plan.coachNote,
+      message: plan?.coachNote ?? 'No plan yet.',
       suggestions: [],
-      adjustedPlan: plan,
+      ...(plan ? { adjustedPlan: plan } : {}),
       disclaimer: 'Test disclaimer.',
+    }
+  },
+  async generateReportChatReply({ message }) {
+    return {
+      message: `Nutritionist heard: ${message}`,
+      disclaimer: 'Test chat disclaimer.',
     }
   },
   ...over,
@@ -732,6 +738,72 @@ describe('POST /v1/reports/:id/recommendations/regenerate', () => {
         }),
       ])
     )
+  })
+})
+
+describe('POST /v1/reports/:id/chat', () => {
+  test('replies with the reference-only disclaimer and passes only confirmed metrics and the profile allowlist to the AI', async () => {
+    await request(app).put('/v1/profile').send(savedProfile).expect(200)
+    const unconfirmed: ReportMetric = {
+      ...submittedMetric,
+      id: 'ferritin',
+      name: 'Ferritin',
+      confirmed: false,
+    }
+    const saved = await saveReport([submittedMetric, unconfirmed])
+    const reportId = saved.body.data.id
+
+    const chatSpy = vi.fn(
+      async ({ message }: { message: string }) => ({
+        message: `Nutritionist heard: ${message}`,
+        disclaimer: 'Test chat disclaimer.',
+      })
+    )
+    ai.generateReportChatReply = chatSpy
+
+    const res = await request(app)
+      .post(`/v1/reports/${reportId}/chat`)
+      .send({
+        message: 'What should I eat?',
+        history: [{ role: 'user', text: 'earlier question' }],
+      })
+      .expect(200)
+
+    expect(res.body.data.message).toBe('Nutritionist heard: What should I eat?')
+    expect(res.body.data.disclaimer).toBe('Test chat disclaimer.')
+
+    const input = chatSpy.mock.calls[0][0] as unknown as {
+      report: HealthReport
+      profile: HealthRecommendationProfileContext | null
+      history: { role: string; text: string }[]
+    }
+    // Unconfirmed metrics never reach the nutritionist.
+    expect(input.report.metrics.map((metric) => metric.id)).toEqual([
+      'vitamin-d',
+    ])
+    expect(input.history).toEqual([{ role: 'user', text: 'earlier question' }])
+    // Strict allowlist only: no display name, allergy notes, or avoid lists.
+    expect(input.profile).toEqual({
+      goal: 'fitness',
+      typicalWake: '07:00',
+      typicalSleep: '23:00',
+      dietaryPreference: 'vegan',
+    })
+  })
+
+  test('rejects an empty message', async () => {
+    const saved = await saveReport()
+    await request(app)
+      .post(`/v1/reports/${saved.body.data.id}/chat`)
+      .send({ message: '' })
+      .expect(400)
+  })
+
+  test('404s for an unknown report', async () => {
+    await request(app)
+      .post('/v1/reports/nope/chat')
+      .send({ message: 'Hello' })
+      .expect(404)
   })
 })
 

@@ -96,6 +96,35 @@ describe('sqlite repos — persistent local personal record', () => {
     ).resolves.toBeNull()
   })
 
+  test('context notes round-trip chronologically and stay user/date scoped', async () => {
+    const path = tempDbPath()
+    const repos = createSqliteRepos(path)
+
+    await repos.contextNotes.append('alice', {
+      id: 'n1',
+      date: '2026-07-22',
+      author: 'coach',
+      text: 'How is your stress today?',
+      createdAt: '2026-07-22T09:00:00.000Z',
+    })
+    await repos.contextNotes.append('alice', {
+      id: 'n2',
+      date: '2026-07-22',
+      author: 'user',
+      text: 'Pretty high — big deadline.',
+      createdAt: '2026-07-22T09:01:00.000Z',
+    })
+
+    // Survives reopening, ordered oldest-first.
+    const reopened = createSqliteRepos(path)
+    const notes = await reopened.contextNotes.list('alice', '2026-07-22')
+    expect(notes.map((note) => note.id)).toEqual(['n1', 'n2'])
+    expect(notes[1]).toMatchObject({ author: 'user', text: 'Pretty high — big deadline.' })
+
+    await expect(reopened.contextNotes.list('bob', '2026-07-22')).resolves.toEqual([])
+    await expect(reopened.contextNotes.list('alice', '2026-07-23')).resolves.toEqual([])
+  })
+
   test('updateBlock keeps blocks sorted and rejects a missing plan', async () => {
     const repos = createSqliteRepos(':memory:')
     await expect(

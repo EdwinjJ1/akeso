@@ -1,5 +1,6 @@
 import type {
   CheckInInput,
+  ContextNote,
   DayPlan,
   EnergyResult,
   PlanBlock,
@@ -74,6 +75,12 @@ export interface ReportRecommendationCacheRepo {
   removeByReport(userId: string, reportId: string): Promise<void>
 }
 
+export interface ContextNoteRepo {
+  /** Oldest first, so the conversation reads top-to-bottom. */
+  list(userId: string, date: string): Promise<ContextNote[]>
+  append(userId: string, note: ContextNote): Promise<ContextNote>
+}
+
 export interface NutritionPlanCacheRepo {
   get(userId: string, cacheKey: string): Promise<NutritionPlan | null>
   upsert(userId: string, cacheKey: string, plan: NutritionPlan): Promise<void>
@@ -90,4 +97,5 @@ export interface Repos {
   reminders: ReminderRepo
   reports: ReportRepo
   reportRecommendationCache: ReportRecommendationCacheRepo
+  contextNotes: ContextNoteRepo
 }

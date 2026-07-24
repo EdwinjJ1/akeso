@@ -3,8 +3,12 @@ import {
   coachChatBlueprintSchema,
   healthRecommendationBlueprintSchema,
   ingredientRecognitionResultSchema,
+  planDay,
+  reportChatBlueprintSchema,
   reportExtractionResultSchema,
   type CoachReply,
+  type DayPlan,
+  type ReportChatReply,
   type HealthRecommendationBlueprint,
   type IngredientRecognitionResult,
   type NutritionPlan,
@@ -13,11 +17,23 @@ import {
 
 import { HttpError } from '../http-error'
 import {
-  buildCoachReplyFromPlan,
+  buildCoachUnavailableReply,
+  COACH_OPENER_INSTRUCTION,
   coachChatJsonSchema,
   coachChatPrompt,
   groundCoachChatReply,
 } from './coach'
+import {
+  buildNutritionistFallbackReply,
+  groundNutritionistReply,
+  nutritionistChatJsonSchema,
+  nutritionistChatPrompt,
+} from './nutritionist'
+import {
+  planBlueprintJsonSchema,
+  planPrompt,
+  validatePlanBlueprint,
+} from './plan'
 import {
   buildRecommendationRequest,
   fallbackNutrition,
@@ -42,6 +58,8 @@ import type {
   CoachChatInput,
   HealthRecommendationInput,
   NutritionGenerationInput,
+  PlanGenerationInput,
+  ReportNutritionChatInput,
   UploadedImage,
   VisionConfig,
 } from './types'
@@ -269,10 +287,23 @@ export function createGeminiAiServices(
     input: CoachChatInput
   ): Promise<CoachReply> => {
     try {
+      // Rules + the user's own data ride in systemInstruction; the
+      // conversation itself (history + current turn) rides as real Gemini
+      // turns so multi-turn chats stay coherent. An 'opener' turn asks the
+      // coach to start the "Tell Akeso more" flow with one question.
+      const currentTurn =
+        input.intent === 'opener' ? COACH_OPENER_INSTRUCTION : input.message
       const payload = await postGemini(
         {
+          systemInstruction: {
+            parts: [{ text: coachChatPrompt(input) }],
+          },
           contents: [
-            { role: 'user', parts: [{ text: coachChatPrompt(input) }] },
+            ...input.history.map((turn) => ({
+              role: turn.role === 'user' ? 'user' : 'model',
+              parts: [{ text: turn.text }],
+            })),
+            { role: 'user', parts: [{ text: currentTurn }] },
           ],
           generationConfig: {
             responseMimeType: 'application/json',
@@ -293,11 +324,73 @@ export function createGeminiAiServices(
       )
     } catch (error) {
       console.warn(
-        'Coach AI unavailable; using plan-based reply:',
+        'Coach AI unavailable; using honest data-derived reply:',
         error instanceof Error ? error.name : 'unknown error'
       )
     }
-    return buildCoachReplyFromPlan(input.plan)
+    return buildCoachUnavailableReply(input)
+  }
+
+  const generatePlan = async (input: PlanGenerationInput): Promise<DayPlan> => {
+    try {
+      const payload = await postGemini(
+        {
+          contents: [{ role: 'user', parts: [{ text: planPrompt(input) }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: planBlueprintJsonSchema,
+            temperature: 0,
+          },
+        },
+        'generic'
+      )
+      const plan = validatePlanBlueprint(input, parseJson(outputText(payload)))
+      if (plan) return plan
+      console.warn(
+        'Plan AI output failed blueprint validation; using deterministic planner.'
+      )
+    } catch (error) {
+      console.warn(
+        'Plan AI unavailable; using deterministic planner:',
+        error instanceof Error ? error.name : 'unknown error'
+      )
+    }
+    return planDay(input.energy, input.tasks)
+  }
+
+  const generateReportChatReply = async (
+    input: ReportNutritionChatInput
+  ): Promise<ReportChatReply> => {
+    try {
+      const payload = await postGemini(
+        {
+          contents: [
+            { role: 'user', parts: [{ text: nutritionistChatPrompt(input) }] },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: nutritionistChatJsonSchema,
+            temperature: 0.4,
+          },
+        },
+        'report'
+      )
+      const parsed = reportChatBlueprintSchema.safeParse(
+        parseJson(outputText(payload))
+      )
+      if (parsed.success) return groundNutritionistReply(parsed.data)
+      // Log only issue paths — never the user's message or metric values.
+      console.warn(
+        'Nutritionist AI output failed blueprint validation at paths:',
+        parsed.error.issues.map((issue) => issue.path)
+      )
+    } catch (error) {
+      console.warn(
+        'Nutritionist AI unavailable; using honest fallback reply:',
+        error instanceof Error ? error.name : 'unknown error'
+      )
+    }
+    return buildNutritionistFallbackReply()
   }
 
   return {
@@ -306,5 +399,7 @@ export function createGeminiAiServices(
     extractReportMetrics,
     generateHealthRecommendations,
     generateCoachReply,
+    generatePlan,
+    generateReportChatReply,
   }
 }

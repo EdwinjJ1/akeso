@@ -7,6 +7,8 @@ import {
   healthRecommendationSetSchema,
   renderHealthRecommendationSet,
   reportWithConfirmedMetrics,
+  reportChatRequestSchema,
+  reportChatReplySchema,
   reportParamsSchema,
   toHealthRecommendationProfileContext,
   type HealthRecommendationProfileContext,
@@ -270,6 +272,27 @@ export function createReportsRouter(
       ok(res, recommendations)
     }
   )
+
+  // Nutritionist chat: the AI answers dietary questions grounded ONLY in the
+  // user's confirmed metrics (a persisted report always has at least one —
+  // healthReportSchema enforces it) and the strict profile allowlist. The
+  // service never throws (it degrades to an honest unavailable reply), and
+  // the reference-only disclaimer is attached server-side to every reply.
+  router.post('/reports/:id/chat', writeRateLimiter, async (req, res) => {
+    const { id } = reportParamsSchema.parse(req.params)
+    const { message, history } = reportChatRequestSchema.parse(req.body)
+    const report = await loadReport(req.userId, id)
+    const confirmedReport = reportWithConfirmedMetrics(report)
+    const reply = reportChatReplySchema.parse(
+      await ai.generateReportChatReply({
+        message,
+        history,
+        report: confirmedReport,
+        profile: await loadRecommendationProfile(req.userId),
+      })
+    )
+    ok(res, reply)
+  })
 
   return router
 }

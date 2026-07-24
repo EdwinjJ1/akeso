@@ -38,8 +38,21 @@ export function createPlanRouter(
       return
     }
 
-    const tasks = await repos.tasks.list(req.userId, date)
-    const plan = await repos.plans.upsert(req.userId, planDay(energyResult, tasks))
+    // AI-generated (validated server-side), with the deterministic planner
+    // as the provider-internal fallback — never canned content.
+    const [tasks, profile, contextNotes] = await Promise.all([
+      repos.tasks.list(req.userId, date),
+      repos.profile.get(req.userId),
+      repos.contextNotes.list(req.userId, date),
+    ])
+    const generated = await ai.generatePlan({
+      date,
+      energy: energyResult,
+      tasks,
+      profile,
+      contextNotes,
+    })
+    const plan = await repos.plans.upsert(req.userId, generated)
     ok(res, plan)
   })
 
@@ -95,11 +108,27 @@ export function createPlanRouter(
       : regenerated
 
     const saved = await repos.plans.upsert(req.userId, plan)
+    const [profile, checkin, fridge, contextNotes] = await Promise.all([
+      repos.profile.get(req.userId),
+      repos.checkins.get(req.userId, date),
+      repos.fridge.list(req.userId),
+      repos.contextNotes.list(req.userId, date),
+    ])
     const coach = await ai.generateCoachReply({
       date,
       message: instruction ?? 'Walk me through today’s plan.',
+      history: [],
+      intent: 'chat',
       energy: energyResult,
       plan: saved,
+      profile,
+      checkin,
+      fridge,
+      // Report metrics stay out of the plan-regeneration reply on purpose:
+      // this path narrates the schedule; the chat route carries the full
+      // health picture.
+      reports: [],
+      contextNotes,
     })
     ok(res, { plan: saved, coach })
   })
