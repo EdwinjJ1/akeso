@@ -2,6 +2,7 @@ import { healthReportSchema } from '@akeso/domain'
 import type {
   CheckInInput,
   DayPlan,
+  EnergyCalibration,
   EnergyResult,
   FridgeItem,
   HealthReport,
@@ -40,6 +41,11 @@ interface EnergyResultRow {
   score: number
   band: EnergyResult['band']
   headline: string
+  algorithm_version: string
+  confidence: number
+  personal_baseline: EnergyResult['personalBaseline']
+  baseline_delta: number
+  baseline_explanation: string
   factors: EnergyResult['factors']
   curve: EnergyResult['curve']
   peak_window: EnergyResult['peakWindow']
@@ -156,6 +162,13 @@ interface CheckinRow {
   last_meal_timing: CheckInInput['lastMealTiming']
   last_meal_description: string | null
   hydration: CheckInInput['hydration']
+  local_hour: number | null
+}
+
+interface EnergyCalibrationRow {
+  date: string
+  actual_energy: EnergyCalibration['actualEnergy']
+  recorded_at: string
 }
 
 interface FridgeItemRow {
@@ -247,7 +260,7 @@ export function createSupabaseRepos(): Repos {
           await supabase
             .from('checkin')
             .select(
-              'date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration'
+              'date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration, local_hour'
             )
             .eq('user_id', userId)
             .eq('date', date)
@@ -264,7 +277,34 @@ export function createSupabaseRepos(): Repos {
             ? {}
             : { lastMealDescription: row.last_meal_description }),
           hydration: row.hydration,
+          ...(row.local_hour === null ? {} : { localHour: row.local_hour }),
         }
+      },
+      async listBefore(userId, beforeDate, limit) {
+        const rows =
+          unwrap<CheckinRow[]>(
+            await supabase
+              .from('checkin')
+              .select(
+                'date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration, local_hour'
+              )
+              .eq('user_id', userId)
+              .lt('date', beforeDate)
+              .order('date', { ascending: false })
+              .limit(limit),
+            'checkin.listBefore'
+          ) ?? []
+        return rows.map((row) => ({
+          date: row.date,
+          reportedEnergy: row.reported_energy,
+          sleepDuration: row.sleep_duration,
+          lastMealTiming: row.last_meal_timing,
+          ...(row.last_meal_description === null
+            ? {}
+            : { lastMealDescription: row.last_meal_description }),
+          hydration: row.hydration,
+          ...(row.local_hour === null ? {} : { localHour: row.local_hour }),
+        }))
       },
       async upsert(userId, input: CheckInInput) {
         unwrap(
@@ -277,6 +317,7 @@ export function createSupabaseRepos(): Repos {
               last_meal_timing: input.lastMealTiming,
               last_meal_description: input.lastMealDescription ?? null,
               hydration: input.hydration,
+              local_hour: input.localHour ?? null,
             },
             { onConflict: 'user_id,date' }
           ),
@@ -291,7 +332,7 @@ export function createSupabaseRepos(): Repos {
           await supabase
             .from('energy_result')
             .select(
-              'date, score, band, headline, factors, curve, peak_window, dip_window, computed_at'
+              'date, score, band, headline, algorithm_version, confidence, personal_baseline, baseline_delta, baseline_explanation, factors, curve, peak_window, dip_window, computed_at'
             )
             .eq('user_id', userId)
             .eq('date', date)
@@ -304,6 +345,11 @@ export function createSupabaseRepos(): Repos {
           score: row.score,
           band: row.band,
           headline: row.headline,
+          algorithmVersion: row.algorithm_version,
+          confidence: row.confidence,
+          personalBaseline: row.personal_baseline,
+          baselineDelta: row.baseline_delta,
+          baselineExplanation: row.baseline_explanation,
           factors: row.factors,
           curve: row.curve,
           peakWindow: row.peak_window,
@@ -320,6 +366,11 @@ export function createSupabaseRepos(): Repos {
               score: result.score,
               band: result.band,
               headline: result.headline,
+              algorithm_version: result.algorithmVersion,
+              confidence: result.confidence,
+              personal_baseline: result.personalBaseline,
+              baseline_delta: result.baselineDelta,
+              baseline_explanation: result.baselineExplanation,
               factors: result.factors,
               curve: result.curve,
               peak_window: result.peakWindow,
@@ -331,6 +382,60 @@ export function createSupabaseRepos(): Repos {
           'energy_result.upsert'
         )
         return result
+      },
+    },
+
+    energyCalibrations: {
+      async get(userId, date) {
+        const row = unwrap<EnergyCalibrationRow>(
+          await supabase
+            .from('energy_calibration')
+            .select('date, actual_energy, recorded_at')
+            .eq('user_id', userId)
+            .eq('date', date)
+            .maybeSingle(),
+          'energy_calibration.get'
+        )
+        return row
+          ? {
+              date: row.date,
+              actualEnergy: row.actual_energy,
+              recordedAt: row.recorded_at,
+            }
+          : null
+      },
+      async listBefore(userId, beforeDate, limit) {
+        const rows =
+          unwrap<EnergyCalibrationRow[]>(
+            await supabase
+              .from('energy_calibration')
+              .select('date, actual_energy, recorded_at')
+              .eq('user_id', userId)
+              .lt('date', beforeDate)
+              .order('date', { ascending: false })
+              .limit(limit),
+            'energy_calibration.listBefore'
+          ) ?? []
+        return rows.map((row) => ({
+          date: row.date,
+          actualEnergy: row.actual_energy,
+          recordedAt: row.recorded_at,
+        }))
+      },
+      async upsert(userId, calibration) {
+        unwrap(
+          await supabase.from('energy_calibration').upsert(
+            {
+              user_id: userId,
+              date: calibration.date,
+              actual_energy: calibration.actualEnergy,
+              recorded_at: calibration.recordedAt,
+            },
+            { onConflict: 'user_id,date' }
+          ),
+          'energy_calibration.upsert'
+        )
+        return calibration
       },
     },
 

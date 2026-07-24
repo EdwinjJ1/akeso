@@ -5,6 +5,7 @@ import {
   CoachReplySchema,
   DateStringSchema,
   DayPlanSchema,
+  EnergyCalibrationSchema,
   EnergyResultSchema,
   FridgeItemSchema,
   HealthReportSchema,
@@ -12,6 +13,7 @@ import {
   IngredientRecognitionResultSchema,
   NutritionPlanSchema,
   ReminderPreferenceSchema,
+  SaveEnergyCalibrationInputSchema,
   ReportNameSchema,
   ReportExtractionResultSchema,
   ReportMetricSchema,
@@ -64,6 +66,16 @@ export type CheckInResponse = ApiResponse<z.infer<typeof EnergyResultSchema>>
 /** `data: null` (HTTP 200) when there is no check-in for that date yet. */
 export const GetEnergyResponseSchema = apiResponseSchema(
   EnergyResultSchema.nullable()
+)
+
+/** Read-only deterministic replay under the version stored with the result. */
+export const ReplayEnergyResponseSchema = apiResponseSchema(EnergyResultSchema)
+
+/** A later reflection calibrates future baselines; it does not rewrite history. */
+export const SaveEnergyCalibrationRequestSchema =
+  SaveEnergyCalibrationInputSchema
+export const SaveEnergyCalibrationResponseSchema = apiResponseSchema(
+  EnergyCalibrationSchema
 )
 
 // ── GET /v1/tasks?date= ─────────────────────────────────────────────────────
@@ -301,6 +313,19 @@ export const apiContract = {
     path: '/v1/energy/:date',
     params: DateParamsSchema,
     response: GetEnergyResponseSchema,
+  },
+  replayEnergy: {
+    method: 'GET',
+    path: '/v1/energy/:date/replay',
+    params: DateParamsSchema,
+    response: ReplayEnergyResponseSchema,
+  },
+  saveEnergyCalibration: {
+    method: 'PUT',
+    path: '/v1/energy/:date/calibration',
+    params: DateParamsSchema,
+    request: SaveEnergyCalibrationRequestSchema,
+    response: SaveEnergyCalibrationResponseSchema,
   },
   getTasks: {
     method: 'GET',

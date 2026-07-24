@@ -1,7 +1,13 @@
-import type { CoachReply, DayPlan, EnergyResult, NutritionPlan } from '@akeso/domain'
+import type {
+  CoachReply,
+  DayPlan,
+  EnergyResult,
+  NutritionPlan,
+  Scale1to5,
+} from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { CoachCard } from '@/components/coach-card'
@@ -37,6 +43,7 @@ export default function Dashboard() {
     coachLoading,
     coachError,
     refreshToday,
+    saveEnergyCalibration,
   } = useAppState()
 
   useEffect(() => {
@@ -106,6 +113,7 @@ export default function Dashboard() {
           coachLoading={coachLoading}
           coachError={coachError}
           onRetry={refreshToday}
+          onCalibrate={saveEnergyCalibration}
         />
       ) : null}
     </Screen>
@@ -123,9 +131,10 @@ type ReadyDashboardProps = {
   coachLoading: boolean
   coachError: string | null
   onRetry: () => Promise<void>
+  onCalibrate: (date: string, value: Scale1to5) => Promise<void>
 }
 
-function ReadyDashboard({
+export function ReadyDashboard({
   energy,
   warning,
   plan,
@@ -136,7 +145,11 @@ function ReadyDashboard({
   coachLoading,
   coachError,
   onRetry,
+  onCalibrate,
 }: ReadyDashboardProps) {
+  const [calibration, setCalibration] = useState<Scale1to5 | null>(null)
+  const [calibrationError, setCalibrationError] = useState<string | null>(null)
+  const [calibrationSaving, setCalibrationSaving] = useState(false)
   const mascotState: MascotState =
     energy.band === 'high' ? 'high' : energy.band === 'low' ? 'low' : 'steady'
   const peakLabel = `Peak ${formatHour(energy.peakWindow.startHour)}–${formatHour(
@@ -145,6 +158,26 @@ function ReadyDashboard({
   const resetLabel = `Reset ${formatHour(energy.dipWindow.startHour)}–${formatHour(
     energy.dipWindow.endHour
   )}`
+  const supportCount = energy.factors.filter(
+    (factor) => 'impact' in factor && factor.impact > 0
+  ).length
+  const headwindCount = energy.factors.filter(
+    (factor) => 'impact' in factor && factor.impact < 0
+  ).length
+
+  const calibrate = async (value: Scale1to5) => {
+    setCalibrationSaving(true)
+    setCalibrationError(null)
+    try {
+      await onCalibrate(energy.date, value)
+      setCalibration(value)
+    } catch (cause) {
+      console.error('Energy calibration failed:', cause)
+      setCalibrationError('Could not save this calibration. Please try again.')
+    } finally {
+      setCalibrationSaving(false)
+    }
+  }
 
   return (
     <>
@@ -167,6 +200,9 @@ function ReadyDashboard({
             </View>
             <Text style={styles.band}>
               {energy.band === 'moderate' ? 'STEADY' : energy.band.toUpperCase()} ENERGY
+            </Text>
+            <Text style={styles.confidence}>
+              {Math.round(energy.confidence * 100)}% signal confidence
             </Text>
             {/* Peak/Reset sit in the hero so Score, Band and Peak Focus all
                 land on the first screen, at one visual level. */}
@@ -216,6 +252,29 @@ function ReadyDashboard({
       </Reveal>
 
       <Reveal delay={120}>
+        <Card tone="green" style={styles.baselineCard}>
+          <View style={styles.sectionTitleRow}>
+            <View>
+              <Text style={styles.sectionKicker}>PERSONAL BASELINE</Text>
+              <Text style={type.h2}>
+                {energy.baselineDelta > 0 ? '+' : ''}
+                {energy.baselineDelta} today
+              </Text>
+            </View>
+            <Tag
+              label={`${energy.personalBaseline.sampleSize} prior days`}
+              color={colors.text}
+              background={colors.surface}
+            />
+          </View>
+          <Text style={styles.baselineText}>{energy.baselineExplanation}</Text>
+          <Text style={styles.algorithmVersion}>
+            Model {energy.algorithmVersion}
+          </Text>
+        </Card>
+      </Reveal>
+
+      <Reveal delay={150}>
         <Card tone="yellow" style={styles.rhythmCard}>
           <View style={styles.sectionTitleRow}>
             <View>
@@ -244,10 +303,48 @@ function ReadyDashboard({
             <Text style={styles.receiptScore}>{energy.score}</Text>
           </View>
           <View style={styles.factorList}>
+            <Text style={styles.factorSummary}>
+              {supportCount} supporting · {headwindCount} headwind
+              {headwindCount === 1 ? '' : 's'}
+            </Text>
             {energy.factors.map((factor) => (
               <FactorRow key={factor.key} factor={factor} />
             ))}
           </View>
+        </Card>
+      </Reveal>
+
+      <Reveal delay={210}>
+        <Card style={styles.calibrationCard}>
+          <Text style={styles.sectionKicker}>HELP CALIBRATE FUTURE DAYS</Text>
+          <Text style={type.h3}>How did this day actually feel?</Text>
+          <Text style={styles.calibrationHint}>
+            This never changes today’s saved score. It only improves future
+            personal baselines.
+          </Text>
+          <View style={styles.calibrationChoices}>
+            {([1, 2, 3, 4, 5] as const).map((value) => (
+              <Pressable
+                key={value}
+                accessibilityLabel={`Calibrate energy ${value} out of 5`}
+                accessibilityRole="button"
+                disabled={calibrationSaving}
+                onPress={() => calibrate(value)}
+                style={[
+                  styles.calibrationChoice,
+                  calibration === value && styles.calibrationChoiceSelected,
+                ]}
+              >
+                <Text style={styles.calibrationChoiceText}>{value}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {calibration ? (
+            <Text style={styles.calibrationSaved}>Saved for future scores.</Text>
+          ) : null}
+          {calibrationError ? (
+            <Text style={styles.fallbackError}>{calibrationError}</Text>
+          ) : null}
         </Card>
       </Reveal>
 
@@ -330,6 +427,13 @@ const styles = StyleSheet.create({
   score: { fontSize: 74, lineHeight: 78, fontWeight: '900', letterSpacing: -4, color: colors.text },
   scoreUnit: { fontSize: 13, fontWeight: '800', color: colors.text, marginBottom: sp(2) },
   band: { ...type.label, color: colors.text, marginBottom: sp(3) },
+  confidence: {
+    ...type.small,
+    color: colors.text,
+    fontWeight: '800',
+    marginTop: -sp(2),
+    marginBottom: sp(3),
+  },
   heroWindows: { flexDirection: 'row', flexWrap: 'wrap', gap: sp(2), marginBottom: sp(3) },
   headline: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: colors.text },
   planCta: { marginBottom: sp(5) },
@@ -362,6 +466,14 @@ const styles = StyleSheet.create({
   },
   heroStickerText: { ...type.label, color: colors.text },
   rhythmCard: { borderTopLeftRadius: 8, borderBottomRightRadius: 38 },
+  baselineCard: { marginBottom: sp(5), borderBottomLeftRadius: 8 },
+  baselineText: { ...type.body, marginTop: sp(3), color: colors.text },
+  algorithmVersion: {
+    ...type.small,
+    marginTop: sp(2),
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+  },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   sectionKicker: { ...type.label, color: colors.text, marginBottom: sp(1) },
   factorCard: { borderTopRightRadius: 8 },
@@ -377,6 +489,36 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   factorList: { marginTop: sp(3) },
+  factorSummary: {
+    ...type.label,
+    color: colors.textMuted,
+    marginBottom: sp(1),
+  },
+  calibrationCard: { borderTopLeftRadius: 8 },
+  calibrationHint: { ...type.small, color: colors.textMuted, marginTop: sp(2) },
+  calibrationChoices: {
+    flexDirection: 'row',
+    gap: sp(2),
+    marginTop: sp(3),
+  },
+  calibrationChoice: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calibrationChoiceSelected: { backgroundColor: colors.lime },
+  calibrationChoiceText: { fontSize: 16, fontWeight: '900', color: colors.text },
+  calibrationSaved: {
+    ...type.small,
+    color: colors.primaryDark,
+    fontWeight: '800',
+    marginTop: sp(2),
+  },
   coachLoadingCard: {
     flexDirection: 'row',
     alignItems: 'center',

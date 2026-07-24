@@ -29,6 +29,7 @@ export default defineConfig({
       'apps/app/src/state/report-flow.test.ts',
       'apps/app/src/state/dashboard-state.test.ts',
       'packages/domain/src/energy-engine.test.ts',
+      'packages/domain/src/energy-evaluation.test.ts',
       'packages/domain/src/reminders.test.ts',
       'packages/domain/src/nutrition-engine.test.ts',
       'packages/domain/src/nutrition-data.test.ts',

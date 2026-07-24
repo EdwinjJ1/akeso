@@ -44,77 +44,68 @@ import {
   TaskSchema,
   UpdatePlanBlockInputSchema,
 } from './schemas'
-import type { EnergyFactor } from './schemas'
-
-const isReportedFactor = (
-  factor: EnergyFactor
-): factor is Extract<EnergyFactor, { role: 'reported_energy' }> =>
-  factor.role === 'reported_energy'
-
-const isContextFactor = (
-  factor: EnergyFactor
-): factor is Extract<EnergyFactor, { role: 'possible_context' }> =>
-  factor.role === 'possible_context'
-
 describe('fixtures satisfy the frozen schemas', () => {
   it('CheckInInput', () => {
     expect(CheckInInputSchema.parse(fixtureCheckIn)).toEqual(fixtureCheckIn)
   })
 
-  it('EnergyResult with score 80', () => {
+  it('EnergyResult includes version, confidence and baseline evidence', () => {
     const parsed = EnergyResultSchema.parse(fixtureEnergyResult)
-    expect(parsed.score).toBe(80)
-    expect(parsed.factors).toHaveLength(4)
+    expect(parsed.score).toBe(83)
+    expect(parsed.algorithmVersion).toBe('energy-v2-multisignal')
+    expect(parsed.confidence).toBeGreaterThan(0)
+    expect(parsed.personalBaseline.source).toBe('cold_start')
+    expect(parsed.factors).toHaveLength(5)
     expect(parsed.curve.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('only the reported_energy factor carries an impact', () => {
+  it('all v2 known signals carry bounded signed impacts', () => {
     for (const factor of fixtureEnergyResult.factors) {
-      if (factor.role === 'reported_energy') {
-        expect(factor.impact).toBeTypeOf('number')
-      } else {
-        expect(factor.role).toBe('possible_context')
-        expect('impact' in factor).toBe(false)
-      }
+      expect(factor.role).toBe('scored_signal')
+      expect('impact' in factor && factor.impact).toBeTypeOf('number')
     }
   })
 
-  it('rejects factor attribution that disagrees with the role', () => {
-    const reportedFactor = fixtureEnergyResult.factors.find(isReportedFactor)
-    const contextFactor = fixtureEnergyResult.factors.find(isContextFactor)
-    expect(reportedFactor).toBeDefined()
-    expect(contextFactor).toBeDefined()
-    if (!reportedFactor || !contextFactor) throw new Error('Fixture factors are incomplete')
-
-    const restFactors = fixtureEnergyResult.factors.filter(
-      (factor) => factor !== reportedFactor && factor !== contextFactor
-    )
-    const { impact: _impact, ...reportedWithoutImpact } = reportedFactor
-
+  it('rejects missing score metadata and role/impact disagreement', () => {
+    const [reportedFactor, ...restFactors] = fixtureEnergyResult.factors
+    if (!reportedFactor || reportedFactor.role !== 'scored_signal') {
+      throw new Error('Fixture factor is incomplete')
+    }
+    const { impact: _impact, ...withoutImpact } = reportedFactor
     expect(
       EnergyResultSchema.safeParse({
         ...fixtureEnergyResult,
-        factors: [reportedWithoutImpact, contextFactor, ...restFactors],
+        factors: [withoutImpact, ...restFactors],
       }).success
     ).toBe(false)
 
+    const { algorithmVersion: _version, ...withoutVersion } = fixtureEnergyResult
     expect(
-      EnergyResultSchema.safeParse({
-        ...fixtureEnergyResult,
-        factors: [reportedFactor, { ...contextFactor, impact: -10 }, ...restFactors],
-      }).success
+      EnergyResultSchema.safeParse(withoutVersion).success
     ).toBe(false)
+  })
 
+  it('keeps the legacy factor shape readable for stored v1 rows', () => {
     expect(
       EnergyResultSchema.safeParse({
         ...fixtureEnergyResult,
         factors: [
-          { ...reportedFactor, key: 'sleep_duration' },
-          contextFactor,
-          ...restFactors,
+          {
+            key: 'reported_energy',
+            label: 'Feeling good (4/5)',
+            role: 'reported_energy',
+            impact: 20,
+            explanation: 'Legacy self-report-only factor.',
+          },
+          {
+            key: 'sleep_duration',
+            label: '7–8h sleep',
+            role: 'possible_context',
+            explanation: 'Legacy context-only factor.',
+          },
         ],
       }).success
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('every Task', () => {
@@ -289,6 +280,8 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'PUT /v1/profile',
       'POST /v1/checkins',
       'GET /v1/energy/:date',
+      'GET /v1/energy/:date/replay',
+      'PUT /v1/energy/:date/calibration',
       'GET /v1/tasks',
       'GET /v1/plan/:date',
       'PATCH /v1/plan/:date/blocks/:blockId',

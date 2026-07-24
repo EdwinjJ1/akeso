@@ -73,6 +73,9 @@ const STEP_META = [
 export default function CheckIn() {
   const { latestCheckIn, submitCheckIn } = useAppState()
   const [step, setStep] = useState(0)
+  // Captured once and sent as explicit input so the Domain engine never
+  // reads wall-clock time during scoring or replay.
+  const [localHour] = useState(() => new Date().getHours())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,7 +108,7 @@ export default function CheckIn() {
   }
 
   const isUpdate = prefill !== null
-  const complete = buildCheckInInput(answers, todayISO()) !== null
+  const complete = buildCheckInInput(answers, todayISO(), localHour) !== null
   const isLastStep = step === STEP_COUNT - 1
 
   const closeCheckIn = () => {
@@ -135,7 +138,7 @@ export default function CheckIn() {
   }
 
   const submit = async () => {
-    const input = buildCheckInInput(answers, todayISO())
+    const input = buildCheckInInput(answers, todayISO(), localHour)
     if (!input) return
     setSubmitting(true)
     setError(null)

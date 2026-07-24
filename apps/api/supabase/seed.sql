@@ -18,25 +18,35 @@
 insert into user_profile (user_id, display_name, goal, typical_wake, typical_sleep, dietary_preference)
 values ('00000000-0000-0000-0000-000000000001', 'Alex', 'academic', '07:30', '23:30', 'none');
 
-insert into checkin (user_id, date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration)
-values ('00000000-0000-0000-0000-000000000001', '2026-07-21', 4, '7_8h', '1_3h', null, '1_1_5l');
+insert into checkin (user_id, date, reported_energy, sleep_duration, last_meal_timing, last_meal_description, hydration, local_hour)
+values ('00000000-0000-0000-0000-000000000001', '2026-07-21', 4, '7_8h', '1_3h', null, '1_1_5l', 10);
 
-insert into energy_result (user_id, date, score, band, headline, factors, curve, peak_window, dip_window, computed_at)
+insert into energy_result (
+  user_id, date, score, band, headline, algorithm_version, confidence,
+  personal_baseline, baseline_delta, baseline_explanation,
+  factors, curve, peak_window, dip_window, computed_at
+)
 values (
   '00000000-0000-0000-0000-000000000001',
   '2026-07-21',
-  80,
+  83,
   'high',
   'Strong day ahead — protect 10:00–12:00 for demanding work.',
+  'energy-v2-multisignal',
+  0.76,
+  '{"score":60,"sampleSize":0,"source":"cold_start"}'::jsonb,
+  23,
+  'Today is 23 points above your safe cold-start baseline. The largest signals were feeling good (4/5) and 7–8h sleep.',
   '[
-    {"key":"reported_energy","label":"Feeling good (4/5)","role":"reported_energy","impact":20,"explanation":"You reported your energy as 4/5 — that lifts today’s baseline by 20."},
-    {"key":"sleep_duration","label":"7–8h sleep","role":"possible_context","explanation":"Around a solid night — a likely support for today."},
-    {"key":"last_meal","label":"Ate 1–3h ago","role":"possible_context","explanation":"Recent enough that fuel probably isn’t dragging you."},
-    {"key":"hydration","label":"1–1.5L water","role":"possible_context","explanation":"Making progress — keep sipping through the day."}
+    {"key":"reported_energy","label":"Feeling good (4/5)","role":"scored_signal","impact":12,"explanation":"Your 4/5 self-report adds 12 points to today’s estimate."},
+    {"key":"sleep_duration","label":"7–8h sleep","role":"scored_signal","impact":5,"explanation":"A solid night supports today’s estimate."},
+    {"key":"last_meal","label":"Ate 1–3h ago","role":"scored_signal","impact":4,"explanation":"Recent fuel supports today’s estimate."},
+    {"key":"hydration","label":"1–1.5L water","role":"scored_signal","impact":-2,"explanation":"This intake is treated as slightly below the daytime reference."},
+    {"key":"time_rhythm","label":"Daytime peak window","role":"scored_signal","impact":4,"explanation":"This hour falls in the modelled daytime peak."}
   ]'::jsonb,
   '[
-    {"hour":7,"level":49}, {"hour":9,"level":85}, {"hour":11,"level":91}, {"hour":13,"level":78},
-    {"hour":15,"level":63}, {"hour":17,"level":73}, {"hour":19,"level":70}, {"hour":21,"level":55}
+    {"hour":7,"level":52}, {"hour":9,"level":88}, {"hour":11,"level":94}, {"hour":13,"level":81},
+    {"hour":15,"level":66}, {"hour":17,"level":76}, {"hour":19,"level":73}, {"hour":21,"level":58}
   ]'::jsonb,
   '{"startHour":10,"endHour":12}'::jsonb,
   '{"startHour":14,"endHour":16}'::jsonb,

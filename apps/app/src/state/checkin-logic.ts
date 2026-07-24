@@ -25,7 +25,8 @@ export interface CheckInAnswers {
  */
 export function buildCheckInInput(
   answers: CheckInAnswers,
-  date: string
+  date: string,
+  localHour?: number
 ): CheckInInput | null {
   const { reportedEnergy, sleepDuration, lastMealTiming, hydration } = answers
   if (
@@ -44,6 +45,7 @@ export function buildCheckInInput(
     sleepDuration,
     lastMealTiming,
     hydration,
+    ...(localHour === undefined ? {} : { localHour }),
     ...(note ? { lastMealDescription: note } : {}),
   }
 }

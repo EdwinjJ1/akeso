@@ -13,6 +13,7 @@ import type {
   ReminderPreference,
   ReportExtractionResult,
   ReportImageUpload,
+  Scale1to5,
   Task,
   UpdatePlanBlockInput,
   UpdateReportMetricsRequest,
@@ -60,6 +61,7 @@ interface AppActions {
   completeOnboarding(profile: UserProfile): Promise<void>
   reloadProfile(): Promise<UserProfile | null | undefined>
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  saveEnergyCalibration(date: string, value: Scale1to5): Promise<void>
   refreshToday(): Promise<void>
   updatePlanBlock(blockId: string, input: UpdatePlanBlockInput): Promise<void>
   regeneratePlan(instruction?: string): Promise<CoachReply>
@@ -302,6 +304,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [service]
   )
 
+  const saveEnergyCalibration = useCallback(
+    async (date: string, value: Scale1to5) => {
+      await service.saveEnergyCalibration(date, value)
+    },
+    [service]
+  )
+
   const regeneratePlan = useCallback(
     async (instruction?: string) => {
       const date = todayISO()
@@ -427,6 +436,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       completeOnboarding,
       reloadProfile,
       submitCheckIn,
+      saveEnergyCalibration,
       refreshToday,
       updatePlanBlock,
       regeneratePlan,
@@ -451,6 +461,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       completeOnboarding,
       reloadProfile,
       submitCheckIn,
+      saveEnergyCalibration,
       refreshToday,
       updatePlanBlock,
       regeneratePlan,

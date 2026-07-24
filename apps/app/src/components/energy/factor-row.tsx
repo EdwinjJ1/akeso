@@ -9,6 +9,8 @@ const FACTOR_ICONS: Record<EnergyFactor['key'], keyof typeof Ionicons.glyphMap> 
   sleep_duration: 'moon',
   last_meal: 'restaurant',
   hydration: 'water',
+  time_rhythm: 'time',
+  personal_baseline: 'trending-up',
 }
 
 interface FactorRowProps {
@@ -16,12 +18,11 @@ interface FactorRowProps {
 }
 
 /**
- * One "why this score" row: icon, label, explanation, and — only for the
- * scoring `reported_energy` factor — a signed impact. `possible_context`
- * factors carry no impact by design, so no number is shown for them.
+ * One "why this score" row. Versioned scored signals carry a signed impact;
+ * legacy `possible_context` factors remain renderable without one.
  */
 export function FactorRow({ factor }: FactorRowProps) {
-  const impact = factor.role === 'reported_energy' ? factor.impact : undefined
+  const impact = 'impact' in factor ? factor.impact : undefined
 
   return (
     <View style={styles.row}>

@@ -39,7 +39,7 @@ export function createApp(
   app.use('/v1', apiRateLimiter)
   app.use('/v1', requireAuth)
   app.use('/v1', createCheckinsRouter(repos, writeRateLimiter))
-  app.use('/v1', createEnergyRouter(repos))
+  app.use('/v1', createEnergyRouter(repos, writeRateLimiter))
   app.use('/v1', createTasksRouter(repos))
   app.use('/v1', createPlanRouter(repos, writeRateLimiter))
   app.use('/v1', createProfileRouter(repos))

@@ -2,6 +2,7 @@ import { fixtureTasks } from '@akeso/domain'
 import type {
   CheckInInput,
   DayPlan,
+  EnergyCalibration,
   EnergyResult,
   FridgeItem,
   HealthReport,
@@ -28,6 +29,7 @@ function createBoundedMap<K, V>(limit: number) {
   const map = new Map<K, V>()
   return {
     get: (key: K) => map.get(key),
+    entries: () => map.entries(),
     set: (key: K, value: V) => {
       map.delete(key)
       map.set(key, value)
@@ -49,6 +51,7 @@ export function createMemoryRepos(): Repos {
   const profiles = createBoundedMap<string, UserProfile>(limit)
   const checkins = createBoundedMap<string, CheckInInput>(limit)
   const energyResults = createBoundedMap<string, EnergyResult>(limit)
+  const energyCalibrations = createBoundedMap<string, EnergyCalibration>(limit)
   const plans = createBoundedMap<string, DayPlan>(limit)
   const fridgeByUser = createBoundedMap<string, Map<string, FridgeItem>>(limit)
   const reminders = createBoundedMap<string, ReminderPreference>(limit)
@@ -79,6 +82,17 @@ export function createMemoryRepos(): Repos {
       async upsert(userId, input) {
         checkins.set(dateKey(userId, input.date), input)
       },
+      async listBefore(userId, beforeDate, maxItems) {
+        const items: CheckInInput[] = []
+        for (const [key, input] of checkins.entries()) {
+          if (key.startsWith(`${userId}::`) && input.date < beforeDate) {
+            items.push(input)
+          }
+        }
+        return items
+          .sort((left, right) => right.date.localeCompare(left.date))
+          .slice(0, maxItems)
+      },
     },
 
     energy: {
@@ -88,6 +102,30 @@ export function createMemoryRepos(): Repos {
       async upsert(userId, result) {
         energyResults.set(dateKey(userId, result.date), result)
         return result
+      },
+    },
+
+    energyCalibrations: {
+      async get(userId, date) {
+        return energyCalibrations.get(dateKey(userId, date)) ?? null
+      },
+      async listBefore(userId, beforeDate, maxItems) {
+        const items: EnergyCalibration[] = []
+        for (const [key, calibration] of energyCalibrations.entries()) {
+          if (
+            key.startsWith(`${userId}::`) &&
+            calibration.date < beforeDate
+          ) {
+            items.push(calibration)
+          }
+        }
+        return items
+          .sort((left, right) => right.date.localeCompare(left.date))
+          .slice(0, maxItems)
+      },
+      async upsert(userId, calibration) {
+        energyCalibrations.set(dateKey(userId, calibration.date), calibration)
+        return calibration
       },
     },
 
