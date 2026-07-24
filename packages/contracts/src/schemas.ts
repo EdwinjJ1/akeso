@@ -330,6 +330,27 @@ export const CoachSuggestionSchema = z.object({
 })
 export type CoachSuggestion = z.infer<typeof CoachSuggestionSchema>
 
+/**
+ * Raw AI chat output before server-side grounding: suggestion ids are
+ * assigned by the server, and every basedOn ref is validated against the
+ * user's real energy factors / plan block ids before anything is shown.
+ */
+export const CoachChatSuggestionDraftSchema = z.object({
+  title: z.string().min(1),
+  detail: z.string().min(1),
+  /** Evidence refs — must be copied exactly from the allowed list in the prompt. */
+  basedOn: z.array(z.string().min(1)).min(1),
+})
+export type CoachChatSuggestionDraft = z.infer<
+  typeof CoachChatSuggestionDraftSchema
+>
+
+export const CoachChatBlueprintSchema = z.object({
+  message: z.string().min(1),
+  suggestions: z.array(CoachChatSuggestionDraftSchema).max(3),
+})
+export type CoachChatBlueprint = z.infer<typeof CoachChatBlueprintSchema>
+
 /** AI structured output — MUST be parsed with this schema before use. */
 export const CoachReplySchema = z.object({
   message: z.string().min(1),

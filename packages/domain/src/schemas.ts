@@ -15,6 +15,7 @@ export {
   BatchFridgeItemsRequestSchema as batchFridgeItemsRequestSchema,
   ZodError,
   CheckInInputSchema as checkInInputSchema,
+  CoachChatBlueprintSchema as coachChatBlueprintSchema,
   CreateReportRequestSchema as createReportRequestSchema,
   DateStringSchema as localDateSchema,
   DietarySafetyProfileSchema as dietarySafetyProfileSchema,

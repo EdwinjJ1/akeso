@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import type {
-  HealthRecommendationProfileContext,
-  HealthReport,
+import {
+  fixtureDayPlan,
+  fixtureEnergyResult,
+  type HealthRecommendationProfileContext,
+  type HealthReport,
 } from '@akeso/domain'
 
 import { HttpError } from '../http-error'
@@ -1026,5 +1028,82 @@ describe('Gemini production provider', () => {
     expect(sliced.meals[0].description).toBe('Slice Tomato.')
     expect(heated.meals[0].description).toBe('Warm Tomato.')
     expect(heated.meals[0].description).not.toBe(sliced.meals[0].description)
+  })
+})
+
+describe('Gemini coach chat', () => {
+  const chatInput = () => ({
+    date: fixtureEnergyResult.date,
+    message: 'I feel a bit tired, what should I eat?',
+    energy: fixtureEnergyResult,
+    plan: fixtureDayPlan,
+  })
+
+  test('sends the user message and returns the grounded AI reply', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse(
+        JSON.stringify({
+          message: 'Your energy dips 14:00–16:00 — a light snack now helps.',
+          suggestions: [
+            {
+              title: 'Snack before the dip',
+              detail: 'Eat something light before your 14:00 dip window.',
+              basedOn: ['last_meal', 'made-up-ref'],
+            },
+            {
+              title: 'Phantom evidence only',
+              detail: 'This one cites nothing real.',
+              basedOn: ['not-a-real-ref'],
+            },
+          ],
+        })
+      )
+    )
+
+    const reply = await createServices(config(), fetchMock).generateCoachReply(
+      chatInput()
+    )
+
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body))
+    expect(JSON.stringify(requestBody)).toContain(
+      'I feel a bit tired, what should I eat?'
+    )
+    expect(reply.message).toContain('dips 14:00–16:00')
+    // Phantom refs are dropped; a suggestion with no real evidence is discarded.
+    expect(reply.suggestions).toEqual([
+      {
+        id: 'coach-sug-1',
+        title: 'Snack before the dip',
+        detail: 'Eat something light before your 14:00 dip window.',
+        basedOn: ['last_meal'],
+      },
+    ])
+    expect(reply.adjustedPlan).toEqual(fixtureDayPlan)
+    expect(reply.disclaimer).toBeTruthy()
+  })
+
+  test('falls back to the plan-based reply on malformed AI output', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      geminiResponse('not json at all')
+    )
+
+    const reply = await createServices(config(), fetchMock).generateCoachReply(
+      chatInput()
+    )
+
+    expect(reply.message).toBe(fixtureDayPlan.coachNote)
+    expect(reply.suggestions).toEqual([])
+  })
+
+  test('falls back to the plan-based reply when the provider is disabled', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+
+    const reply = await createServices(
+      config({ enabled: false }),
+      fetchMock
+    ).generateCoachReply(chatInput())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(reply.message).toBe(fixtureDayPlan.coachNote)
   })
 })

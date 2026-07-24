@@ -78,6 +78,14 @@ const fakeAiServices: AiServices = {
   async generateHealthRecommendations({ report }) {
     return buildReportRecommendationBlueprint({ report })
   },
+  async generateCoachReply({ message, plan }) {
+    return {
+      message: `Coach heard: ${message}`,
+      suggestions: [],
+      adjustedPlan: plan,
+      disclaimer: 'Test disclaimer.',
+    }
+  },
 }
 
 beforeEach(() => {
@@ -322,6 +330,18 @@ describe('POST /v1/plan/:date/regenerate', () => {
 
     expect(response.body.data.plan.coachNote).toContain('more rest')
     expect(response.body.data.coach.disclaimer).toBeTruthy()
+  })
+
+  test('passes the user instruction through to the AI coach', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app)
+      .post('/v1/plan/2026-07-21/regenerate')
+      .send({ instruction: 'I feel a bit tired, what should I eat?' })
+      .expect(200)
+
+    expect(response.body.data.coach.message).toBe(
+      'Coach heard: I feel a bit tired, what should I eat?'
+    )
   })
 
   test('preserves user-updated blocks during regeneration', async () => {
@@ -758,6 +778,21 @@ describe('nutrition and coach', () => {
   test('GET /v1/coach/:date always includes the non-medical disclaimer', async () => {
     const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
     expect(response.body.data.disclaimer).toBeTruthy()
+  })
+
+  test('GET /v1/coach/:date invites a check-in when no plan exists yet', async () => {
+    const response = await request(app).get('/v1/coach/2026-08-01').expect(200)
+    expect(response.body.data.message).toContain('check-in')
+    expect(response.body.data.suggestions).toEqual([])
+  })
+
+  test("GET /v1/coach/:date reflects the user's own plan once one exists", async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const plan = await request(app).get('/v1/plan/2026-07-21').expect(200)
+
+    const response = await request(app).get('/v1/coach/2026-07-21').expect(200)
+    expect(response.body.data.message).toBe(plan.body.data.coachNote)
+    expect(response.body.data.adjustedPlan.date).toBe('2026-07-21')
   })
 })
 

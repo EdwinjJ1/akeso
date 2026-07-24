@@ -1,8 +1,10 @@
 import {
   buildReportRecommendationBlueprint,
+  coachChatBlueprintSchema,
   healthRecommendationBlueprintSchema,
   ingredientRecognitionResultSchema,
   reportExtractionResultSchema,
+  type CoachReply,
   type HealthRecommendationBlueprint,
   type IngredientRecognitionResult,
   type NutritionPlan,
@@ -10,6 +12,12 @@ import {
 } from '@akeso/domain'
 
 import { HttpError } from '../http-error'
+import {
+  buildCoachReplyFromPlan,
+  coachChatJsonSchema,
+  coachChatPrompt,
+  groundCoachChatReply,
+} from './coach'
 import {
   buildRecommendationRequest,
   fallbackNutrition,
@@ -31,6 +39,7 @@ import {
 } from './shared'
 import type {
   AiServices,
+  CoachChatInput,
   HealthRecommendationInput,
   NutritionGenerationInput,
   UploadedImage,
@@ -256,10 +265,46 @@ export function createGeminiAiServices(
     })
   }
 
+  const generateCoachReply = async (
+    input: CoachChatInput
+  ): Promise<CoachReply> => {
+    try {
+      const payload = await postGemini(
+        {
+          contents: [
+            { role: 'user', parts: [{ text: coachChatPrompt(input) }] },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: coachChatJsonSchema,
+            temperature: 0.4,
+          },
+        },
+        'generic'
+      )
+      const parsed = coachChatBlueprintSchema.safeParse(
+        parseJson(outputText(payload))
+      )
+      if (parsed.success) return groundCoachChatReply(parsed.data, input)
+      // Log only issue paths — never the user's message or check-in data.
+      console.warn(
+        'Coach AI output failed blueprint validation at paths:',
+        parsed.error.issues.map((issue) => issue.path)
+      )
+    } catch (error) {
+      console.warn(
+        'Coach AI unavailable; using plan-based reply:',
+        error instanceof Error ? error.name : 'unknown error'
+      )
+    }
+    return buildCoachReplyFromPlan(input.plan)
+  }
+
   return {
     recognizeIngredients,
     generateNutrition,
     extractReportMetrics,
     generateHealthRecommendations,
+    generateCoachReply,
   }
 }

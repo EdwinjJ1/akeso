@@ -1,5 +1,4 @@
 import {
-  fixtureCoachReply,
   localDateSchema,
   mergeRegeneratedPlan,
   PlanBlockNotFoundError,
@@ -15,10 +14,12 @@ import { Router, type RequestHandler } from 'express'
 import { notFound, validationError } from '../http-error'
 import { ok } from '../http'
 import type { Repos } from '../repos'
+import type { AiServices } from '../services/types'
 
 export function createPlanRouter(
   repos: Repos,
-  writeRateLimiter: RequestHandler
+  writeRateLimiter: RequestHandler,
+  ai: AiServices
 ): Router {
   const router = Router()
 
@@ -94,7 +95,13 @@ export function createPlanRouter(
       : regenerated
 
     const saved = await repos.plans.upsert(req.userId, plan)
-    ok(res, { plan: saved, coach: fixtureCoachReply })
+    const coach = await ai.generateCoachReply({
+      date,
+      message: instruction ?? 'Walk me through today’s plan.',
+      energy: energyResult,
+      plan: saved,
+    })
+    ok(res, { plan: saved, coach })
   })
 
   return router

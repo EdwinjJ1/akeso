@@ -76,6 +76,14 @@ const makeAi = (over: Partial<AiServices> = {}): AiServices => ({
   async generateHealthRecommendations({ report }) {
     return buildReportRecommendationBlueprint({ report })
   },
+  async generateCoachReply({ plan }) {
+    return {
+      message: plan.coachNote,
+      suggestions: [],
+      adjustedPlan: plan,
+      disclaimer: 'Test disclaimer.',
+    }
+  },
   ...over,
 })
 

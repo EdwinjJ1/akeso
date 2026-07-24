@@ -1,5 +1,6 @@
 import { env } from '../env'
 import { buildReportRecommendationBlueprint } from '@akeso/domain'
+import { buildCoachReplyFromPlan } from './coach'
 import { createGeminiAiServices } from './gemini'
 import {
   fallbackNutrition,
@@ -32,6 +33,9 @@ const unavailableServices: AiServices = {
       report: input.report,
       profile: input.profile,
     })
+  },
+  async generateCoachReply(input) {
+    return buildCoachReplyFromPlan(input.plan)
   },
 }
 

@@ -11,6 +11,8 @@ export type {
   ApiError,
   ApiResponse,
   CheckInInput,
+  CoachChatBlueprint,
+  CoachChatSuggestionDraft,
   CoachReply,
   CoachSuggestion,
   CreateReportRequest,
