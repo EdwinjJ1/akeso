@@ -209,6 +209,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       service.getCoachReply(date),
       service.getFridgeItems(),
       service.getReminderPreference(),
+      service.getCheckIn(date),
     ])
     let loadedEnergy: EnergyResult | null = null
 
@@ -242,6 +243,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       coachResult,
       fridgeResult,
       reminderResult,
+      checkInResult,
     ] = await ancillaryRequest
     if (refreshRequestId.current !== requestId) return
 
@@ -278,6 +280,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         reminderResult.status === 'fulfilled'
           ? reminderResult.value
           : prev.reminder,
+      // Rehydrates factor editing after a restart; an in-session submit
+      // already populated this, so a failed fetch keeps the current value.
+      latestCheckIn:
+        checkInResult.status === 'fulfilled' && checkInResult.value
+          ? checkInResult.value
+          : prev.latestCheckIn,
       planLoading: false,
       planError:
         planResult.status === 'rejected'

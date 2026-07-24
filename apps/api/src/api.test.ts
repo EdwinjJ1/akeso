@@ -160,6 +160,24 @@ describe('GET /v1/energy/:date', () => {
   })
 })
 
+describe('GET /v1/checkins/:date', () => {
+  test('returns null before any check-in', async () => {
+    const response = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+    expect(response.body).toEqual({ success: true, data: null })
+  })
+
+  test('echoes the exact submitted check-in so factors can be re-edited', async () => {
+    await request(app).post('/v1/checkins').send(validCheckIn).expect(200)
+    const response = await request(app).get('/v1/checkins/2026-07-21').expect(200)
+    expect(response.body.data).toEqual(validCheckIn)
+  })
+
+  test('rejects a malformed date', async () => {
+    const response = await request(app).get('/v1/checkins/21-07-2026').expect(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+  })
+})
+
 describe('POST /v1/energy/:date/adjust', () => {
   test('404s before any check-in exists', async () => {
     const response = await request(app)

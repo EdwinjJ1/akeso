@@ -37,7 +37,9 @@
 | `getProfile()` | `GET /v1/profile` | — | `UserProfile \| null` | 全部 |
 | `saveProfile(p)` | `PUT /v1/profile` | `UserProfile` | `UserProfile` | Onboarding |
 | `submitCheckIn(input)` | `POST /v1/checkins` | `CheckInInput` | `EnergyResult` | Check-in |
+| `getCheckIn(date)` | `GET /v1/checkins/:date` | — | `CheckInInput \| null` | Dashboard (receipt 因子编辑) |
 | `getTodayEnergy(date)` | `GET /v1/energy/:date` | — | `EnergyResult \| null` | Dashboard |
+| `adjustEnergyScore(date, score, note?)` | `POST /v1/energy/:date/adjust` | `{ score: 0-100, note?: string }` | `{ energy: EnergyResult, plan: DayPlan \| null }` | Dashboard (receipt) |
 | `getTasks(date)` | `GET /v1/tasks?date=` | — | `Task[]` | Plan |
 | `getTodayPlan(date)` | `GET /v1/plan/:date` | — | `DayPlan \| null` | Plan / Dashboard |
 | `updatePlanBlock(date, blockId, input)` | `PATCH /v1/plan/:date/blocks/:blockId` | `{ title, start, end, status }` | `DayPlan` | Plan |
@@ -45,6 +47,9 @@
 | `getNutritionPlan(date)` | `GET /v1/nutrition/:date` | — | `NutritionPlan \| null` | Nutrition / Dashboard |
 | `regenerateNutrition(date)` | `POST /v1/nutrition/:date/regenerate` | — | `NutritionPlan` | Nutrition |
 | `getCoachReply(date)` | `GET /v1/coach/:date` | — | `CoachReply` | Dashboard / Plan |
+| `sendCoachMessage(date, input)` | `POST /v1/coach/:date/chat` | `{ message, history?, intent? }` | `CoachReply` | Coach chat |
+| — | `GET /v1/context/:date/notes` | — | `ContextNote[]` | Coach chat ("Tell Akeso more") |
+| — | `POST /v1/context/:date/notes` | `{ text }` | `ContextNote` | Coach chat ("Tell Akeso more") |
 | `getFridgeItems()` | `GET /v1/fridge` | — | `FridgeItem[]` | Nutrition |
 | `saveFridgeItem(item)` | `PUT /v1/fridge/:id` | `Omit<FridgeItem, 'id'>` | `FridgeItem` | Nutrition |
 | `deleteFridgeItem(id)` | `DELETE /v1/fridge/:id` | — | `null` | Nutrition |
@@ -68,9 +73,14 @@
 
 - `GET /v1/energy/:date` 在**未签到**时返回 `data: null`(HTTP 200),App 以此判断是否显示 Check-in 引导;`getTodayPlan` 同理;
 - `POST /v1/checkins` 同日重复提交 = 覆盖更新,返回重新计算的 `EnergyResult`;
+- `GET /v1/checkins/:date` 原样回放用户提交的 `CheckInInput`(未签到返回 `data: null`),供 Dashboard receipt 在重启后对单个因子发起编辑;编辑本质是带一处改动的整份 check-in 重新提交,`EnergyResult`、曲线与 Plan 随之重算;
 - `PATCH /v1/plan/:date/blocks/:blockId` 只允许修改标题、开始/结束时间与完成状态；首次更新保存原始建议，重叠时段返回 `VALIDATION_ERROR`，且不得修改 Energy score、预测能量或推荐理由；
 - `POST /v1/plan/:date/regenerate` 保留 `source: "user"` 的块，并移除与其重复或重叠的新建议；
-- `EnergyResult.factors[].impact` 仅存在于 scoring factor(`role: 'reported_energy'`);`possible_context` 因子不带 `impact`,UI 不显示其分数贡献,只展示解释文案;
+- Plan 生成(GET 首次生成与 regenerate)走 `AiServices.generatePlan`:Gemini 结构化输出 blueprint,服务端 `validatePlanBlueprint` 强制校验(06:00–22:00、时序不重叠、taskId 必须属于用户且不重复、至少一个 meal 块、id/status/source/energyLevel 一律服务端赋值),校验失败或 AI 不可用时回落确定性 `planDay`。regenerate 的 `instruction` 直接进入模型 prompt,不再字符串拼接到输出文案;
+- `EnergyResult.factors[]` **不再携带任何分值归因**:factor 解释一律是定性文案(引擎不再输出 `impact`,契约仅为兼容旧持久化行保留其可选解析)。打分机制(baseline、权重、映射表)属于内部实现,不得出现在任何面向用户的文案或 AI 上下文中;
+- `POST /v1/energy/:date/adjust` 是用户对当天分数的手动修正:调整后的分数**替换**引擎分数并重推导 band/curve/峰谷窗口/headline,整条 `EnergyResult`(含 `adjustment` 溯源: originalScore/adjustedScore/note/adjustedAt)持久化,所有下游读取方自然读到修正后的结果;若当天已有 plan,会围绕新的能量形状重排并保留用户改过的块。重新提交 check-in 覆盖整条 energy result,即自动清除 adjustment;
+- `POST /v1/coach/:date/chat` 是纯对话轮次,**从不重写 plan**。服务端注入的上下文=用户全量画像:profile(允许清单字段)、当日 check-in、energy(含用户修正)、plan、fridge、**confirmed 指标的健康报告**(有意与推荐路径的 metric_N 脱敏不同——这是"AI 真的懂我"的产品决策,未确认指标绝不进入)、当日 context notes。`intent: 'more'` 会把用户消息先持久化为 context note;`intent: 'opener'` 无需 message,AI 主动提一个补充上下文的问题并作为 coach note 持久化;
+- `GET/POST /v1/context/:date/notes` 存取当日自由文本补充(心情、饮食、压力、症状),仅回流到 AI coach 上下文,不做临床解读;
 - `CoachReply.disclaimer` 必须始终返回非空(产品诚信要求,TEAM_CONTRACT §10);
 - `MealRecommendation.usesFridgeItemIds` 引用同一响应内 `NutritionPlan.fridge[].id`;
 - `PUT /v1/fridge/:id` 以路径 `id` 为准做 upsert(同一 id 重复提交 = 覆盖,幂等);库存仅表达“有这个食物”,不含数量、单位、克数或到期日;
@@ -101,22 +111,21 @@ Akeso v1 的 Energy Score 是 **Reported Energy estimate**:系统把用户对当
 
 `reportedEnergy` 是唯一会改变 `EnergyResult.score` 的字段。推荐 UI 文案与分数映射如下:
 
-| 用户选择 | `reportedEnergy` | `EnergyResult.score` | `reported_energy.impact` |
-|---|---:|---:|---:|
-| Drained | 1 | 20 | -40 |
-| Low | 2 | 40 | -20 |
-| OK | 3 | 60 | 0 |
-| Good | 4 | 80 | +20 |
-| Charged | 5 | 100 | +40 |
+| 用户选择 | `reportedEnergy` | `EnergyResult.score` |
+|---|---:|---:|
+| Drained | 1 | 20 |
+| Low | 2 | 40 |
+| OK | 3 | 60 |
+| Good | 4 | 80 |
+| Charged | 5 | 100 |
 
-公式:
+公式(**内部实现,不对外暴露**):
 
 ```text
 score = { 1: 20, 2: 40, 3: 60, 4: 80, 5: 100 }[reportedEnergy]
-reported_energy.impact = score - 60
 ```
 
-`60` 是中性 baseline:用户选择 `OK` 时分数为 60,`impact` 为 0。`impact` 的作用只是解释 reported energy 相对 baseline 的变化,不是医学归因。
+> 该映射表只存在于本文档与 `EnergyEngine` 内部。产品决策:打分机制不公开——factor 解释、coach 文案、AI prompt 上下文中都不得出现 baseline、权重或 `+N` 点数归因(旧的 `impact` 字段已从引擎输出移除,仅在契约里保留可选解析以兼容历史数据)。用户对分数有最终决定权:`POST /v1/energy/:date/adjust` 见「语义约定」。
 
 `reportedEnergy` 必须是整数 1–5;越界或非法值在 API 层由 `Scale1to5Schema` 拒绝并返回 `VALIDATION_ERROR`。引擎内部对越界输入做 clamp+round 仅作为深度防御,不是对外契约,调用方不得依赖该 clamp 行为(例如故意传 0 或 6)。
 

@@ -1,4 +1,4 @@
-import { checkInInputSchema, EnergyEngine } from '@akeso/domain'
+import { checkInInputSchema, EnergyEngine, localDateSchema } from '@akeso/domain'
 import { Router, type RequestHandler } from 'express'
 
 import { ok } from '../http'
@@ -18,6 +18,13 @@ export function createCheckinsRouter(
     const result = energyEngine.evaluate(input)
     await repos.energy.upsert(req.userId, result)
     ok(res, result)
+  })
+
+  // The check-in as submitted, so the receipt can offer per-factor edits
+  // seeded from the user's real answers even after an app restart.
+  router.get('/checkins/:date', async (req, res) => {
+    const date = localDateSchema.parse(req.params.date)
+    ok(res, await repos.checkins.get(req.userId, date))
   })
 
   return router

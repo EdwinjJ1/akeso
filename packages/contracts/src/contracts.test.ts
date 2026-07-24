@@ -292,6 +292,7 @@ describe('API contract: route map matches the implemented /v1 API', () => {
       'GET /v1/profile',
       'PUT /v1/profile',
       'POST /v1/checkins',
+      'GET /v1/checkins/:date',
       'GET /v1/energy/:date',
       'POST /v1/energy/:date/adjust',
       'GET /v1/tasks',

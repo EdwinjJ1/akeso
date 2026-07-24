@@ -63,6 +63,17 @@ export const CheckInRequestSchema = CheckInInputSchema
 export const CheckInResponseSchema = apiResponseSchema(EnergyResultSchema)
 export type CheckInResponse = ApiResponse<z.infer<typeof EnergyResultSchema>>
 
+// ── GET /v1/checkins/:date ──────────────────────────────────────────────────
+
+/**
+ * The check-in exactly as the user submitted it, so the receipt can offer
+ * per-factor edits after an app restart. `data: null` (HTTP 200) when the
+ * user has not checked in on that date.
+ */
+export const GetCheckInResponseSchema = apiResponseSchema(
+  CheckInInputSchema.nullable()
+)
+
 // ── GET /v1/energy/:date ────────────────────────────────────────────────────
 
 /** `data: null` (HTTP 200) when there is no check-in for that date yet. */
@@ -347,6 +358,12 @@ export const apiContract = {
     path: '/v1/checkins',
     request: CheckInRequestSchema,
     response: CheckInResponseSchema,
+  },
+  getCheckIn: {
+    method: 'GET',
+    path: '/v1/checkins/:date',
+    params: DateParamsSchema,
+    response: GetCheckInResponseSchema,
   },
   getTodayEnergy: {
     method: 'GET',

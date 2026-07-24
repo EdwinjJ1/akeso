@@ -1,6 +1,6 @@
 # Akeso Pitch — Speaker Script
 
-Target length: approximately 4½ minutes. The English below matches the speaker notes embedded in the revised PowerPoint.
+Target length: approximately 4¾ minutes. The English below matches the speaker notes embedded in the revised PowerPoint (11 slides, including the team slide).
 
 ## How to use this file
 
@@ -164,7 +164,25 @@ AI 可以解释经过 schema 验证的建议，但不会凭空生成能量分数
 
 中文提示：技术部分控制在半分钟内，重点解释为什么架构提高可信度。
 
-## Slide 10 — Understand Your Energy. Feed It Better.
+## Slide 10 — Four Builders. One Energy System.
+
+Akeso is built by four of us.
+
+Dailin Jia and Bob Lee cover full-stack development — Dailin also owns the UI design, and Bob leads the architecture and the algorithm implementation. Nicole Wang designed the energy algorithm and works across the backend. Xin He drives marketing and also contributes to the backend.
+
+Four people, one shared goal: making energy something you can understand and act on.
+
+**中文对应稿：**
+
+Akeso 由我们四个人一起打造。
+
+Dailin Jia 和 Bob Lee 负责全栈开发——Dailin 同时负责 UI 设计，Bob 主导架构设计和算法实现。Nicole Wang 设计了能量算法，并参与后端开发。Xin He 负责市场推广，同时也参与后端开发。
+
+四个人，一个共同的目标：让能量变成可以被理解、被使用的东西。
+
+中文提示：语速可以稍快，指一下画面上的四位成员；这一页控制在二十秒内。
+
+## Slide 11 — Understand Your Energy. Feed It Better.
 
 Today, Akeso connects daily energy, planning, and nutrition. Next, we want to deepen the picture with an emotion coach, faster food logging, wearables, weekly patterns, and expert-reviewed guidance.
 

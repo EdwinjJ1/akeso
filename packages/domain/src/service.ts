@@ -50,6 +50,11 @@ export interface AkesoService {
 
   /** POST /v1/checkins → EnergyEngine runs server-side, returns the result */
   submitCheckIn(input: CheckInInput): Promise<EnergyResult>
+  /**
+   * GET /v1/checkins/:date — the check-in as submitted, so factor edits can
+   * start from the real answers after a restart. Null when none exists.
+   */
+  getCheckIn(date: string): Promise<CheckInInput | null>
   /** GET /v1/energy/:date — null when the user has not checked in yet */
   getTodayEnergy(date: string): Promise<EnergyResult | null>
   /**

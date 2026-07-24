@@ -1,4 +1,11 @@
-import type { CoachReply, DayPlan, EnergyResult, NutritionPlan } from '@akeso/domain'
+import type {
+  CheckInInput,
+  CoachReply,
+  DayPlan,
+  EnergyFactorKey,
+  EnergyResult,
+  NutritionPlan,
+} from '@akeso/domain'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
@@ -6,6 +13,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { CoachCard } from '@/components/coach-card'
 import { EnergyCurve } from '@/components/energy/energy-curve'
+import { FactorEditSheet } from '@/components/energy/factor-edit-sheet'
 import { FactorRow } from '@/components/energy/factor-row'
 import { ScoreAdjustSheet } from '@/components/energy/score-adjust-sheet'
 import { CheckInPrompt } from '@/components/home/checkin-prompt'
@@ -39,6 +47,7 @@ export default function Dashboard() {
     coachError,
     refreshToday,
     adjustScore,
+    submitCheckIn,
   } = useAppState()
 
   useEffect(() => {
@@ -107,8 +116,12 @@ export default function Dashboard() {
           coach={ancillaryDate === today ? coach : null}
           coachLoading={coachLoading}
           coachError={coachError}
+          // Editable factors need the answers that produced today's score.
+          // A leftover check-in from a previous day is not today's receipt.
+          checkIn={hasTodayCheckIn ? latestCheckIn : null}
           onRetry={refreshToday}
           onAdjustScore={adjustScore}
+          onSubmitCheckIn={submitCheckIn}
         />
       ) : null}
     </Screen>
@@ -125,8 +138,11 @@ type ReadyDashboardProps = {
   coach: CoachReply | null
   coachLoading: boolean
   coachError: string | null
+  /** Today's check-in, or null when we can't edit its factors in place. */
+  checkIn: CheckInInput | null
   onRetry: () => Promise<void>
   onAdjustScore: (score: number, note?: string) => Promise<void>
+  onSubmitCheckIn: (input: CheckInInput) => Promise<unknown>
 }
 
 function ReadyDashboard({
@@ -139,10 +155,13 @@ function ReadyDashboard({
   coach,
   coachLoading,
   coachError,
+  checkIn,
   onRetry,
   onAdjustScore,
+  onSubmitCheckIn,
 }: ReadyDashboardProps) {
   const [adjustVisible, setAdjustVisible] = useState(false)
+  const [editingFactor, setEditingFactor] = useState<EnergyFactorKey | null>(null)
   const mascotState: MascotState =
     energy.band === 'high' ? 'high' : energy.band === 'low' ? 'low' : 'steady'
   const peakLabel = `Peak ${formatHour(energy.peakWindow.startHour)}–${formatHour(
@@ -270,7 +289,11 @@ function ReadyDashboard({
           </View>
           <View style={styles.factorList}>
             {energy.factors.map((factor) => (
-              <FactorRow key={factor.key} factor={factor} />
+              <FactorRow
+                key={factor.key}
+                factor={factor}
+                onEdit={checkIn ? () => setEditingFactor(factor.key) : undefined}
+              />
             ))}
           </View>
           <Pressable
@@ -298,6 +321,15 @@ function ReadyDashboard({
         onClose={() => setAdjustVisible(false)}
         onSave={onAdjustScore}
       />
+
+      {checkIn ? (
+        <FactorEditSheet
+          factorKey={editingFactor}
+          checkIn={checkIn}
+          onClose={() => setEditingFactor(null)}
+          onSave={onSubmitCheckIn}
+        />
+      ) : null}
 
       {nutrition ? (
         <Reveal delay={240}>

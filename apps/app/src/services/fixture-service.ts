@@ -109,6 +109,13 @@ export class FixtureService implements AkesoService {
     return this.energy
   }
 
+  async getCheckIn(date: string): Promise<CheckInInput | null> {
+    await wait(this.latencyMs / 3)
+    return this.latestCheckIn && this.latestCheckIn.date === date
+      ? this.latestCheckIn
+      : null
+  }
+
   async getTodayEnergy(date: string): Promise<EnergyResult | null> {
     await wait(this.latencyMs / 3)
     return this.energy && this.energy.date === date ? this.energy : null

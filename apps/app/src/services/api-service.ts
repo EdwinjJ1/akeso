@@ -161,6 +161,10 @@ export class ApiService implements AkesoService {
     return this.request('POST', '/v1/checkins', input)
   }
 
+  getCheckIn(date: string): Promise<CheckInInput | null> {
+    return this.request('GET', `/v1/checkins/${encodeURIComponent(date)}`)
+  }
+
   getTodayEnergy(date: string): Promise<EnergyResult | null> {
     return this.request('GET', `/v1/energy/${encodeURIComponent(date)}`)
   }
